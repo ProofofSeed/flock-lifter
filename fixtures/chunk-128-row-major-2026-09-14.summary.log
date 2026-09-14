@@ -1,0 +1,28 @@
+zkboo proof of 128 responses: 0.05 s
+response block: k_log 28, 3988 Keccak-f, 1579812 products, 314309 materialised, 8689741 explicit rows (0.62 s)
+[pofseed] row-major witness and stripe 1.86 s
+[zc-timing] round1 URM: 498.49 ms
+[zc-timing] gates: sparse=false single_run=true runs=1 n_mlv=29 compact_k=true r2_la=true
+[zc-timing] round2 fused fold: 281.65 ms
+[zc-timing] compact K double fold: 165.72 ms
+[zc-timing] rounds 3+ tail: 41.08 ms
+[lc] build_quirky_eq             463.86 ms
+[pofseed] fold: explicit rows 0.06 s
+[pofseed] fold: Keccak sub-blocks 0.38 s
+[lc] fold_alpha_batched          439.28 ms
+[lc] partial_fold_z              244.53 ms
+[lc] sumcheck (all rounds)       125.47 ms
+[pofseed] row-major commit, zerocheck and lincheck 3.58 s
+    [rs::prove_batched] build_eq dense×2 (split) + sparse×1 (1 built):   1.17 ms
+    [rs::prove_batched] fold_1b_rows dense(k=2)+sparse(k=1):   0.39 ms
+    [rs::prove_batched] per-opening tail ×3:   0.68 ms
+  [open_batch] ring_switch::prove_batched ×3:   2.33 ms
+  [open_batch] combine rs_eq_ind (L=268435456, rs×3, pd×0): 234.62 ms
+  [open_batch] ligerito::recursive_prover_with_basis: 696.01 ms
+  [open_batch] TOTAL: 933.07 ms
+[pofseed] row-major opening 0.93 s
+[pofseed] fold: explicit rows 0.06 s
+[pofseed] fold: Keccak sub-blocks 0.38 s
+row-major: prove 6.38 s, verify 0.98 s, proof 586065 B
+        8.20 real        79.08 user        11.46 sys
+         63609896960  maximum resident set size

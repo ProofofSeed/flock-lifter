@@ -391,6 +391,8 @@ impl LincheckCircuit for Program {
 
     fn fold_alpha_batched(&self, alpha: F128, eq_inner: &[F128]) -> Vec<F128> {
         assert_eq!(eq_inner.len(), self.block_bits());
+        let timing = std::env::var_os("POFSEED_TIMING").is_some();
+        let t = std::time::Instant::now();
         let mut comb = flock_prover::alloc_zeroed_vec::<F128>(self.block_bits());
         for r in 0..self.rows.cols.len() {
             let e = eq_inner[self.rows.cols[r] as usize];
@@ -405,6 +407,10 @@ impl LincheckCircuit for Program {
                 comb[c as usize] += e;
             }
         }
+        if timing {
+            eprintln!("[pofseed] fold: explicit rows {:.2} s", t.elapsed().as_secs_f64());
+        }
+        let t = std::time::Instant::now();
         let first = self.geometry.head_subs() * SUB_BITS;
         let end = first + self.geometry.keccak_subs() * SUB_BITS;
         let konst: F128 = comb[first..end]
@@ -413,6 +419,9 @@ impl LincheckCircuit for Program {
             .map(|(c, e)| keccak::fold_shared(alpha, e, c))
             .reduce(|| F128::ZERO, |x, y| x + y);
         comb[CONST as usize] += konst;
+        if timing {
+            eprintln!("[pofseed] fold: Keccak sub-blocks {:.2} s", t.elapsed().as_secs_f64());
+        }
         return comb;
     }
 

@@ -310,7 +310,9 @@ dependencies = [
  "pofseed-flock-lift-block",
  "pofseed-flock-lift-statement",
  "rayon",
+ "serde",
  "zkboo",
+ "zkboo-circuit-hash",
 ]
 
 [[package]]
@@ -331,7 +333,10 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "flock-prover",
+ "pofseed-flock-lift",
+ "pofseed-flock-lift-block",
  "pofseed-flock-lift-statement",
+ "rayon",
  "zkboo",
  "zkboo-bip32",
  "zkboo-circuit-hash",

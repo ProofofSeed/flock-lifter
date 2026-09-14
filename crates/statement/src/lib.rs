@@ -11,6 +11,7 @@
 extern crate alloc;
 
 mod hasher;
+mod journal;
 
 use alloc::vec::Vec;
 use zkboo::{
@@ -22,6 +23,10 @@ use zkboo::{
 use zkboo_bip32::hardened_child_key;
 
 pub use hasher::Keccak256Hasher;
+pub use journal::{
+    JournalCheckError, JournalExpectation, LIFT_JOURNAL_VERSION, LiftJournal, REQUIRED_PROOF_FORMAT_ID,
+    check_journal,
+};
 
 /// Hasher used for commitments, PRGs and challenge entropy.
 pub type H = Keccak256Hasher;

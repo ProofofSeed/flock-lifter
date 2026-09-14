@@ -32,7 +32,7 @@ const MIN_DENSE_M: usize = 22;
 pub const PROFILE: LigeritoProfile = LigeritoProfile::Fast;
 
 /// A Flock proof over a batch of response blocks.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ChunkProof {
     /// The Flock proof.
     pub proof: R1csProofCircuitMerged,
@@ -136,11 +136,17 @@ fn fill(program: &Program, responses: &[Response<S, S>], nu: usize, dst: SlotWit
     let k = program.block_bits();
     let cols = k / 128;
     let rows = 1usize << nu;
+    let timing = std::env::var_os("POFSEED_TIMING").is_some();
+    let t = std::time::Instant::now();
     let SlotWitnessDest { z, a, b, .. } = dst;
     for buf in [&mut *z, &mut *a, &mut *b] {
         assert_eq!(buf.len(), cols << nu, "slot block length");
         buf.par_chunks_mut(1 << 20).for_each(|c| c.fill(F128::ZERO));
     }
+    if timing {
+        eprintln!("[pofseed] zero-fill {:.2} s", t.elapsed().as_secs_f64());
+    }
+    let t = std::time::Instant::now();
     let ptrs = [SendPtr(z.as_mut_ptr()), SendPtr(a.as_mut_ptr()), SendPtr(b.as_mut_ptr())];
     responses.par_iter().enumerate().for_each(|(j, response)| {
         let words = k / 64;
@@ -158,6 +164,10 @@ fn fill(program: &Program, responses: &[Response<S, S>], nu: usize, dst: SlotWit
             }
         }
     });
+    if timing {
+        eprintln!("[pofseed] witness generation and scatter {:.2} s", t.elapsed().as_secs_f64());
+    }
+    let t = std::time::Instant::now();
     let z: &[F128] = z;
     let mut stripe = vec![0u8; (rows / 8) * k];
     stripe.par_chunks_mut(k).enumerate().for_each(|(g, s)| {
@@ -172,6 +182,9 @@ fn fill(program: &Program, responses: &[Response<S, S>], nu: usize, dst: SlotWit
             transpose_8_u64s_to_64_bytes(&lanes, &mut s[64 * w..64 * w + 64]);
         }
     });
+    if timing {
+        eprintln!("[pofseed] lincheck stripe {:.2} s", t.elapsed().as_secs_f64());
+    }
     return stripe;
 }
 

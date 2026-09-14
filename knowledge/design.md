@@ -53,7 +53,24 @@ The Keccak χ and output-pin rows are identical in every sub-block and are folde
 
 Because the sub-blocks are aligned, the verifier's matrix evaluation factorises: the shared rows contribute one local evaluation times a sum of `eq` products over sub-block indices, and only the sparse rows are paid per nonzero.
 
+## Which Flock path proves the table
+
+Flock has two ways to prove a Boolean table, and the response block's shape — very wide rows, very few of them — separates them by more than an order of magnitude.
+
+The **union circuit path** (`crates/lift/src/chunk.rs`) is what Flock's circuit layer is built on: a registry of table types, the wiring argument for published words, and one merged opening.
+It works, and it was the first path taken here, but its merged opening is built for tables with many rows and few word-columns.
+Its block-first phase costs `(ring-switch claims) × 128 Frobenius powers × 2^(column bits)` field operations whatever the row count, so the `2^21` word-columns of a `2^28`-bit block spend 27.5 s there, and the merged sumcheck and multipoint weight passes another 49 s, on eight responses (`[open_merged]` trace).
+With fewer live rows than capacity it falls off the rectangular fast path altogether and was killed at 124 GB on four responses.
+
+The **single-table row-major path** (`crates/lift/src/chunk_rm.rs`) commits the rows contiguously and opens the zerocheck's and lincheck's two claims with an ordinary ring-switch and Ligerito batch opening.
+On the same eight responses it proves in 3.18 s against 54 s, in 21.5 GB against 32 GB, and the opening itself is 0.09 s.
+It has no circuit layer, so the published words are bound by a third claim appended to the same batched opening: the words are absorbed into the transcript before the commitment, and the claim evaluates the committed witness on the published-word subcube (word-columns 16 to 31 of every row, which is why they sit there) at a point sampled after it, with a value the verifier computes from the words.
+Padding rows repeat the last live block, because this path's constant-wire pin must hold in every row.
+
+Flock's single-table core verifier refuses any statement whose `C₀` is not a materialised identity matrix, since its c-claim is a direct witness claim only in circuit form.
+The block is in circuit form by construction, and a materialised identity of `2^28` rows would cost the verifier gigabytes, so `chunk_rm.rs` replays the same core — statement binding, zerocheck, lincheck, claim reconstruction — through Flock's public functions without that one check.
+
 ## Batching and Ligerito
 
-One Flock proof covers up to `2^ν` responses; unused rows are zero, as the union prover requires.
-Ligerito security configurations are registered for committed sizes up to `m = 35`, which holds 128 responses of `2^28` bits, so a 219-response lift is two proofs (128 and 91) sharing one native Fiat-Shamir gate.
+One Flock proof covers up to `2^ν` responses.
+Ligerito security configurations are registered for committed sizes up to `m = 35`, which holds 128 responses of `2^28` bits, so a 219-response lift is two proofs (128 and 91, the latter padded to 128 rows) sharing one native Fiat-Shamir gate.

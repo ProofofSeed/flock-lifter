@@ -17,9 +17,16 @@ pub const SEED_BITS: usize = 256;
 /// Bytes of a view-commitment preimage before the absorbed stream: tag, length and seed.
 pub const VIEW_PREFIX_BYTES: usize = 21 + 8 + 32;
 
+/// First word-column of the published words, which occupy the aligned subcube of word-columns
+/// `[16, 32)`.
+pub const IO_BASE_WORD: usize = 16;
+
+/// Word-columns reserved for published words.
+pub const IO_WORDS: usize = 16;
+
 /// Head column of challenge bit `h_p`, set exactly when the challenge is `p`.
 pub const fn h_col(p: usize) -> u32 {
-    return (128 + p) as u32;
+    return (IO_BASE_WORD * 128 + p) as u32;
 }
 
 /// The word-level shape of a lifted statement, per slot: what the replay draws, absorbs and
@@ -211,22 +218,24 @@ impl Geometry {
 
     /// Published word-columns: the challenge word, both view digests, and both output shares.
     pub fn io_word_cols(&self) -> Vec<usize> {
-        return (1..6 + 2 * self.out_words()).collect();
+        let n = 5 + 2 * self.out_words();
+        assert!(n <= IO_WORDS, "the published words must fit their subcube");
+        return (IO_BASE_WORD..IO_BASE_WORD + n).collect();
     }
 
     /// Head column of bit `p` of a slot's view digest.
     pub fn digest_col(&self, slot: usize, p: usize) -> u32 {
-        return (256 + slot * 256 + p) as u32;
+        return (IO_BASE_WORD * 128 + 128 + slot * 256 + p) as u32;
     }
 
     /// Head column of bit `p` of a slot's output share.
     pub fn out_col(&self, slot: usize, p: usize) -> u32 {
-        return (768 + slot * 128 * self.out_words() + p) as u32;
+        return (IO_BASE_WORD * 128 + 5 * 128 + slot * 128 * self.out_words() + p) as u32;
     }
 
     /// First head column after the published words.
     pub fn free_base(&self) -> u32 {
-        return (128 * (6 + 2 * self.out_words())) as u32;
+        return ((IO_BASE_WORD + IO_WORDS) * 128) as u32;
     }
 
     /// Head column of bit `p` of a slot's seed.

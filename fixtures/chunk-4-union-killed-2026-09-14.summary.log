@@ -1,0 +1,17 @@
+zkboo proof of 4 responses: 0.01 s
+  [prove_union] witgen (padded 2^24, PooledDirty):  147.34 ms
+  [prove_union] compact q (2^23 dense):   10.62 ms
+  [prove_union] commit:   27.55 ms
+  [prove_union] bind statement:    0.08 ms
+[zc-timing] round1 URM: 25.74 ms
+[zc-timing] gates: sparse=false single_run=true runs=1 n_mlv=25 compact_k=true r2_la=true
+[zc-timing] round2 fused fold: 18.08 ms
+[zc-timing] compact K double fold: 10.70 ms
+[zc-timing] rounds 3+ tail: 3.55 ms
+  [prove_union] s_hat_v_ab fold (z_vec 2^28):  55.27 ms
+  [prove_union] boolean zerocheck + lincheck (M_bool = 31) ∥ wiring: 3901.08 ms
+  [prove_union] wiring GKR + gather (μ = 8, 15 claims):    0.00 ms
+  [prove_union] claim assembly:    0.19 ms  (heights 0.18 + z_claims 0.00 + element pd 0.00 + wiring pd 0.00)
+  [open_merged] ring_switch:   0.19 ms
+        124313485312  maximum resident set size
+killed by the system (exit 137) during the merged opening
