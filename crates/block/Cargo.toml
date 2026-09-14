@@ -1,0 +1,18 @@
+[package]
+name = "pofseed-flock-lift-block"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The response block of the Flock lifter: a ZKBoo response's verification as one Boolean R1CS row, with its witness generator and structured lincheck."
+publish = false
+
+[dependencies]
+flock-prover = { workspace = true }
+rayon = { version = "1.10" }
+zkboo = { version = "1.2", features = ["u32", "u64"] }
+zkboo-profiling = { version = "1.2" }
+pofseed-flock-lift-statement = { path = "../statement" }
+
+[dev-dependencies]
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+zkboo = { version = "1.2", features = ["u32", "u64", "parallel"] }
