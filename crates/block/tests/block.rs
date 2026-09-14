@@ -4,55 +4,16 @@
 //! structured lincheck fold against the witness it folds.
 
 use flock_prover::{field::F128, lincheck::LincheckCircuit};
-use pofseed_flock_lift_block::program::Program;
+use pofseed_flock_lift_block::{native, program::Program, toy::Toy};
 use pofseed_flock_lift_statement::{H, HardenedChildCircuit, PS, PV, S};
 use zkboo::{
-    backend::{Backend, Frontend, WordRef},
     circuit::Circuit,
     executor::{ExecOptions, OwnedFlexibleWordPool, exec},
-    prover::{par_prove, proof::Response, views::OwnedFlexibleWordTriplePool},
-    verifier::replay::{OwnedFlexibleWordPairPool, ViewReplayerBackend},
-    word::{Word, Words},
+    prover::{par_prove, views::OwnedFlexibleWordTriplePool},
 };
 
 type WP = OwnedFlexibleWordPool<usize>;
 type WTP = OwnedFlexibleWordTriplePool<usize>;
-type WPP = OwnedFlexibleWordPairPool<usize>;
-
-struct Toy;
-
-impl Circuit for Toy {
-    fn exec<B: Backend>(&self, frontend: &Frontend<B>) {
-        let bytes: Vec<WordRef<B, u8>> = (0..32u8).map(|i| frontend.input(i.wrapping_mul(7) ^ 0x33)).collect();
-        let a = bytes[0].clone().bitand(bytes[1].clone());
-        let b = bytes[2].clone().not().bitxor_const(0x5au8);
-        let c = a.wrapping_add(b);
-        let d = c.rotate_left(3).unbounded_shr(1).unbounded_shl(2).reverse_bits();
-        let x = bytes[3].clone().cast::<u64>().rotate_left(13) ^ bytes[4].clone().cast::<u64>().swap_bytes();
-        let y = x.clone().wrapping_add(bytes[5].clone().cast::<u64>().bitand_const(0xF0F0u64));
-        let z = x.bitand(y.clone()).bitxor_const(0x0123_4567_89ab_cdefu64);
-        let comp = WordRef::<B, u64, 4>::from_le_words([
-            y.clone(),
-            z.clone(),
-            y.clone().not(),
-            z.clone().rotate_right(7),
-        ]);
-        let comp2 = comp
-            .clone()
-            .wrapping_add(comp.clone().rotate_left(70))
-            .bitand(comp.swap_bytes())
-            .reverse_bits()
-            .unbounded_shr(9);
-        let small = z.cast::<u32>();
-        let s2 = small.clone().bitand(small.clone().rotate_left(5)).cast::<u8>();
-        frontend.output(d);
-        frontend.output(s2);
-        frontend.output(small);
-        frontend.output(comp2);
-        frontend.output(y);
-        frontend.output(bytes[31].clone());
-    }
-}
 
 struct Rng(u64);
 
@@ -69,54 +30,13 @@ impl Rng {
     }
 }
 
-fn words_bits(words: &Words) -> Vec<bool> {
-    fn push<W: Word>(words: &Words, bits: &mut Vec<bool>) {
-        for &w in words.as_vec::<W>() {
-            for b in 0..W::WIDTH {
-                bits.push((w >> b) & W::ONE == W::ONE);
-            }
-        }
-    }
-    let mut bits = Vec::new();
-    push::<u8>(words, &mut bits);
-    push::<u32>(words, &mut bits);
-    push::<u64>(words, &mut bits);
-    return bits;
-}
-
-fn native_io<C: Circuit>(program: &Program, circuit: &C, output: &Words, response: &Response<S, S>) -> Vec<F128> {
-    let frontend = ViewReplayerBackend::<H, PV, S, WPP>::new(response).into_view_replayer();
-    circuit.exec(&frontend);
-    let commitments = frontend.finalize_with_arg(output).expect("native replay");
-    let c = response.challenge().index();
-    let mut words = vec![F128::new(1 << c, 0)];
-    for s in 0..2 {
-        let d = commitments[(c + s) % 3].digest();
-        for k in 0..2 {
-            let lo = u64::from_le_bytes(d[16 * k..16 * k + 8].try_into().unwrap());
-            let hi = u64::from_le_bytes(d[16 * k + 8..16 * k + 16].try_into().unwrap());
-            words.push(F128::new(lo, hi));
-        }
-    }
-    for s in 0..2 {
-        let bits = words_bits(commitments[(c + s) % 3].output_share());
-        let mut packed = vec![0u64; 2 * program.geometry().out_words()];
-        for (p, &bit) in bits.iter().enumerate() {
-            packed[p / 64] |= (bit as u64) << (p % 64);
-        }
-        words.extend(packed.chunks(2).map(|w| F128::new(w[0], w[1])));
-    }
-    return words;
-}
-
 fn check<C: Circuit + Sync>(circuit: &C, witness_circuit: &C, responses: usize, fold_checks: usize) {
     let program = Program::new(circuit);
     let g = program.geometry();
     println!(
-        "k_log {}, head {} bits ({} used), {} Keccak-f, {} products, {} materialised, {} explicit rows, nnz {:?}",
+        "k_log {}, head {} bits, {} Keccak-f, {} products, {} materialised, {} explicit rows, nnz {:?}",
         g.k_log(),
         g.head_bits(),
-        g.replay_base(),
         g.keccak_subs(),
         program.replay_products(),
         program.replay_materialised(),
@@ -137,7 +57,8 @@ fn check<C: Circuit + Sync>(circuit: &C, witness_circuit: &C, responses: usize, 
         let words = program.block_bits() / 64;
         let (mut z, mut a, mut b) = (vec![0u64; words], vec![0u64; words], vec![0u64; words]);
         program.write_witness(response, &mut z, &mut a, &mut b).expect("witness");
-        assert_eq!(program.io_words(&z), native_io(&program, circuit, &output, response), "published words, challenge {c}");
+        let expected = native::io_words(&program, circuit, &output, response).expect("native replay");
+        assert_eq!(program.io_words(&z), expected, "published words, challenge {c}");
         for w in 0..words {
             assert_eq!(z[w], a[w] & b[w], "z = a·b at word {w}");
         }

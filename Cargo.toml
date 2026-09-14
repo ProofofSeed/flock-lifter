@@ -6,6 +6,7 @@ resolver = "3"
 members = [
     "crates/statement",
     "crates/block",
+    "crates/lift",
     "crates/host",
 ]
 

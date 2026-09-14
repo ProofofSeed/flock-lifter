@@ -16,7 +16,7 @@ use zkboo::{
     circuit::Circuit,
     crypto::{TAG_PRG, TAG_VIEW_COMMITMENT},
     prover::proof::Response,
-    word::{Word, Words},
+    word::Words,
 };
 
 /// One step of block evaluation.
@@ -69,23 +69,6 @@ impl RowsBuilder {
 
 fn bytes_bits(bytes: &[u8], p: usize) -> bool {
     return (bytes[p / 8] >> (p % 8)) & 1 == 1;
-}
-
-fn words_bits(words: &Words) -> Vec<bool> {
-    let mut bits = Vec::new();
-    push_word_bits::<u8>(words, &mut bits);
-    push_word_bits::<u32>(words, &mut bits);
-    push_word_bits::<u64>(words, &mut bits);
-    return bits;
-}
-
-fn push_word_bits<W: Word>(words: &Words, bits: &mut Vec<bool>) {
-    for &w in words.as_vec::<W>() {
-        let one: W = W::ONE;
-        for b in 0..W::WIDTH {
-            bits.push((w >> b) & one == one);
-        }
-    }
 }
 
 fn counts(words: &Words) -> [usize; 3] {
@@ -304,6 +287,23 @@ impl Program {
         return &self.rows.b_idx[self.rows.b_ptr[r] as usize..self.rows.b_ptr[r + 1] as usize];
     }
 
+    /// Checks that a response has the statement's shape: AND messages of the statement's shape,
+    /// and a party-2 input share of the statement's shape exactly when the challenge opens party 2.
+    pub fn check_response(&self, response: &Response<S, S>) -> Result<(), WitnessError> {
+        let shape = self.geometry.shape();
+        if counts(response.and_msg_next_party()) != shape.and_msgs {
+            return Err(WitnessError::AndMsgShape);
+        }
+        let well_formed = match response.input_share_2() {
+            Some(x) => response.challenge().index() != 0 && counts(x) == shape.inputs,
+            None => response.challenge().index() == 0,
+        };
+        if !well_formed {
+            return Err(WitnessError::InputShareShape);
+        }
+        return Ok(());
+    }
+
     /// Writes the witness of `response` into zeroed `z`, `a` and `b` words of one block.
     pub fn write_witness(
         &self,
@@ -316,17 +316,13 @@ impl Program {
         let shape = g.shape();
         let words = self.block_bits() / 64;
         assert!(z.len() == words && a.len() == words && b.len() == words);
-        let msgs = response.and_msg_next_party();
-        if counts(msgs) != shape.and_msgs {
-            return Err(WitnessError::AndMsgShape);
-        }
+        self.check_response(response)?;
         let challenge = response.challenge().index();
         let x_bits = match response.input_share_2() {
-            Some(x) if challenge != 0 && counts(x) == shape.inputs => words_bits(x),
-            None if challenge == 0 => vec![false; shape.input_bits()],
-            _ => return Err(WitnessError::InputShareShape),
+            Some(x) => crate::native::words_bits(x),
+            None => vec![false; shape.input_bits()],
         };
-        let m_bits = words_bits(msgs);
+        let m_bits = crate::native::words_bits(response.and_msg_next_party());
         let seeds = response.seeds();
         let set = |v: &mut [u64], c: u32, bit: bool| {
             let (w, s) = ((c >> 6) as usize, c & 63);
