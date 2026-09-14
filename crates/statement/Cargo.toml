@@ -1,0 +1,14 @@
+[package]
+name = "pofseed-flock-lift-statement"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Statement definitions for the Flock lifter: the proof-of-seed circuit, the fixed crypto suite, and the lifted journal with its relying-party gate."
+publish = false
+
+[dependencies]
+serde = { version = "1.0.228", default-features = false, features = ["derive", "alloc"] }
+zkboo = { version = "1.2", features = ["u32", "u64"] }
+zkboo-bip32 = { version = "1.2" }
+tiny-keccak = { version = "2.0", default-features = false, features = ["keccak"] }
+zeroize = { version = "1.8.2" }
