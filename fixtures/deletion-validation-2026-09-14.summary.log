@@ -1,0 +1,14 @@
+Validation by deletion, 2026-09-14
+
+1. Fiat-Shamir comparison deleted from lift::verify; acceptance rejects:
+  control (n=8, two chunks, matching expectation): accepted ✓
+thread 'main' (27402273) panicked at crates/host/src/bin/acceptance.rs:58:18:
+R1 tampered proof: the verifier ACCEPTED a lift it must refuse
+
+2. Published-word claim deleted from both sides of chunk_rm; toy row-major test:
+test toy_row_major_chunk_proves_and_verifies ... FAILED
+thread 'toy_row_major_chunk_proves_and_verifies' (27402762) panicked at crates/lift/tests/toy.rs:62:5:
+unbacked published words are refused
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.12s
+
+Both checks restored afterwards; see acceptance-both and the test suites.

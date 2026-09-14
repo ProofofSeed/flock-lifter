@@ -2,6 +2,8 @@
 
 //! Host-side helpers for the Flock lifter: the development statement fixture and proof generation.
 
+pub mod tamper;
+
 use pofseed_flock_lift_statement::{H, HardenedChildCircuit, PS, PV, S};
 use zkboo::{
     executor::{ExecOptions, OwnedFlexibleWordPool, exec},

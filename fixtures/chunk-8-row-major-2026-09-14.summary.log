@@ -1,0 +1,12 @@
+zkboo proof of 8 responses: 0.02 s
+response block: k_log 28, 3988 Keccak-f, 1579812 products, 314309 materialised, 8689741 explicit rows (0.63 s)
+[pofseed] row-major witness and stripe 0.98 s
+[pofseed] fold: explicit rows 0.06 s
+[pofseed] fold: Keccak sub-blocks 0.38 s
+[pofseed] row-major commit, zerocheck and lincheck 2.12 s
+[pofseed] row-major opening 0.09 s
+[pofseed] fold: explicit rows 0.06 s
+[pofseed] fold: Keccak sub-blocks 0.41 s
+row-major: prove 3.18 s, verify 1.02 s, proof 510073 B
+        5.21 real        18.96 user         3.25 sys
+         21474230272  maximum resident set size

@@ -1,0 +1,57 @@
+zkboo proof of 8 responses: 0.01 s
+block: k_log 28, 3988 Keccak-f, 1579812 products, 314309 materialised, 8689741 explicit rows (0.63 s)
+published words: 0.00 s
+[pofseed] zero-fill 0.02 s
+[pofseed] witness generation and scatter 0.11 s
+[pofseed] lincheck stripe 0.04 s
+  [prove_union] witgen (padded 2^24, PooledZeroed):  172.26 ms
+  [prove_union] compact q (2^24 dense, ALIASED — no copy):    0.00 ms
+  [prove_union] commit:   50.27 ms
+  [prove_union] bind statement:    0.01 ms
+  [wiring] build w (live cells of 2^8):    0.10 ms
+  [prod-gkr]   leaves(grouped)   30.018 ms
+  [prod-gkr]   build-layers(grouped)    0.016 ms
+  [prod-gkr]     sumcheck split: eq-prep   0.005 ms | messages   0.005 | folds+fs   0.051 | layer misc   0.205
+  [prod-gkr] layer-sumchecks(grouped)    0.304 ms
+  [prod-gkr] evals(grouped)      0.133 ms
+  [wiring] product GKR (μ = 8):   30.63 ms
+  [wiring] gather (15 claims × 2^3):    0.01 ms
+[pofseed] fold: explicit rows 0.06 s
+[pofseed] fold: Keccak sub-blocks 0.38 s
+[pofseed] fold: explicit rows 0.06 s
+[pofseed] fold: Keccak sub-blocks 0.37 s
+  [prove_union] s_hat_v_ab fold (z_vec 2^28):  74.69 ms
+  [prove_union] C-claim bit-bank fold: 539.38 ms
+  [prove_union] boolean zerocheck + lincheck (M_bool = 31) ∥ wiring: 4577.70 ms
+  [prove_union] wiring GKR + gather (μ = 8, 15 claims):    0.00 ms
+  [prove_union] claim assembly:    0.19 ms  (heights 0.19 + z_claims 0.00 + element pd 0.00 + wiring pd 0.00)
+    [rs::prove_batched] build_eq dense×2 (split) + sparse×0 (0 built):   0.02 ms
+    [rs::prove_batched] fold_1b_rows dense(k=2)+sparse(k=0):   0.00 ms
+    [rs::prove_batched] per-opening tail ×2:   0.12 ms
+  [open_merged] ring_switch:   0.19 ms
+  [open_merged] block statistics (514 terms × 1048576): 27540.11 ms
+  [open_merged] block rounds (20) + q'/W' (2^4): 2817.57 ms
+  [open_merged] merged sumcheck (24 rounds): 30435.89 ms
+    [frobenius] linearized_coefficients (x2):   0.00 ms
+  [open_batch] ring_switch::prove_batched ×0:   0.00 ms
+  [open_batch] combine (seeded EqPoint, L=16777216):   2.69 ms
+[lig-prove-f256] total = 431.28 ms
+  [open_batch] ligerito::recursive_prover_with_basis: 431.39 ms
+  [open_batch] TOTAL: 434.16 ms
+    [multipoint] 256 + 1 values (compute): 445.82 ms
+    [multipoint] rs path: ALIGNED closed-form weight (n=3 k=21 area=16777216 of 2^24); columns 2097152 used, 2097152 full(2^3), 2097152 pow2; heights 8x2097152
+    [multipoint] weight passes (2^24, 2 products, round-0 fused): 18456.82 ms  (rs 18380.79 | group 76.02)
+    [multipoint] two-product sumcheck (24 rounds):  28.71 ms  (folds: rs 16.73 | group 11.92)
+    [frobenius] statements + suffix rows (x3, 6291456 low + 6291455 shared blocks vs 54525952 dense):  94.79 ms
+    [frobenius] v + rounds:  30.71 ms
+    [multipoint] anchor assist (x2 + x1): 131.94 ms
+  [open_merged] coeffs + (multipoint assist ∥ inner open): 19063.61 ms (join wall 19063.60 ms = max of the two branches)
+  [open_merged] TOTAL: 49505.44 ms
+  [prove_union] witness buffer give-back (2^24 words, zero dirty spans):   0.00 ms
+  [prove_union] open (rs×2, pd×15): 49505.73 ms
+  [prove_union] TOTAL 54306.32 ms === done (element: false) ===
+prove: 54.35 s
+[pofseed] fold: explicit rows 0.06 s
+[pofseed] fold: Keccak sub-blocks 0.39 s
+verify: 1.27 s
+proof: 518387 B, m = 31
