@@ -70,6 +70,44 @@ Padding rows repeat the last live block, because this path's constant-wire pin m
 Flock's single-table core verifier refuses any statement whose `C₀` is not a materialised identity matrix, since its c-claim is a direct witness claim only in circuit form.
 The block is in circuit form by construction, and a materialised identity of `2^28` rows would cost the verifier gigabytes, so `chunk_rm.rs` replays the same core — statement binding, zerocheck, lincheck, claim reconstruction — through Flock's public functions without that one check.
 
+## What a verified lift establishes
+
+The verifier (`crates/lift/src/lift.rs`) holds the statement — chain code, index, expected output, binding — and builds the response block itself from the public-only circuit, so a proof never selects the constraint system it is checked against.
+It then checks, in order:
+
+1. the lifted proof's parts agree in length, and its chunk count matches its response count and chunk size;
+2. every chunk's Flock proof, under a transcript domain that binds the statement digest (circuit fingerprint, statement fields, response count, chunk size) and the chunk's position, against the words the chunk's blocks publish;
+3. that every published challenge word is one-hot;
+4. the global Fiat-Shamir gate, natively: the challenge transcript over the binding and, per response in absolute party order, the two published view digests with their output shares and the unopened digest with the third share `y ⊕ o⁰ ⊕ o¹`, must derive exactly the published challenges.
+
+A chunk proof attests, under Flock's assumptions, knowledge of rows satisfying the block's relation whose published words are the ones given.
+A row satisfies the relation exactly when some seeds, AND messages and party-2 input share replay the circuit, under the published challenge and with Keccak-256 PRG tapes and view commitments, to the published digests and output shares.
+With the gate, the responses together form an accepting ZKBoo transcript for the statement, which is what the SP1 lifter's guest establishes by running `zkboo::verifier::verify`.
+The journal is then built from the verifier's own values and put through the same `check_journal` gate, assertion word and repetition count included.
+
+The acceptance run (`acceptance rejects`) names the refuser of every case, and the two checks that nothing else backs were validated by deletion (`fixtures/deletion-validation-2026-09-14.summary.log`).
+With the Fiat-Shamir comparison removed, a proof with one AND-message bit flipped lifts and verifies; with the published-word claim removed from the opening, a chunk proved over published words its witness does not carry verifies.
+The other refusals — a tampered published word, a swapped chunk, another statement — are enforced by the transcript binding before either check is reached.
+
+That the compiled block means what the replay means is established by test, not by proof: `crates/block/tests/block.rs` checks every published word against ZKBoo's own replay for all three challenges, on a circuit that exercises every gate kind and on the hardened child at full size, and checks the structured lincheck fold against the witness it folds.
+This is the lift-fidelity gap the SP1 lifter does not have, since its guest is the verifier itself.
+
+The assumptions stack as follows.
+ZKBoo's soundness at 219 responses is the classical-128 figure in the forgery-work-ratio sense, with the caveat the SP1 lifter records.
+Flock's Ligerito `Fast` profile targets 128-bit component security (`docs/128-bit-grinding-audit.md` in Flock), on proximity-gap results in the proven regime and SHA-256 for its Merkle commitments and transcript.
+The composition of an in-circuit Keccak with a random-oracle Fiat-Shamir argument is heuristic exactly where every hash-based recursion is.
+There is no pairing anywhere, so the BN254 ceiling of about 100 bits that caps the SP1 lifter does not apply; whether the lift is post-quantum depends on Flock's grinding being re-accounted under Grover, which is not established here, and on lifting 438 responses rather than 219.
+Flock describes itself as a research prototype not for production use, and this lifter inherits that.
+
+## Scope limits
+
+The Ethereum-address statement does not fit this design on this machine.
+Its responses carry about 23.5 million AND-message bits, so its block would need `k_log = 34`, and Flock's `LincheckCircuit` returns the lincheck fold as one dense vector over the block's columns, `2^34` field elements or about 275 GB.
+It would also need the compiler to handle inputs allocated after the first AND gate, which the hardened child does not.
+
+There is no on-chain verifier.
+Flock ships a native verifier only; a lifted proof is about 1.2 MB, verified in about two seconds, and bringing it to L1 would take a verifier contract or a wrap in another proof system, neither of which exists.
+
 ## Batching and Ligerito
 
 One Flock proof covers up to `2^ν` responses.

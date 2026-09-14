@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use flock_prover::field::F128;
 use pofseed_flock_lift_block::{
-    native::{self, words_bits},
+    native,
     program::{Program, WitnessError},
 };
 use pofseed_flock_lift_statement::{H, HardenedChildCircuit, LIFT_JOURNAL_VERSION, LiftJournal, S};
@@ -220,7 +220,6 @@ pub fn verify(program: &Arc<Program>, statement: &Statement, lifted: &LiftedProo
             return Err(LiftError::FiatShamir);
         }
     }
-    let _ = words_bits;
     return Ok(LiftJournal {
         version: LIFT_JOURNAL_VERSION,
         valid: true,

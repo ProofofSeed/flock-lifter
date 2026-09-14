@@ -1,0 +1,11 @@
+result: responses=8 chunks=1 threads=16 zkboo_s=0.01 block_s=0.64 prove_s=3.19 verify_s=1.01 lifted_bytes=512341 chunk_proof_bytes=510073 gate=pass peak_rss_bytes=21488746496 process_real_s=4.86
+result: responses=16 chunks=1 threads=16 zkboo_s=0.01 block_s=0.62 prove_s=3.80 verify_s=1.02 lifted_bytes=529597 chunk_proof_bytes=525089 gate=pass peak_rss_bytes=32114212864 process_real_s=5.47
+result: responses=32 chunks=1 threads=16 zkboo_s=0.01 block_s=0.62 prove_s=4.82 verify_s=1.01 lifted_bytes=549349 chunk_proof_bytes=540361 gate=pass peak_rss_bytes=54791421952 process_real_s=6.51
+result: responses=64 chunks=1 threads=16 zkboo_s=0.02 block_s=0.63 prove_s=4.42 verify_s=1.00 lifted_bytes=588261 chunk_proof_bytes=570313 gate=pass peak_rss_bytes=41621045248 process_real_s=6.18
+result: responses=128 chunks=1 threads=16 zkboo_s=0.04 block_s=0.63 prove_s=6.38 verify_s=0.98 lifted_bytes=621933 chunk_proof_bytes=586065 gate=pass peak_rss_bytes=63606784000 process_real_s=8.18
+result: responses=219 chunks=2 threads=16 zkboo_s=0.07 block_s=0.61 prove_s=12.33 verify_s=1.97 lifted_bytes=1233478 chunk_proof_bytes=1172130 gate=pass peak_rss_bytes=73907060736 process_real_s=15.17
+result: responses=438 chunks=4 threads=16 zkboo_s=0.14 block_s=0.63 prove_s=22.71 verify_s=3.95 lifted_bytes=2451176 chunk_proof_bytes=2328508 gate=pass peak_rss_bytes=78824308736 process_real_s=27.67
+result: responses=64 chunks=1 threads=12 zkboo_s=0.03 block_s=0.63 prove_s=4.53 verify_s=1.09 lifted_bytes=588261 chunk_proof_bytes=570313 gate=pass peak_rss_bytes=41200943104 process_real_s=6.38
+result: responses=128 chunks=1 threads=12 zkboo_s=0.05 block_s=0.63 prove_s=7.30 verify_s=1.03 lifted_bytes=621933 chunk_proof_bytes=586065 gate=pass peak_rss_bytes=63196397568 process_real_s=9.17
+result: responses=219 chunks=2 threads=12 zkboo_s=0.08 block_s=0.61 prove_s=14.24 verify_s=2.05 lifted_bytes=1233478 chunk_proof_bytes=1172130 gate=pass peak_rss_bytes=73595142144 process_real_s=17.17
+result: responses=438 chunks=4 threads=12 zkboo_s=0.16 block_s=0.64 prove_s=25.42 verify_s=4.18 lifted_bytes=2451176 chunk_proof_bytes=2328508 gate=pass peak_rss_bytes=78505492480 process_real_s=30.64
