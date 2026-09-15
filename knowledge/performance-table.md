@@ -95,9 +95,10 @@ machine, in a zkVM, or on chain. The opening is already small: a few hundred tho
 multiplications and twenty thousand hash compressions. The matrix term is two orders of magnitude
 larger — it was four before the structured discharge — and it is an artefact of how this lifter
 discharges the matrix claims, not of Flock. What is left of it is the block's 8.7 million explicit
-rows; committing to those and proving the evaluation, or deferring them through Flock's
-`DeferredMatrixWork` and `matrix_fold`, would bring it to the size of another opening.
-`matrix-discharge.md` weighs both.
+rows. Removing them from the verifier entirely, through Flock's claim accumulation, was costed on
+2026-09-15 and declined: it would cost the prover about 2.5 s and 21 GB at 219 responses to save
+the verifier 25 ms. `matrix-discharge.md` records the costing and why it becomes the right build
+the moment chunk verification is arithmetised.
 
 ## Against the SP1 lifter, at 219 responses
 

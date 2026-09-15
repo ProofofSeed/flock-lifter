@@ -71,17 +71,41 @@ Proving and proof size do not move, and the whole-run peak does not either, beca
 ## What is left
 
 The remaining 62 M multiplications are, roughly: 8.4 M for the two eq tables, ~0.1 M for the Keccak factorisation and the rest for the 8,689,741 explicit rows and their 62,869,716 nonzeros.
-The Keccak structure is exhausted; the explicit rows are what is left, and there are two ways further down.
+The Keccak structure is exhausted; the explicit rows are what is left.
 
 **More structure, no new cryptography.** 6,380,800 of those rows link a Keccak sub-block's input state to wherever it comes from, and across the 1,613 PRG blocks of a slot 1,536 of the 1,600 links per sub-block have *identical* forms — only the counter bits differ.
 Collapsing them the way the Keccak fold is collapsed would take roughly another 20 M, at the cost of teaching the block builder to record the grouping.
+That is the cheapest lever left, and it costs the prover nothing.
 
-**Holographic matrices (a real build).** Commit to the block's sparse rows once per statement and prove the evaluation, Spark-style, so the verifier pays an opening instead of the nonzeros.
-Flock does not ship a sparse-matrix commitment, and the numbers now argue about its worth: it would replace ~53 M verifier multiplications with a few hundred thousand, but it must commit 62.9 M nonzeros, which is prover work of the same order as the witness commitment the lift already pays.
-It is the only route to an on-chain or in-zkVM verifier, and that is the case for it — not the 0.05 s.
+## The holographic tier, costed and declined
 
-**Deferral.** Flock's `LincheckProof::matrix_evals`, `matrix_fold` and `DeferredMatrixWork` exist to let the verifier accept the bilinear forms as claims and fold them into an accumulator for a later proof to discharge.
-That is cheaper to reach than a commitment, but it only moves the work unless there is a second proof in the pipeline to put it in.
+Going further means making the verifier's work independent of the matrix altogether.
+That was costed on 2026-09-15 and **not built**; the costing is the reason, and it should be revisited the moment a recursion layer exists.
+
+**What is available.** Flock already ships the machinery, and its `matrix_fold` module states the design:
+
+> Discharging it inline is fine natively and fatal in a recursion circuit: arithmetising it is nnz-preserving (the gadget's matrix *is* the matrix it evaluates), so a circuit that pays it inline can never verify a proof of itself […] Nothing here commits to the matrix. The claims are about a public, registry-static polynomial, so the accumulated claim at the root of an aggregation tree is discharged by `MatrixClaim::check_direct` in the clear — once, amortised over the tree — and no sparse-matrix commitment, preprocessing or verification key is needed anywhere.
+
+So Flock's answer is accumulation, not commitment.
+The prover reports the two unscaled bilinear forms `⟨W_row ⊗ W_col, A₀⟩` and `⟨W_row ⊗ W_col, B₀⟩` (`LincheckProof::matrix_evals`, `MatrixAssertion`); the verifier checks the single equation `running = α·a + b + β·W_col[const]`, which pins neither value on its own; the claims are then folded by two sumchecks — `verify_fold` never touches the matrix — and one root discharge pays `O(nnz)` once for the whole tree.
+A and B must stay apart, because α is per-proof and a claim about `α·A₀ + B₀` would name a different polynomial in every proof.
+
+**What it would cost here.** One dense fold pass over this block takes the prover 0.46 s and holds 4.3 GB (`chunk-probe 8 row-major` under `POFSEED_TIMING`: 0.06 s explicit rows, 0.40 s Keccak sub-blocks).
+The fold needs the A and B marginals kept apart per chunk, all of them live at once, plus a row-marginal and two dense sumchecks over `2^28` — and a forward recurrence over the Keccak sub-blocks that does not exist yet, being the adjoint of the fold this lifter has.
+
+| | 219 responses, 2 chunks | 438 responses, 4 chunks |
+| --------------------------- | ----------------------: | ----------------------: |
+| prover, extra time          |     ~+2.5 s on 12.9 s   |       ~+5 s on 22.9 s   |
+| prover, extra memory        |    ~+21 GB on 73.9 GB   |      ~+38 GB on 78.8 GB |
+| verifier, saved             |     ~25 ms of 60 ms     |      ~75 ms of 100 ms   |
+
+**+2.5 s of proving and +21 GB to save 25 ms of verifying.**
+The saving is `(chunks − 1)` discharges, because the root still pays one; the cost is per chunk and grows faster.
+
+**Why it is still the right thing later.** None of that is the case for accumulation. The case is the sentence above: arithmetising the inline discharge is nnz-preserving, so a recursion circuit that pays it can never verify a proof of itself.
+The moment this lifter wraps its chunks in SP1 or in another Flock proof, the per-chunk matrix work stops being 25 ms and becomes the thing that makes the wrap impossible — and then the fold is not an optimisation but the only way through.
+
+**A Spark-style commitment** — commit the sparse matrices, prove the evaluation by offline memory checking, verifier pays an opening — is the literal holographic construction and is worse again here: it must commit 62.9 M nonzeros per proof, work of the same order as the witness commitment the lift already pays, and Flock deliberately ships no such thing.
 
 ## The Ethereum-address statement
 

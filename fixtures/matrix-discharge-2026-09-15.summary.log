@@ -69,3 +69,18 @@ sub-blocks             4096 (108 head, 3988 Keccak-f)
 explicit rows          8689741
 explicit nonzeros      35396547 on A, 27473169 on B (62869716 total)
 nonzeros per row       4.07 on A, 3.16 on B
+
+6. The prover's dense fold pass, which the declined accumulation route would need several of
+   (chunk-probe 8 row-major under POFSEED_TIMING)
+
+response block: k_log 28, 3988 Keccak-f, 1579812 products, 314309 materialised, 8689741 explicit rows (0.65 s)
+[pofseed] row-major witness and stripe 0.98 s
+[pofseed] fold: explicit rows 0.06 s
+[pofseed] fold: Keccak sub-blocks 0.40 s
+[pofseed] row-major commit, zerocheck and lincheck 2.21 s
+[pofseed] row-major opening 0.09 s
+row-major: prove 3.28 s, verify 0.02 s, proof 510073 B
+
+One fold pass is 0.46 s and holds 4.3 GB. Verification of one chunk is 0.02 s, so accumulating the
+matrix claims across chunks saves (chunks - 1) x ~0.02 s and costs the prover a separated fold per
+chunk plus the fold's own dense sumchecks. See knowledge/matrix-discharge.md.
