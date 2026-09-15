@@ -51,7 +51,11 @@ A `2^28`-column base matrix with every Keccak row substituted would hold billion
 Head rows and the Keccak input-state rows, whose terms reach outside their sub-block, are stored sparsely.
 The Keccak χ and output-pin rows are identical in every sub-block and are folded by the transpose recurrence of the retired Flock encoder, about a million field operations per sub-block and in parallel across them.
 
-Because the sub-blocks are aligned, the verifier's matrix evaluation factorises: the shared rows contribute one local evaluation times a sum of `eq` products over sub-block indices, and only the sparse rows are paid per nonzero.
+The prover needs that fold at every column, because its sumcheck binds the folded vector round by round.
+The verifier does not: nothing in its replay reads the vector until the sumcheck's last equation, and by then the block's structure gives those 64 entries directly.
+Because the sub-blocks are aligned, both `eq` tables factorise across a sub-block boundary, so the shared rows contribute one local fold times a sum of `eq` products over sub-block indices, and the explicit rows cost one multiplication per row and one per column slot each row touches.
+`Program::comb_partial` evaluates that and `verify_lincheck_structured` uses it in place of Flock's `verify_with_grinding`, which would otherwise materialise two `2^28`-entry vectors and bind one of them 22 times.
+It is eleven and a half times less arithmetic and eleven times less memory; `matrix-discharge.md` records the construction, the measurements and what is left.
 
 ## Which Flock path proves the table
 
@@ -69,6 +73,7 @@ Padding rows repeat the last live block, because this path's constant-wire pin m
 
 Flock's single-table core verifier refuses any statement whose `C₀` is not a materialised identity matrix, since its c-claim is a direct witness claim only in circuit form.
 The block is in circuit form by construction, and a materialised identity of `2^28` rows would cost the verifier gigabytes, so `chunk_rm.rs` replays the same core — statement binding, zerocheck, lincheck, claim reconstruction — through Flock's public functions without that one check.
+Its lincheck is this lifter's own replay of Flock's, which walks the same transcript and refuses the same shapes but discharges the matrix claims structurally; the two accept each other's proofs byte for byte.
 
 ## What a verified lift establishes
 
@@ -85,11 +90,11 @@ A row satisfies the relation exactly when some seeds, AND messages and party-2 i
 With the gate, the responses together form an accepting ZKBoo transcript for the statement, which is what the SP1 lifter's guest establishes by running `zkboo::verifier::verify`.
 The journal is then built from the verifier's own values and put through the same `check_journal` gate, assertion word and repetition count included.
 
-The acceptance run (`acceptance rejects`) names the refuser of every case, and the two checks that nothing else backs were validated by deletion (`fixtures/deletion-validation-2026-09-14.summary.log`).
-With the Fiat-Shamir comparison removed, a proof with one AND-message bit flipped lifts and verifies; with the published-word claim removed from the opening, a chunk proved over published words its witness does not carry verifies.
+The acceptance run (`acceptance rejects`) names the refuser of every case, and the checks that nothing else backs were validated by deletion (`fixtures/deletion-validation-2026-09-14.summary.log`, `fixtures/deletion-validation-2026-09-15.summary.log`).
+With the Fiat-Shamir comparison removed, a proof with one AND-message bit flipped lifts and verifies; with the published-word claim removed from the opening, a chunk proved over published words its witness does not carry verifies; and with the lincheck's final comparison removed, a chunk whose matrix evaluation is deliberately wrong verifies.
 The other refusals — a tampered published word, a swapped chunk, another statement — are enforced by the transcript binding before either check is reached.
 
-That the compiled block means what the replay means is established by test, not by proof: `crates/block/tests/block.rs` checks every published word against ZKBoo's own replay for all three challenges, on a circuit that exercises every gate kind and on the hardened child at full size, and checks the structured lincheck fold against the witness it folds.
+That the compiled block means what the replay means is established by test, not by proof: `crates/block/tests/block.rs` checks every published word against ZKBoo's own replay for all three challenges, on a circuit that exercises every gate kind and on the hardened child at full size, checks the structured lincheck fold against the witness it folds, and checks the structured matrix discharge against the dense fold it replaces.
 This is the lift-fidelity gap the SP1 lifter does not have, since its guest is the verifier itself.
 
 The assumptions stack as follows.
@@ -102,21 +107,22 @@ Flock describes itself as a research prototype not for production use, and this 
 ## Scope limits
 
 The Ethereum-address statement does not fit this design on this machine.
-Its responses carry about 23.5 million AND-message bits, so its block would need `k_log = 34`, and Flock's `LincheckCircuit` returns the lincheck fold as one dense vector over the block's columns, `2^34` field elements or about 275 GB.
-It would also need the compiler to handle inputs allocated after the first AND gate, which the hardened child does not.
+Its responses carry about 23.5 million AND-message bits, so its block would need `k_log = 34`, where the dense lincheck fold is `2^34` field elements or about 275 GB.
+The verifier no longer builds that vector, and its structured discharge would want about 8.6 GB at `k_log = 34`; the **prover** still builds it, because its sumcheck binds the folded vector round by round.
+So what blocks the elephant is the prover's fold, not the verifier's, and the compiler's inability to handle inputs allocated after the first AND gate.
 
 There is no on-chain verifier, and the measured verifier costs say what one would need.
 
 Verifying a chunk costs 201,565 field multiplications and about 15,600 SHA-256 compressions in the
-opening, against 713 million multiplications in the core — the dense matrix discharge, which
-`plan-matrix-discharge.md` is about removing.
+opening, against 62 million multiplications in the core — down from 713 million, but still the
+matrix, now paid per explicit row rather than per column (`matrix-discharge.md`).
 Taking the opening alone, and assuming an emulated GF(2^128) multiplication costs a few hundred to
 a couple of thousand gas (the EVM has no binary-field precompile), that is ~100–400 M gas against a
 ~30 M block, before the ~8 M gas of calldata for a 500 kB proof at 16 gas per byte — or ~20 M under
 EIP-7623's floor pricing for calldata-heavy transactions.
 SHA-256 is a precompile and would be the cheap part.
-So direct EVM verification is about two orders of magnitude out with the matrix term removed, and
-about four with it.
+So direct EVM verification is about two orders of magnitude out with the matrix term removed
+entirely, and about three with it as it now stands.
 
 Two further things an on-chain verifier would need from this lifter: the published words are linear
 in the response count (52.6 kB at 219) unless the Fiat-Shamir gate moves into the circuit, and
@@ -124,8 +130,9 @@ Flock's transcript is BLAKE3 by default, which has no precompile — `FsChalleng
 selects SHA-256.
 
 The plausible route is recursion rather than a verifier contract: verify the Flock proof inside SP1
-and reuse the SP1 lifter's Groth16 path at ~280k gas. That only helps once the matrix term is gone,
-since otherwise the zkVM inherits the same hundreds of millions of field operations.
+and reuse the SP1 lifter's Groth16 path at ~280k gas. The structured discharge makes that a
+different proposition — tens of millions of field operations to prove rather than hundreds — though
+still far more than the opening alone, which is what a committed matrix would leave.
 A search on 2026-09-15 found no published on-chain verifier for Flock or Ligerito to calibrate
 against.
 

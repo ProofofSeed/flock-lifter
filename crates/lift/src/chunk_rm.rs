@@ -9,8 +9,8 @@ use flock_prover::{
     challenger::{Challenger, FsChallenger},
     field::F128,
     lincheck::{
-        LincheckCircuit, QuirkyPoint, SkipPoint, pack_z_lincheck_from_packed,
-        verify_with_grinding as verify_lincheck_with_grinding,
+        LincheckCircuit, LincheckClaim, LincheckError, LincheckGrinding, LincheckProof, QuirkyPoint,
+        SkipPoint, pack_z_lincheck_from_packed,
     },
     pcs::{
         Commitment, PcsParams,
@@ -315,6 +315,123 @@ pub fn prove_chunk(
     });
 }
 
+/// Replays Flock's lincheck verifier over the same transcript, discharging its final equation
+/// from the block's structure instead of from a vector over the block's columns.
+///
+/// Flock's own verifier materialises the row weight at every one of the block's `2^k_log`
+/// columns, asks the circuit to fold the matrices there, and then binds that vector down one
+/// sumcheck variable at a time — three passes over the block width, and at `k_log = 28` a
+/// multi-gigabyte allocation. Nothing in the sumcheck replay needs the vector until its last
+/// equation, so this walks the transcript identically, keeps only the running claim, and
+/// evaluates the folded combination at the end through [`Program::comb_partial`].
+///
+/// The transcript is Flock's, byte for byte: the same label, the same challenges in the same
+/// order, the same grinding schedule and the same shape refusals.
+fn verify_lincheck_structured<Ch: Challenger>(
+    program: &Program,
+    k_log: usize,
+    k_skip: usize,
+    x_ab: &QuirkyPoint,
+    v_a: F128,
+    v_b: F128,
+    proof: &LincheckProof,
+    grinding: LincheckGrinding,
+    challenger: &mut Ch,
+) -> Result<LincheckClaim, LincheckError> {
+    if k_skip > k_log {
+        return Err(LincheckError::KSkipExceedsKLog { k_skip, k_log });
+    }
+    if program.block_bits() != 1usize << k_log {
+        return Err(LincheckError::BadMatrixShape {
+            which: "circuit",
+            expected: 1usize << k_log,
+            got_rows: 1usize << k_log,
+            got_cols: program.block_bits(),
+        });
+    }
+    let inner_rest_len = k_log - k_skip;
+    let n_skip = 1usize << k_skip;
+    if x_ab.x_inner_rest.len() != inner_rest_len {
+        return Err(LincheckError::BadInnerRestLength {
+            which: "x_ab",
+            expected: inner_rest_len,
+            got: x_ab.x_inner_rest.len(),
+        });
+    }
+    if proof.rounds.len() != inner_rest_len {
+        return Err(LincheckError::BadVectorLength {
+            which: "rounds",
+            expected: inner_rest_len,
+            got: proof.rounds.len(),
+        });
+    }
+    if proof.z_partial.len() != n_skip {
+        return Err(LincheckError::BadVectorLength {
+            which: "z_partial",
+            expected: n_skip,
+            got: proof.z_partial.len(),
+        });
+    }
+    let expected_nonces = grinding.nonce_count(inner_rest_len, 1, k_skip);
+    if proof.grinding_nonces.len() != expected_nonces {
+        return Err(LincheckError::BadGrindingNonceCount {
+            expected: expected_nonces,
+            got: proof.grinding_nonces.len(),
+        });
+    }
+    challenger.observe_label(b"flock-lincheck-v0");
+    let mut nonce = 0;
+    let ground = |challenger: &mut Ch, bits: Option<u32>, which, nonce: &mut usize| match bits {
+        Some(bits) => {
+            let r = challenger
+                .verify_pow_and_sample_f128(proof.grinding_nonces[*nonce], bits)
+                .ok_or(LincheckError::InvalidGrindingNonce { which })?;
+            *nonce += 1;
+            Ok(r)
+        }
+        None => Ok(challenger.sample_f128()),
+    };
+    let alpha = ground(challenger, grinding.alpha_bits(), "alpha", &mut nonce)?;
+    let beta = ground(challenger, grinding.beta_bits(), "beta", &mut nonce)?;
+    let mut running = alpha * v_a + v_b + beta;
+    let mut r_rounds = Vec::with_capacity(inner_rest_len);
+    for &(e1, e_inf) in &proof.rounds {
+        challenger.observe_f128(e1);
+        challenger.observe_f128(e_inf);
+        let r = ground(challenger, grinding.multilinear_round_bits(), "sumcheck-round", &mut nonce)?;
+        let e0 = running + e1;
+        let c1 = e0 + e1 + e_inf;
+        running = e_inf * r * r + c1 * r + e0;
+        r_rounds.push(r);
+    }
+    challenger.observe_f128_slice(&proof.z_partial);
+    let mut r_inner_rest = r_rounds;
+    r_inner_rest.reverse();
+    let comb = program.comb_partial(alpha, beta, &x_ab.z_skip.weights(k_skip), &x_ab.x_inner_rest, &r_inner_rest);
+    let final_sum = comb.iter().zip(&proof.z_partial).fold(F128::ZERO, |acc, (&c, &z)| acc + c * z);
+    if running != final_sum {
+        return Err(LincheckError::ConsistencyFailed {
+            which: "sumcheck-final",
+        });
+    }
+    let r_inner_skip = match &x_ab.z_skip {
+        SkipPoint::Phi8(_) => match grinding.skip_bits(k_skip) {
+            Some(bits) => SkipPoint::Phi8(ground(challenger, Some(bits), "inner-skip", &mut nonce)?),
+            None => x_ab.z_skip.sample_fresh(challenger),
+        },
+        // The lifter's zerocheck always hands over a φ₈ skip point; the AG basis would need its
+        // own fused nonce, which this replay does not carry.
+        SkipPoint::Ag(_) => return Err(LincheckError::InvalidGrindingNonce { which: "inner-skip" }),
+    };
+    let lambda = r_inner_skip.weights(k_skip);
+    let w = lambda.iter().zip(&proof.z_partial).fold(F128::ZERO, |acc, (&l, &z)| acc + l * z);
+    return Ok(LincheckClaim {
+        r_inner_skip,
+        r_inner_rest,
+        w,
+    });
+}
+
 /// Replays the statement binding, zerocheck and lincheck of a chunk proof and rebuilds its two
 /// witness claims, as Flock's single-table core verifier does.
 ///
@@ -325,7 +442,7 @@ pub fn prove_chunk(
 fn verify_core_circuit_form<Ch: Challenger>(
     r1cs: &BlockR1cs,
     chunk: &ChunkProofRm,
-    circuit: &dyn LincheckCircuit,
+    program: &Program,
     params: &PcsParams,
     challenger: &mut Ch,
 ) -> Result<(ZClaim, ZClaim), FlockVerifyError> {
@@ -333,11 +450,10 @@ fn verify_core_circuit_form<Ch: Challenger>(
     let zc = verify_zerocheck_with_grinding(r1cs.m, &chunk.zerocheck, params.zerocheck_grinding(), challenger)
         .map_err(FlockVerifyError::Zerocheck)?;
     let x_ab = r1cs.x_ab_from_multilinear_values(SkipPoint::Phi8(zc.z), &zc.mlv_challenges);
-    let lc = verify_lincheck_with_grinding(
-        r1cs.m,
+    let lc = verify_lincheck_structured(
+        program,
         r1cs.k_log,
         r1cs.k_skip,
-        circuit,
         &x_ab,
         zc.a_eval,
         zc.b_eval,

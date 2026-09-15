@@ -1,0 +1,14 @@
+Lift table re-measured with the structured matrix discharge, 2026-09-15, quiet machine, one process at a time.
+Prove, proof size and peak RSS are unchanged against lift-bench-2026-09-14; the verify column is what moved.
+
+result: responses=8 chunks=1 threads=16 zkboo_s=0.01 block_s=0.64 prove_s=3.38 verify_s=0.03 lifted_bytes=512341 chunk_proof_bytes=510073 gate=pass peak_rss_bytes=21482094592
+result: responses=16 chunks=1 threads=16 zkboo_s=0.02 block_s=0.64 prove_s=3.98 verify_s=0.03 lifted_bytes=529597 chunk_proof_bytes=525089 gate=pass peak_rss_bytes=32096288768
+result: responses=32 chunks=1 threads=16 zkboo_s=0.03 block_s=0.63 prove_s=4.91 verify_s=0.03 lifted_bytes=549349 chunk_proof_bytes=540361 gate=pass peak_rss_bytes=54786818048
+result: responses=64 chunks=1 threads=16 zkboo_s=0.04 block_s=0.62 prove_s=4.44 verify_s=0.03 lifted_bytes=588261 chunk_proof_bytes=570313 gate=pass peak_rss_bytes=41605840896
+result: responses=128 chunks=1 threads=16 zkboo_s=0.06 block_s=0.61 prove_s=6.52 verify_s=0.04 lifted_bytes=621933 chunk_proof_bytes=586065 gate=pass peak_rss_bytes=63594856448
+result: responses=219 chunks=2 threads=16 zkboo_s=0.09 block_s=0.62 prove_s=12.92 verify_s=0.06 lifted_bytes=1233478 chunk_proof_bytes=1172130 gate=pass peak_rss_bytes=73909583872
+result: responses=438 chunks=4 threads=16 zkboo_s=0.16 block_s=0.64 prove_s=22.91 verify_s=0.10 lifted_bytes=2451176 chunk_proof_bytes=2328508 gate=pass peak_rss_bytes=78825111552
+result: responses=64 chunks=1 threads=12 zkboo_s=0.05 block_s=0.64 prove_s=4.51 verify_s=0.03 lifted_bytes=588261 chunk_proof_bytes=570313 gate=pass peak_rss_bytes=41192931328
+result: responses=128 chunks=1 threads=12 zkboo_s=0.07 block_s=0.63 prove_s=7.34 verify_s=0.03 lifted_bytes=621933 chunk_proof_bytes=586065 gate=pass peak_rss_bytes=63190532096
+result: responses=219 chunks=2 threads=12 zkboo_s=0.10 block_s=0.63 prove_s=14.48 verify_s=0.05 lifted_bytes=1233478 chunk_proof_bytes=1172130 gate=pass peak_rss_bytes=73597501440
+result: responses=438 chunks=4 threads=12 zkboo_s=0.17 block_s=0.64 prove_s=25.52 verify_s=0.08 lifted_bytes=2451176 chunk_proof_bytes=2328508 gate=pass peak_rss_bytes=78501838848

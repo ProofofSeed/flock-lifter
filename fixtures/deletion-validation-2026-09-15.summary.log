@@ -1,0 +1,26 @@
+Validation by deletion of the structured matrix discharge, 2026-09-15
+
+Control throughout: verifier-cost 8, a hardened-child chunk of 8 responses, proved honestly.
+
+1. The Keccak sub-block term dropped from Program::comb_partial (out[s] forced to zero
+   after the factorised fold), everything else intact:
+
+verify: Core(Lincheck(ConsistencyFailed { which: "sumcheck-final" }))
+
+2. Restored, then the explicit-row term dropped instead (the A and B accumulators discarded
+   rather than added into out):
+
+verify: Core(Lincheck(ConsistencyFailed { which: "sumcheck-final" }))
+
+3. With the explicit-row term still dropped, the final comparison in
+   verify_lincheck_structured also deleted:
+
+  published words             1920 B
+verified
+
+So the comparison against the running sumcheck claim is what enforces the matrix relation, and
+the structured discharge is what it compares: break either half of the discharge and an honest
+chunk is refused; remove the comparison and a chunk whose matrix evaluation is wrong verifies.
+
+All three edits reverted afterwards; the tree at commit time is the unmodified one, and
+verifier-cost 8, the block tests and acceptance both 219 were re-run green on it.

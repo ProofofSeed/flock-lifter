@@ -6,6 +6,10 @@ license.workspace = true
 description = "The response block of the Flock lifter: a ZKBoo response's verification as one Boolean R1CS row, with its witness generator and structured lincheck."
 publish = false
 
+[features]
+# Counts the field multiplications the structured fold and discharge spend.
+count = ["flock-prover/mul-count"]
+
 [dependencies]
 flock-prover = { workspace = true }
 rayon = { version = "1.10" }

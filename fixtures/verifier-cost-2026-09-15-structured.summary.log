@@ -1,0 +1,18 @@
+verifier-cost with the count feature, structured matrix discharge, 2026-09-15.
+
+The counters are Flock's own (mul-count, hash-count), read per phase; the build is instrumented,
+so these runs say nothing about wall clock.
+
+== 8 responses ==
+chunk of 8 responses, m = 31
+[count] structured comb_partial: F128 muls 62022274
+[count] opening (published-word claim, ring switch, Ligerito): F128 muls 201565, inversions 325, SHA-256 compressions 4768 (leaves) + 10812 (pairs × 2), PoW checks 33, transcript squeezes 112
+[count] core (statement binding, zerocheck, lincheck with its matrix fold): F128 muls 62023332, inversions 285, SHA-256 compressions 0 (leaves) + 0 (pairs × 2), PoW checks 52, transcript squeezes 105
+
+== 128 responses ==
+chunk of 128 responses, m = 35
+[count] structured comb_partial: F128 muls 62022274
+[count] opening (published-word claim, ring switch, Ligerito): F128 muls 315510, inversions 354, SHA-256 compressions 4860 (leaves) + 15090 (pairs × 2), PoW checks 38, transcript squeezes 132
+[count] core (statement binding, zerocheck, lincheck with its matrix fold): F128 muls 62023356, inversions 289, SHA-256 compressions 0 (leaves) + 0 (pairs × 2), PoW checks 56, transcript squeezes 113
+
+Against verifier-cost-2026-09-15.summary.log, where the core was 713,482,217 and 713,482,241.

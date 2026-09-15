@@ -1,0 +1,71 @@
+Dense against structured matrix discharge, 2026-09-15, quiet machine, one process at a time.
+
+"dense" is the build at commit a2529e0, in a worktree, verifying through Flock's
+lincheck::verify_with_grinding; "structured" is the same tree with verify_lincheck_structured
+and Program::comb_partial. Nothing else differs, and nothing on the proving side differs.
+
+1. Whole lift at 219 responses, alternating, two rounds each (lift-bench under /usr/bin/time -l)
+
+== round 1, dense ==
+result: responses=219 chunks=2 threads=16 zkboo_s=0.10 block_s=0.63 prove_s=12.41 verify_s=1.98 lifted_bytes=1233478 chunk_proof_bytes=1172130 gate=pass
+         73910403072  maximum resident set size
+== round 1, structured ==
+result: responses=219 chunks=2 threads=16 zkboo_s=0.10 block_s=0.62 prove_s=12.64 verify_s=0.05 lifted_bytes=1233478 chunk_proof_bytes=1172130 gate=pass
+         73906388992  maximum resident set size
+== round 2, dense ==
+result: responses=219 chunks=2 threads=16 zkboo_s=0.09 block_s=0.63 prove_s=12.60 verify_s=1.98 lifted_bytes=1233478 chunk_proof_bytes=1172130 gate=pass
+         73911549952  maximum resident set size
+== round 2, structured ==
+result: responses=219 chunks=2 threads=16 zkboo_s=0.09 block_s=0.64 prove_s=12.60 verify_s=0.05 lifted_bytes=1233478 chunk_proof_bytes=1172130 gate=pass
+         73905831936  maximum resident set size
+
+2. The verifier in its own process, on a lift written to a file (verify-only)
+
+== round 1, dense ==
+result: responses=219 chunks=2 verify_s=1.997 gate=pass
+          9378004992  maximum resident set size
+== round 1, structured ==
+result: responses=219 chunks=2 verify_s=0.053 gate=pass
+           822378496  maximum resident set size
+== round 2, dense ==
+result: responses=219 chunks=2 verify_s=1.976 gate=pass
+          9368993792  maximum resident set size
+== round 2, structured ==
+result: responses=219 chunks=2 verify_s=0.052 gate=pass
+           822214656  maximum resident set size
+
+3. The two builds accept each other's proofs, and produce the same bytes
+
+$ ../flock-lifter-baseline/target/release/verify-only prove 219 lift-219-dense.bin
+$ ./target/release/verify-only check 219 lift-219-dense.bin
+result: responses=219 chunks=2 verify_s=0.055 gate=pass
+$ cmp lift-219.bin lift-219-dense.bin
+the two provers produced identical proofs
+
+4. Verifier arithmetic, verifier-cost built with the count feature
+
+dense, 8 responses:
+[count] dense fold_alpha_batched: F128 muls 168221705
+[count] opening: F128 muls 201565, inversions 325, SHA-256 compressions 4768 (leaves) + 10812 (pairs x 2)
+[count] core:    F128 muls 713482217, inversions 285
+
+structured, 8 responses (m = 31):
+[count] structured comb_partial: F128 muls 62022274
+[count] opening: F128 muls 201565, inversions 325, SHA-256 compressions 4768 (leaves) + 10812 (pairs x 2)
+[count] core:    F128 muls 62023332, inversions 285
+
+structured, 128 responses (m = 35):
+[count] structured comb_partial: F128 muls 62022274
+[count] opening: F128 muls 315510, inversions 354, SHA-256 compressions 4860 (leaves) + 15090 (pairs x 2)
+[count] core:    F128 muls 62023356, inversions 289
+
+The core is still flat in the batch: 24 multiplications separate 8 responses from 128, exactly as
+with the dense discharge.
+
+5. The block the discharge walks (block-stats)
+
+k_log                  28
+sub-blocks             4096 (108 head, 3988 Keccak-f)
+explicit rows          8689741
+explicit nonzeros      35396547 on A, 27473169 on B (62869716 total)
+nonzeros per row       4.07 on A, 3.16 on B
