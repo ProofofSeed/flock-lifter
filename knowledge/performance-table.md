@@ -1,9 +1,10 @@
 # What everything costs, on this machine
 
-Measured on 2026-09-14 on the machine the SP1 lifter's figures come from: an M4 Max, 16 cores (12 performance, 4 efficiency), 137 GB.
+Measured on the machine the SP1 lifter's figures come from: an M4 Max, 16 cores (12 performance, 4 efficiency), 137 GB.
 Flock runs on the CPU only, with its NEON kernels and `target-cpu=native`; the SP1 figures it is compared with are on the Metal GPU.
-Every row is one process, run one at a time on an otherwise quiet machine, by `lift-bench` under `/usr/bin/time -l`; the log is `fixtures/lift-bench-2026-09-14.summary.log`.
+Every row is one process, run one at a time on an otherwise quiet machine, by `lift-bench` under `/usr/bin/time -l`.
 Every lift in the table passed verification and the relying-party gate.
+The table was first measured on 2026-09-14 (`fixtures/lift-bench-2026-09-14.summary.log`) and re-measured whole on 2026-09-15 with the structured matrix discharge (`fixtures/lift-bench-2026-09-15-structured.summary.log`); only the verify column moved.
 
 ## The lift
 
@@ -12,27 +13,31 @@ The statement is the SP1 lifter's: BIP-32 hardened child of test vector 1, Kecca
 "Verify" is every chunk's Flock verification, the native Fiat-Shamir gate and the journal.
 The ZKBoo proof itself (under 0.2 s at 438 responses) and building the block from the circuit (0.62 s, once per statement) are outside both.
 
-| responses | chunks | threads | prove (s) | verify (s) | lifted proof (B) | peak RSS (GB) |
-| --------: | -----: | ------: | --------: | ---------: | ---------------: | ------------: |
-|         8 |      1 |      16 |      3.19 |       1.01 |          512,341 |         21.49 |
-|        16 |      1 |      16 |      3.80 |       1.02 |          529,597 |         32.11 |
-|        32 |      1 |      16 |      4.82 |       1.01 |          549,349 |         54.79 |
-|        64 |      1 |      16 |      4.42 |       1.00 |          588,261 |         41.62 |
-|       128 |      1 |      16 |      6.38 |       0.98 |          621,933 |         63.61 |
-|   **219** |  **2** |  **16** | **12.33** |   **1.97** |    **1,233,478** |     **73.91** |
-|       438 |      4 |      16 |     22.71 |       3.95 |        2,451,176 |         78.82 |
-|        64 |      1 |      12 |      4.53 |       1.09 |          588,261 |         41.20 |
-|       128 |      1 |      12 |      7.30 |       1.03 |          621,933 |         63.20 |
-|       219 |      2 |      12 |     14.24 |       2.05 |        1,233,478 |         73.60 |
-|       438 |      4 |      12 |     25.42 |       4.18 |        2,451,176 |         78.51 |
+| responses | chunks | threads | prove (s) | verify (s) | was (s) | lifted proof (B) | peak RSS (GB) |
+| --------: | -----: | ------: | --------: | ---------: | ------: | ---------------: | ------------: |
+|         8 |      1 |      16 |      3.38 |       0.03 |    1.01 |          512,341 |         21.48 |
+|        16 |      1 |      16 |      3.98 |       0.03 |    1.02 |          529,597 |         32.10 |
+|        32 |      1 |      16 |      4.91 |       0.03 |    1.01 |          549,349 |         54.79 |
+|        64 |      1 |      16 |      4.44 |       0.03 |    1.00 |          588,261 |         41.61 |
+|       128 |      1 |      16 |      6.52 |       0.04 |    0.98 |          621,933 |         63.59 |
+|   **219** |  **2** |  **16** | **12.92** |   **0.06** |    1.97 |    **1,233,478** |     **73.91** |
+|       438 |      4 |      16 |     22.91 |       0.10 |    3.95 |        2,451,176 |         78.83 |
+|        64 |      1 |      12 |      4.51 |       0.03 |    1.09 |          588,261 |         41.19 |
+|       128 |      1 |      12 |      7.34 |       0.03 |    1.03 |          621,933 |         63.19 |
+|       219 |      2 |      12 |     14.48 |       0.05 |    2.05 |        1,233,478 |         73.60 |
+|       438 |      4 |      12 |     25.52 |       0.08 |    4.18 |        2,451,176 |         78.50 |
+
+Every column is the 2026-09-15 run; "was" is that row's verify time on 2026-09-14, before the structured matrix discharge.
+The two runs' prove times agree to within 5% and their proof sizes and peak memory to within a thousandth, which is this machine's run-to-run drift — the matrix discharge is verifier-side only, and a dense-against-structured comparison run back to back on the same day shows no difference in either (`fixtures/matrix-discharge-2026-09-15.summary.log`).
 
 A lift is chunks of at most 128 responses, and each chunk proves a power-of-two number of rows, the last live block repeated as padding.
 Within one chunk, prove time is about `3.0 s + 0.027 s × rows`: the fixed part is the lincheck over the block's `2^28` columns and the witness machinery around it, and one more response costs 27 ms.
 So 219 responses cost two full 128-row chunks, and 438 cost three and a 64-row one.
 Peak memory is not monotonic in the row count (32 rows peak above 64), which is the allocator and the pooled scratch buffers rather than the protocol; above 128 rows it is set by the largest chunk and grows only slowly.
 
-Verification is about one second per chunk, almost all of it the lincheck fold, which Flock's interface makes the verifier compute densely over `2^28` columns.
-The block's aligned sub-blocks would let the verifier evaluate the same matrix claims from one sub-block fold and the sparse rows instead, as `design.md` describes; that discharge is not built.
+Verification is about 25 ms per chunk and still flat in the rows a chunk carries, so it amortises the same way it always did — the difference is what a chunk costs.
+It used to be about a second, almost all of it the lincheck fold, which Flock's interface makes the verifier compute densely over `2^28` columns.
+Evaluating the same matrix claims from the block's structure instead brought that to 62 M field multiplications and 0.8 GB, and it is what `matrix-discharge.md` records.
 
 ## What a proof is made of, and what verifying it costs
 
@@ -61,10 +66,11 @@ block, and the profile is a runtime choice (`POFSEED_LIGERITO_PROFILE`), measure
 
 | profile | rate | proof | prove | verify | peak RSS |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Fast` (default) | 1/2 | 586,065 B | 6.52 s | 0.99 s | 63.60 GB |
-| `Slim` | 1/4 | **378,785 B** | 7.61 s | 1.00 s | 72.74 GB |
+| `Fast` (default) | 1/2 | 586,065 B | 6.44 s | 0.03 s | 63.60 GB |
+| `Slim` | 1/4 | **378,785 B** | 7.73 s | 0.03 s | 72.74 GB |
 
-A third of the proof for 17% more proving and 14% more memory.
+A third of the proof for 20% more proving and 14% more memory.
+Verification does not notice the profile, because the matrix discharge dominates it and the opening is the small part.
 Prover and verifier read the profile independently and a disagreement is refused, not
 misverified: it is part of the committed parameters, which the opening compares.
 
@@ -74,22 +80,24 @@ Verification splits the other way round:
 | --- | ---: | ---: | ---: |
 | opening, 8 responses | 201,565 | 325 | 15,580 |
 | opening, 128 responses | 315,510 | 354 | 19,950 |
-| core (zerocheck, lincheck, matrix fold), 8 responses | 713,482,217 | 285 | 0 |
-| core, 128 responses | 713,482,241 | 289 | 0 |
+| core (zerocheck, lincheck, matrix discharge), 8 responses | 62,023,332 | 285 | 0 |
+| core, 128 responses | 62,023,356 | 289 | 0 |
+| — dense discharge, before 2026-09-15, 8 responses | 713,482,217 | 285 | 0 |
+| — dense discharge, before 2026-09-15, 128 responses | 713,482,241 | 289 | 0 |
 
-**The core is 99.96% of the verifier's arithmetic and does not move with the batch**: 24
-multiplications separate 8 responses from 128. It is the dense lincheck fold over the block's
-`2^28` columns, which Flock's `LincheckCircuit` interface asks for as one materialised vector.
-Verification cost is thus flat per chunk, so it amortises: one second buys 8 responses or 128.
+**The core is 99.5% of the verifier's arithmetic and does not move with the batch**: 24
+multiplications separate 8 responses from 128, before the change and after it. It is the matrix
+discharge, which depends on the block and not on how many rows carry it, so verification cost is
+flat per chunk and amortises: 25 ms buys 8 responses or 128.
 
 That also locates the only obstacle that matters for cheap verification anywhere — on another
 machine, in a zkVM, or on chain. The opening is already small: a few hundred thousand field
-multiplications and twenty thousand hash compressions. The matrix fold is four orders of magnitude
-larger, and it is an artefact of how this lifter discharges the matrix claims, not of Flock.
-Evaluating the block's structure directly (aligned sub-blocks plus sparse rows, `design.md`) would
-bring it to the sparse-row count; committing to the matrices and proving the evaluation — what
-Flock's `DeferredMatrixWork` and `matrix_fold` exist for — would bring it to the size of another
-opening.
+multiplications and twenty thousand hash compressions. The matrix term is two orders of magnitude
+larger — it was four before the structured discharge — and it is an artefact of how this lifter
+discharges the matrix claims, not of Flock. What is left of it is the block's 8.7 million explicit
+rows; committing to those and proving the evaluation, or deferring them through Flock's
+`DeferredMatrixWork` and `matrix_fold`, would bring it to the size of another opening.
+`matrix-discharge.md` weighs both.
 
 ## Against the SP1 lifter, at 219 responses
 
@@ -98,7 +106,7 @@ opening.
 | prove | 3,613.03 s | 12.33 s |
 | peak RSS | 48.39 GB | 73.91 GB |
 | proof | 356 B Groth16 + 219 B journal | 1,233,478 B |
-| verify | 280,590 gas on L1 (225,975 pairing + 54,615 gate) | 1.97 s native |
+| verify | 280,590 gas on L1 (225,975 pairing + 54,615 gate) | 0.06 s native, in 0.82 GB |
 | weakest link | BN254 pairing, about 100 bits | Flock `Fast` profile and ZKBoo, 128 classical |
 
 Proving is about **293× faster**, for about half as much memory again (+53%).

@@ -21,6 +21,9 @@ cargo test --release -p pofseed-flock-lift-block --test block -- --ignored # the
 ./target/release/verifier-cost 128            # what a chunk proof is made of
 cargo run --release -p pofseed-flock-lift-host --features count --bin verifier-cost -- 128
                                               # ...and what verifying it costs, per phase
+./target/release/block-stats                  # the block's shape and sparsity
+./target/release/verify-only prove 219 /tmp/lift.bin   # then `check`, to time and measure the
+./target/release/verify-only check 219 /tmp/lift.bin   # verifier without the prover around it
 ```
 
 Set `POFSEED_TIMING=1` for the lifter's own phase timings; Flock's `PCS_TRACE`, `FLOCK_ZC_TIMING` and `LINCHECK_TRACE` break down the rest.
@@ -29,7 +32,7 @@ Set `POFSEED_TIMING=1` for the lifter's own phase timings; Flock's `PCS_TRACE`, 
 ## Structure
 
 - `crates/statement/` — the proof-of-seed circuit, the fixed Keccak-256 crypto suite, and the lifted journal with its relying-party gate.
-- `crates/block/` — the response block: the symbolic compiler of a ZKBoo circuit's two-party replay (`replay`), the Keccak-f sub-block encoding (`keccak`), the block geometry (`layout`), and the program that generates a response's witness and folds the block's lincheck structurally (`program`).
+- `crates/block/` — the response block: the symbolic compiler of a ZKBoo circuit's two-party replay (`replay`), the Keccak-f sub-block encoding (`keccak`), the block geometry (`layout`), and the program that generates a response's witness, folds the block's lincheck for the prover and discharges the verifier's matrix claims from the block's structure (`program`).
 - `crates/lift/` — Flock proofs over batches of response blocks (`chunk_rm`, the row-major path the lift uses; `chunk`, the union circuit path it replaced) and the whole-proof lift with its native Fiat-Shamir gate (`lift`).
 - `crates/host/` — proof generation, the acceptance run and the probes.
-- `knowledge/` — design record and measurements; `design.md` explains the block and why the lift proves it through the row-major path.
+- `knowledge/` — design record and measurements; `design.md` explains the block and why the lift proves it through the row-major path, and `matrix-discharge.md` how the verifier checks the lincheck's last equation without a vector over the block's columns.

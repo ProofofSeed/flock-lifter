@@ -6,3 +6,7 @@ row-major: prove 6.52 s, verify 0.99 s, proof 586065 B
 row-major: prove 7.61 s, verify 1.00 s, proof 378785 B
          72744255488  maximum resident set size
 
+
+Re-measured 2026-09-15 with the structured matrix discharge (proof sizes unchanged):
+result: responses=128 profile=fast prove_s=6.44 verify_s=0.03 chunk_proof_bytes=586065 peak_rss_bytes=63604015104
+result: responses=128 profile=slim prove_s=7.73 verify_s=0.03 chunk_proof_bytes=378785 peak_rss_bytes=72736800768
