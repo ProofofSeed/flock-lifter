@@ -3,7 +3,10 @@
 //! Differential tests of the response block against ZKBoo's own view replay, and of the
 //! structured lincheck fold against the witness it folds.
 
-use flock_prover::{field::F128, lincheck::LincheckCircuit};
+use flock_prover::{
+    field::F128,
+    lincheck::{LincheckCircuit, build_quirky_eq_table_from_weights},
+};
 use pofseed_flock_lift_block::{native, program::Program, toy::Toy};
 use pofseed_flock_lift_statement::{H, HardenedChildCircuit, PS, PV, S};
 use zkboo::{
@@ -87,9 +90,61 @@ fn check<C: Circuit + Sync>(circuit: &C, witness_circuit: &C, responses: usize, 
     assert_eq!(seen, [true; 3], "every challenge was exercised");
 }
 
+/// The dense route the structured discharge replaces: fold the matrices at every column, pin the
+/// constant wire, then bind the top variable one round at a time down to `2^k_skip` entries.
+fn dense_comb_partial(
+    program: &Program,
+    alpha: F128,
+    beta: F128,
+    skip_weights: &[F128],
+    x_inner_rest: &[F128],
+    r_inner_rest: &[F128],
+) -> Vec<F128> {
+    let eq_inner = build_quirky_eq_table_from_weights(skip_weights, x_inner_rest);
+    let mut comb = program.fold_alpha_batched(alpha, &eq_inner);
+    comb[0] += beta;
+    for &r in r_inner_rest.iter().rev() {
+        let half = comb.len() / 2;
+        for i in 0..half {
+            comb[i] = comb[i] + r * (comb[i + half] + comb[i]);
+        }
+        comb.truncate(half);
+    }
+    return comb;
+}
+
+fn check_discharge<C: Circuit>(circuit: &C, k_skip: usize, rounds: usize) {
+    let program = Program::new(circuit);
+    let mut rng = Rng(0xf0e1_d2c3_b4a5_9687);
+    for _ in 0..rounds {
+        let alpha = rng.f128();
+        let beta = rng.f128();
+        let skip: Vec<F128> = (0..1 << k_skip).map(|_| rng.f128()).collect();
+        let rest = program.geometry().k_log() - k_skip;
+        let x: Vec<F128> = (0..rest).map(|_| rng.f128()).collect();
+        let r: Vec<F128> = (0..rest).map(|_| rng.f128()).collect();
+        let structured = program.comb_partial(alpha, beta, &skip, &x, &r);
+        assert_eq!(structured, dense_comb_partial(&program, alpha, beta, &skip, &x, &r));
+        assert!(structured.iter().any(|&v| v != F128::ZERO), "the discharge is not trivially zero");
+    }
+}
+
 #[test]
 fn toy_block_agrees_with_native_replay() {
     check(&Toy, &Toy, 24, 3);
+}
+
+#[test]
+fn toy_structured_discharge_matches_the_dense_fold() {
+    check_discharge(&Toy, 6, 4);
+}
+
+#[test]
+#[ignore]
+fn hardened_child_structured_discharge_matches_the_dense_fold() {
+    let hex = |s: &str| (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect::<Vec<u8>>();
+    let chain_code = hex("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
+    check_discharge(&HardenedChildCircuit::public_only(chain_code, 0x8000_0000), 6, 1);
 }
 
 #[test]

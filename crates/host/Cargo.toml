@@ -45,3 +45,7 @@ path = "src/bin/lift_bench.rs"
 [[bin]]
 name = "verifier-cost"
 path = "src/bin/verifier_cost.rs"
+
+[[bin]]
+name = "block-stats"
+path = "src/bin/block_stats.rs"

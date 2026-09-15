@@ -9,7 +9,10 @@ use crate::{
     layout::{DIGEST_BITS, Geometry, RATE_BYTES, SEED_BITS, StatementShape, SubKind, VIEW_PREFIX_BYTES, h_col},
     replay::{self, Replay},
 };
-use flock_prover::{field::F128, lincheck::LincheckCircuit};
+use flock_prover::{
+    field::F128,
+    lincheck::{LincheckCircuit, build_eq_table},
+};
 use pofseed_flock_lift_statement::S;
 use rayon::prelude::*;
 use zkboo::{
@@ -39,6 +42,9 @@ pub enum WitnessError {
     /// must be present, or of the wrong shape.
     InputShareShape,
 }
+
+/// Explicit rows one thread takes at a time in the structured discharge.
+const EXPLICIT_CHUNK: usize = 1 << 16;
 
 #[derive(Default)]
 struct RowsBuilder {
@@ -373,6 +379,132 @@ impl Program {
         return Ok(());
     }
 
+    /// The lincheck's row-combination vector, folded over its `k_log − k_skip` sumcheck
+    /// variables and evaluated from the block's structure rather than column by column.
+    ///
+    /// The dense route — [`LincheckCircuit::fold_alpha_batched`] followed by the verifier's
+    /// sumcheck binding — computes
+    /// `comb[c] = α·(Âᵀ·eq_row)[c] + (B̂ᵀ·eq_row)[c]` at all `2^k_log` columns and then folds it
+    /// down to `2^k_skip` entries. Both halves are proportional to the block width. This returns
+    /// the same `2^k_skip` entries without ever holding a vector over the columns, by splitting
+    /// the block into its Keccak-f sub-blocks and its explicit rows:
+    ///
+    /// - every Keccak-f sub-block carries the same local matrix, so its fold is computed once and
+    ///   re-weighted by `Σ_j eq_row_hi(j)·eq_col_hi(j)` over the sub-block indices, both `eq`
+    ///   tables factorising across the sub-block boundary because it is aligned;
+    /// - the explicit rows are paid one field multiplication per row and one per column slot each
+    ///   row touches, their nonzeros costing only additions.
+    ///
+    /// `skip_weights` are the row weights on the skipped variables, `x_inner_rest` the row point
+    /// and `r_inner_rest` the column point, both LSB-first as Flock orders them; `beta` is the
+    /// constant-wire pin, which the dense route adds at the constant column before folding.
+    pub fn comb_partial(
+        &self,
+        alpha: F128,
+        beta: F128,
+        skip_weights: &[F128],
+        x_inner_rest: &[F128],
+        r_inner_rest: &[F128],
+    ) -> Vec<F128> {
+        #[cfg(feature = "count")]
+        let entry = flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv();
+        let n_skip = skip_weights.len();
+        let k_skip = n_skip.trailing_zeros() as usize;
+        assert!(n_skip == 1 << k_skip && k_skip <= 6 && k_skip < SUB_LOG);
+        assert_eq!(x_inner_rest.len(), self.geometry.k_log() - k_skip);
+        assert_eq!(r_inner_rest.len(), x_inner_rest.len());
+        let mask = n_skip - 1;
+        let lo = SUB_LOG - k_skip;
+        let eq_row_rest = build_eq_table(x_inner_rest);
+        let eq_col_rest = build_eq_table(r_inner_rest);
+        let eq_row_lo = build_eq_table(&x_inner_rest[..lo]);
+        let eq_row_hi = build_eq_table(&x_inner_rest[lo..]);
+        let eq_col_hi = build_eq_table(&r_inner_rest[lo..]);
+        let eq_col_lo = build_eq_table(&r_inner_rest[..lo]);
+        let mut out = vec![F128::ZERO; n_skip];
+        let eq_local: Vec<F128> = (0..SUB_BITS).map(|p| skip_weights[p & mask] * eq_row_lo[p >> k_skip]).collect();
+        let mut local = flock_prover::alloc_zeroed_vec::<F128>(SUB_BITS);
+        let konst_local = keccak::fold_shared(alpha, &eq_local, &mut local);
+        let (first, subs) = (self.geometry.head_subs(), self.geometry.keccak_subs());
+        let mut weight = F128::ZERO;
+        let mut weight_konst = F128::ZERO;
+        for j in first..first + subs {
+            weight += eq_row_hi[j] * eq_col_hi[j];
+            weight_konst += eq_row_hi[j];
+        }
+        for (s, o) in out.iter_mut().enumerate() {
+            let mut acc = F128::ZERO;
+            for (q, &e) in eq_col_lo.iter().enumerate() {
+                acc += e * local[s + (q << k_skip)];
+            }
+            *o = weight * acc;
+        }
+        out[CONST as usize & mask] += (weight_konst * konst_local + beta) * eq_col_rest[CONST as usize >> k_skip];
+        // The A and B sides are accumulated apart so that α multiplies once at the end rather
+        // than once per row, and a row whose B side is the bare constant wire — every row but a
+        // replay product — contributes its weight to one running scalar instead of a product.
+        let rows = self.rows.cols.len();
+        let (side_a, side_b) = (0..rows.div_ceil(EXPLICIT_CHUNK))
+            .into_par_iter()
+            .map(|c| {
+                let (start, end) = (c * EXPLICIT_CHUNK, ((c + 1) * EXPLICIT_CHUNK).min(rows));
+                let mut acc = (vec![F128::ZERO; n_skip], vec![F128::ZERO; n_skip]);
+                let mut konst = F128::ZERO;
+                let mut row = (vec![F128::ZERO; n_skip], vec![F128::ZERO; n_skip]);
+                for r in start..end {
+                    let col = self.rows.cols[r] as usize;
+                    let e = skip_weights[col & mask] * eq_row_rest[col >> k_skip];
+                    if e == F128::ZERO {
+                        continue;
+                    }
+                    let (mut touched_a, mut touched_b) = (0u64, 0u64);
+                    for &c in self.row_a(r) {
+                        row.0[c as usize & mask] += eq_col_rest[c as usize >> k_skip];
+                        touched_a |= 1 << (c as usize & mask);
+                    }
+                    if self.row_b(r) == [CONST] {
+                        konst += e;
+                    } else {
+                        for &c in self.row_b(r) {
+                            row.1[c as usize & mask] += eq_col_rest[c as usize >> k_skip];
+                            touched_b |= 1 << (c as usize & mask);
+                        }
+                    }
+                    while touched_a != 0 {
+                        let s = touched_a.trailing_zeros() as usize;
+                        touched_a &= touched_a - 1;
+                        acc.0[s] += e * row.0[s];
+                        row.0[s] = F128::ZERO;
+                    }
+                    while touched_b != 0 {
+                        let s = touched_b.trailing_zeros() as usize;
+                        touched_b &= touched_b - 1;
+                        acc.1[s] += e * row.1[s];
+                        row.1[s] = F128::ZERO;
+                    }
+                }
+                acc.1[CONST as usize & mask] += konst * eq_col_rest[CONST as usize >> k_skip];
+                acc
+            })
+            .reduce(
+                || (vec![F128::ZERO; n_skip], vec![F128::ZERO; n_skip]),
+                |mut x, y| {
+                    x.0.iter_mut().zip(y.0).for_each(|(a, b)| *a += b);
+                    x.1.iter_mut().zip(y.1).for_each(|(a, b)| *a += b);
+                    x
+                },
+            );
+        for ((o, a), b) in out.iter_mut().zip(side_a).zip(side_b) {
+            *o += alpha * a + b;
+        }
+        #[cfg(feature = "count")]
+        eprintln!(
+            "[count] structured comb_partial: F128 muls {}",
+            flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv() - entry
+        );
+        return out;
+    }
+
     /// The published words of a block's witness.
     pub fn io_words(&self, z: &[u64]) -> Vec<F128> {
         return self
@@ -391,6 +523,8 @@ impl LincheckCircuit for Program {
 
     fn fold_alpha_batched(&self, alpha: F128, eq_inner: &[F128]) -> Vec<F128> {
         assert_eq!(eq_inner.len(), self.block_bits());
+        #[cfg(feature = "count")]
+        let entry = flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv();
         let timing = std::env::var_os("POFSEED_TIMING").is_some();
         let t = std::time::Instant::now();
         let mut comb = flock_prover::alloc_zeroed_vec::<F128>(self.block_bits());
@@ -422,6 +556,11 @@ impl LincheckCircuit for Program {
         if timing {
             eprintln!("[pofseed] fold: Keccak sub-blocks {:.2} s", t.elapsed().as_secs_f64());
         }
+        #[cfg(feature = "count")]
+        eprintln!(
+            "[count] dense fold_alpha_batched: F128 muls {}",
+            flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv() - entry
+        );
         return comb;
     }
 
