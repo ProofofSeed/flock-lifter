@@ -17,7 +17,14 @@ cargo test --release -p pofseed-flock-lift-block -p pofseed-flock-lift   # diffe
 cargo test --release -p pofseed-flock-lift-block --test block -- --ignored # the hardened-child block at full size
 ```
 
+```sh
+./target/release/verifier-cost 128            # what a chunk proof is made of
+cargo run --release -p pofseed-flock-lift-host --features count --bin verifier-cost -- 128
+                                              # ...and what verifying it costs, per phase
+```
+
 Set `POFSEED_TIMING=1` for the lifter's own phase timings; Flock's `PCS_TRACE`, `FLOCK_ZC_TIMING` and `LINCHECK_TRACE` break down the rest.
+`POFSEED_LIGERITO_PROFILE=slim` proves at rate 1/4 instead of 1/2: a third off the proof for about a sixth more proving work.
 
 ## Structure
 
