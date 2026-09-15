@@ -32,8 +32,20 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use zkboo::prover::proof::Response;
 
-/// The Ligerito profile every chunk is proved under.
-pub const PROFILE: LigeritoProfile = LigeritoProfile::Fast;
+/// The Ligerito profile every chunk is proved under: `Fast` (rate 1/2) unless
+/// `POFSEED_LIGERITO_PROFILE` selects `slim` (rate 1/4, about half the proof for about twice the
+/// encoding work) or `secure` (the unique-decoding regime).
+///
+/// Prover and verifier read it independently, and a disagreement is refused rather than
+/// misverified: the profile is part of the committed parameters, which the opening compares.
+pub fn profile() -> LigeritoProfile {
+    return match std::env::var("POFSEED_LIGERITO_PROFILE").as_deref() {
+        Ok("slim") => LigeritoProfile::Slim,
+        Ok("secure") => LigeritoProfile::Secure,
+        Ok("fast") | Err(_) => LigeritoProfile::Fast,
+        Ok(other) => panic!("unknown Ligerito profile {other}"),
+    };
+}
 
 /// A row-major Flock proof over a batch of response blocks.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -82,11 +94,12 @@ fn r1cs_for(program: &Program, nu: usize) -> BlockR1cs {
 }
 
 fn pcs_params(m: usize) -> PcsParams {
+    let profile = profile();
     return PcsParams {
         m,
-        log_inv_rate: PROFILE.log_inv_rate(),
-        log_batch_size: embedded_initial_k_or_default(m, PROFILE),
-        profile: PROFILE,
+        log_inv_rate: profile.log_inv_rate(),
+        log_batch_size: embedded_initial_k_or_default(m, profile),
+        profile,
         num_lanes: None,
         merkle_hash: Default::default(),
     };
@@ -164,6 +177,51 @@ fn io_claim<Ch: Challenger>(challenger: &mut Ch, rows: &[Vec<F128>], k_log: usiz
         },
         value,
     };
+}
+
+#[cfg(feature = "count")]
+mod count {
+    use flock_prover::{challenger::fs_count, field::gf2_128::op_count, merkle::hash_count};
+
+    /// Cumulative verifier arithmetic and hashing counters at one instant.
+    pub struct Counts {
+        muls: u64,
+        invs: u64,
+        leaf_compressions: u64,
+        pairs: u64,
+        squeezes: u64,
+        pow: u64,
+    }
+
+    impl Counts {
+        /// The counters now.
+        pub fn now() -> Self {
+            let m = op_count::snapshot();
+            let (_, leaf_compressions, pairs) = hash_count::snapshot();
+            let (squeezes, _, pow) = fs_count::snapshot();
+            return Self {
+                muls: m.muls_excluding_inv(),
+                invs: m.invs,
+                leaf_compressions,
+                pairs,
+                squeezes,
+                pow,
+            };
+        }
+
+        /// Prints what was counted between `earlier` and this instant.
+        pub fn report_since(&self, earlier: &Counts, label: &str) {
+            eprintln!(
+                "[count] {label}: F128 muls {}, inversions {}, SHA-256 compressions {} (leaves) + {} (pairs × 2), PoW checks {}, transcript squeezes {}",
+                self.muls - earlier.muls,
+                self.invs - earlier.invs,
+                self.leaf_compressions - earlier.leaf_compressions,
+                2 * (self.pairs - earlier.pairs),
+                self.pow - earlier.pow,
+                self.squeezes - earlier.squeezes,
+            );
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -315,12 +373,21 @@ pub fn verify_chunk(
     let r1cs = r1cs_for(program, nu);
     let params = pcs_params(r1cs.m);
     let rows = padded_publics(publics, nu);
+    #[cfg(feature = "count")]
+    let before = count::Counts::now();
     let mut challenger = FsChallenger::new(domain);
     observe_publics(&mut challenger, &rows);
     let (ab, c) = verify_core_circuit_form(&r1cs, chunk, program.as_ref(), &params, &mut challenger)
         .map_err(ChunkRmError::Core)?;
+    #[cfg(feature = "count")]
+    let core = count::Counts::now();
     let io = io_claim(&mut challenger, &rows, k_log, nu);
     verify_claims_ligerito(&chunk.commitment, &[ab, c, io], &chunk.opening, &params, &mut challenger)
         .map_err(|_| ChunkRmError::Opening)?;
+    #[cfg(feature = "count")]
+    {
+        count::Counts::now().report_since(&core, "opening (published-word claim, ring switch, Ligerito)");
+        core.report_since(&before, "core (statement binding, zerocheck, lincheck with its matrix fold)");
+    }
     return Ok(());
 }

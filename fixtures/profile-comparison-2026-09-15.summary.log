@@ -1,0 +1,8 @@
+Ligerito profile comparison, 2026-09-15, chunk-probe 128 row-major, one run at a time
+== profile fast
+row-major: prove 6.52 s, verify 0.99 s, proof 586065 B
+         63603916800  maximum resident set size
+== profile slim
+row-major: prove 7.61 s, verify 1.00 s, proof 378785 B
+         72744255488  maximum resident set size
+

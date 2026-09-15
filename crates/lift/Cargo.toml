@@ -6,6 +6,10 @@ license.workspace = true
 description = "Flock proofs over batches of response blocks: the prover and verifier of the Flock lifter."
 publish = false
 
+[features]
+# Counts the verifier's field multiplications and hash compressions, per phase.
+count = ["flock-prover/mul-count", "flock-prover/hash-count"]
+
 [dependencies]
 flock-prover = { workspace = true }
 rayon = { version = "1.10" }

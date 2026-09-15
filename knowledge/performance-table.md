@@ -34,6 +34,63 @@ Peak memory is not monotonic in the row count (32 rows peak above 64), which is 
 Verification is about one second per chunk, almost all of it the lincheck fold, which Flock's interface makes the verifier compute densely over `2^28` columns.
 The block's aligned sub-blocks would let the verifier evaluate the same matrix claims from one sub-block fold and the sparse rows instead, as `design.md` describes; that discharge is not built.
 
+## What a proof is made of, and what verifying it costs
+
+From `verifier-cost`, built with the `count` feature so Flock's own counters report per phase
+(`fixtures/verifier-cost-2026-09-15.summary.log`).
+
+A chunk proof is almost entirely the polynomial-commitment opening, and that is almost entirely
+its first level:
+
+| part | 8 responses (m = 31) | 128 responses (m = 35) |
+| --- | ---: | ---: |
+| whole chunk proof | 510,073 B | 586,065 B |
+| Ligerito opening | 494,616 B | 570,448 B |
+| — level-0 opened rows (244 queries × 64 words) | 249,856 B | 249,856 B |
+| — level-0 Merkle paths | 93,696 B | 124,928 B |
+| — deeper levels (rows + paths) | 120,192 B | 162,240 B |
+| ring switches | 6,200 B | 6,200 B |
+| commitment | 4,137 B | 4,137 B |
+| zerocheck + lincheck transcripts | 5,104 B | 5,264 B |
+| published words (outside the proof) | 1,920 B | 30,720 B |
+
+The opened rows do not grow with the batch at all — the query schedule is the same — and the
+Merkle paths grow only with tree depth. Proof size is therefore set by the PCS profile, not by the
+block, and the profile is a runtime choice (`POFSEED_LIGERITO_PROFILE`), measured here on a
+128-response chunk:
+
+| profile | rate | proof | prove | verify | peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `Fast` (default) | 1/2 | 586,065 B | 6.52 s | 0.99 s | 63.60 GB |
+| `Slim` | 1/4 | **378,785 B** | 7.61 s | 1.00 s | 72.74 GB |
+
+A third of the proof for 17% more proving and 14% more memory.
+Prover and verifier read the profile independently and a disagreement is refused, not
+misverified: it is part of the committed parameters, which the opening compares.
+
+Verification splits the other way round:
+
+| phase | F128 multiplications | inversions | SHA-256 compressions |
+| --- | ---: | ---: | ---: |
+| opening, 8 responses | 201,565 | 325 | 15,580 |
+| opening, 128 responses | 315,510 | 354 | 19,950 |
+| core (zerocheck, lincheck, matrix fold), 8 responses | 713,482,217 | 285 | 0 |
+| core, 128 responses | 713,482,241 | 289 | 0 |
+
+**The core is 99.96% of the verifier's arithmetic and does not move with the batch**: 24
+multiplications separate 8 responses from 128. It is the dense lincheck fold over the block's
+`2^28` columns, which Flock's `LincheckCircuit` interface asks for as one materialised vector.
+Verification cost is thus flat per chunk, so it amortises: one second buys 8 responses or 128.
+
+That also locates the only obstacle that matters for cheap verification anywhere — on another
+machine, in a zkVM, or on chain. The opening is already small: a few hundred thousand field
+multiplications and twenty thousand hash compressions. The matrix fold is four orders of magnitude
+larger, and it is an artefact of how this lifter discharges the matrix claims, not of Flock.
+Evaluating the block's structure directly (aligned sub-blocks plus sparse rows, `design.md`) would
+bring it to the sparse-row count; committing to the matrices and proving the evaluation — what
+Flock's `DeferredMatrixWork` and `matrix_fold` exist for — would bring it to the size of another
+opening.
+
 ## Against the SP1 lifter, at 219 responses
 
 | | SP1 lifter (Metal GPU, full path) | Flock lifter (CPU) |

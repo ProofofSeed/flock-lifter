@@ -1,0 +1,38 @@
+verifier-cost, 2026-09-15, built with --features count (Flock mul-count + hash-count)
+
+chunk of 8 responses, m = 31
+  whole chunk proof         510073 B
+  zerocheck                   3144 B
+  lincheck                    1960 B
+  commitment                  4137 B
+  ring switches               6200 B
+  Ligerito (bincode)        494616 B
+  Ligerito (size_bytes)     490712 B
+    level 0: 244 opened rows of 64 words = 249856 B, Merkle 93696 B
+    level 1: 79 opened rows of 16 words = 20224 B, Merkle 30336 B
+    level 2: 48 opened rows of 16 words = 12288 B, Merkle 18432 B
+    level 3: 35 opened rows of 16 words = 8960 B, Merkle 12320 B
+    level 4: 29 opened rows of 16 words = 7424 B, Merkle 10208 B
+  published words             1920 B
+[count] opening (published-word claim, ring switch, Ligerito): F128 muls 201565, inversions 325, SHA-256 compressions 4768 (leaves) + 10812 (pairs × 2), PoW checks 33, transcript squeezes 112
+[count] core (statement binding, zerocheck, lincheck with its matrix fold): F128 muls 713482217, inversions 285, SHA-256 compressions 0 (leaves) + 0 (pairs × 2), PoW checks 52, transcript squeezes 105
+verified
+chunk of 128 responses, m = 35
+  whole chunk proof         586065 B
+  zerocheck                   3304 B
+  lincheck                    1960 B
+  commitment                  4137 B
+  ring switches               6200 B
+  Ligerito (bincode)        570448 B
+  Ligerito (size_bytes)     566336 B
+    level 0: 244 opened rows of 64 words = 249856 B, Merkle 124928 B
+    level 1: 79 opened rows of 16 words = 20224 B, Merkle 40448 B
+    level 2: 48 opened rows of 16 words = 12288 B, Merkle 24576 B
+    level 3: 35 opened rows of 16 words = 8960 B, Merkle 16800 B
+    level 4: 29 opened rows of 16 words = 7424 B, Merkle 13920 B
+    level 5: 25 opened rows of 16 words = 6400 B, Merkle 11200 B
+  published words            30720 B
+[count] opening (published-word claim, ring switch, Ligerito): F128 muls 315510, inversions 354, SHA-256 compressions 4860 (leaves) + 15090 (pairs × 2), PoW checks 38, transcript squeezes 132
+[count] core (statement binding, zerocheck, lincheck with its matrix fold): F128 muls 713482241, inversions 289, SHA-256 compressions 0 (leaves) + 0 (pairs × 2), PoW checks 56, transcript squeezes 113
+verified
+

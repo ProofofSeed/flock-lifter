@@ -337,6 +337,7 @@ dependencies = [
  "pofseed-flock-lift-block",
  "pofseed-flock-lift-statement",
  "rayon",
+ "serde",
  "zkboo",
  "zkboo-bip32",
  "zkboo-circuit-hash",
