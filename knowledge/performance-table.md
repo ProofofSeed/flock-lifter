@@ -102,5 +102,23 @@ opening.
 | weakest link | BN254 pairing, about 100 bits | Flock `Fast` profile and ZKBoo, 128 classical |
 
 Proving is about **293× faster**, for about half as much memory again (+53%).
+
+### Where the 293× comes from
+
+The SP1 lifter proves a machine; this one proves a relation.
+
+Its guest costs **4.775 × 10⁹ RISC-V instructions** at 219 responses — 21.7 M per response, about
+370 per byte of response (`sp1-lifter/knowledge/iteration.md`). The same verification runs natively
+in about 2.1 ms per response, so roughly half a second of real work becomes 3,613 s of proving:
+**~7,800× slower than native** on its GPU path, ~24,000× on CPU. Three costs multiply — every
+word-pool read, refcount and bounds check in `zkboo::verify` is an instruction that must be proven;
+each instruction is a proven CPU-state transition over a 31-bit field with memory-consistency and
+range arguments around it; and ~280 shards are then recursively compressed, shrunk and wrapped
+(~26 s of gnark at the end).
+
+This lifter never executes a machine. Each two-party AND is one committed bit and one R1CS row,
+every XOR is free, and the 219-response lift commits about 34 × 10⁹ AND constraints and proves them
+in 12.33 s — ~2.8 × 10⁹ AND gates per second. What it pays instead is the compilation: the block is
+a hand-written encoding of the verifier, which is why `crates/block/tests/block.rs` exists.
 What is traded for it is everything after proving: the SP1 lifter ends in a constant-size proof a contract checks for under 300k gas, and the Flock lifter in a megabyte-scale proof with only a native verifier.
 The two also differ in what is trusted: the SP1 guest is the ZKBoo verifier itself, while the Flock block is a compilation of it checked differentially against ZKBoo's replay.

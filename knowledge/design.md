@@ -105,8 +105,29 @@ The Ethereum-address statement does not fit this design on this machine.
 Its responses carry about 23.5 million AND-message bits, so its block would need `k_log = 34`, and Flock's `LincheckCircuit` returns the lincheck fold as one dense vector over the block's columns, `2^34` field elements or about 275 GB.
 It would also need the compiler to handle inputs allocated after the first AND gate, which the hardened child does not.
 
-There is no on-chain verifier.
-Flock ships a native verifier only; a lifted proof is about 1.2 MB, verified in about two seconds, and bringing it to L1 would take a verifier contract or a wrap in another proof system, neither of which exists.
+There is no on-chain verifier, and the measured verifier costs say what one would need.
+
+Verifying a chunk costs 201,565 field multiplications and about 15,600 SHA-256 compressions in the
+opening, against 713 million multiplications in the core — the dense matrix discharge, which
+`plan-matrix-discharge.md` is about removing.
+Taking the opening alone, and assuming an emulated GF(2^128) multiplication costs a few hundred to
+a couple of thousand gas (the EVM has no binary-field precompile), that is ~100–400 M gas against a
+~30 M block, before the ~8 M gas of calldata for a 500 kB proof at 16 gas per byte — or ~20 M under
+EIP-7623's floor pricing for calldata-heavy transactions.
+SHA-256 is a precompile and would be the cheap part.
+So direct EVM verification is about two orders of magnitude out with the matrix term removed, and
+about four with it.
+
+Two further things an on-chain verifier would need from this lifter: the published words are linear
+in the response count (52.6 kB at 219) unless the Fiat-Shamir gate moves into the circuit, and
+Flock's transcript is BLAKE3 by default, which has no precompile — `FsChallenger::with_hash`
+selects SHA-256.
+
+The plausible route is recursion rather than a verifier contract: verify the Flock proof inside SP1
+and reuse the SP1 lifter's Groth16 path at ~280k gas. That only helps once the matrix term is gone,
+since otherwise the zkVM inherits the same hundreds of millions of field operations.
+A search on 2026-09-15 found no published on-chain verifier for Flock or Ligerito to calibrate
+against.
 
 ## Batching and Ligerito
 
