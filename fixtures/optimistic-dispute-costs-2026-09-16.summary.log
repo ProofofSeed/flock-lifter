@@ -1,0 +1,23 @@
+# dispute-costs 49070979080 <cache>: gas of one dissection and one choice at several arities, the dissections a dispute over the whole trace takes, the unchallenged path on the proof itself, and a KZG point evaluation on the first blob of the proof bytes.
+# 2026-09-16, M4 Max, revm 43.0.2 under Osaka rules with the verifier calls uncapped and every protocol transaction sent with a 2^24 gas limit; 219-response hardened-child lift from the cached Fast-profile proof.
+
+trace of 49070979080 steps
+ arity  dissections    dissect gas     choose gas  both sides, all
+     2           36          85220          66002          5443992
+     4           18          86792          73502          2885292
+    16            9          96202          84569          1626939
+    64            6         133890         128882          1576632
+   256            5         347710         348060          3478850
+  1024            4        1327780        1328130         10623640
+unchallenged path:
+  beginUpload                           88237
+  upload chunk 0 (262144 bytes)      10166780
+  upload chunk 1 (262144 bytes)      10472780
+  upload chunk 2 (262144 bytes)      10449200
+  upload chunk 3 (262144 bytes)      10474850
+  upload chunk 4 (166432 bytes)       6645530
+  finishUpload                          82494
+  assertLift                           259601
+  confirm                               83989
+  in all                             48723461
+proof of 1215008 bytes: 10 blobs of 4096 elements at 31 bytes each; one point evaluation: 73652 gas in all, 50000 of it the precompile

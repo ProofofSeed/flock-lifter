@@ -1,0 +1,11 @@
+# onestep-fuzz 3000 <seed>: random programs run in revm, every step checked through the one-step contract (a step bound of 400 per program).
+# The first campaigns, before the final contract, found two bugs (addmod/mulmod with modulus 0 reverting, and an overflowing returndatacopy bound); these runs are on the fixed contract.
+# 2026-09-16, M4 Max, revm 43.0.2 under Osaka rules with the verifier calls uncapped and every protocol transaction sent with a 2^24 gas limit; 219-response hardened-child lift from the cached Fast-profile proof.
+
+seed 6725414436838240257: 3000 programs, 141178 steps checked (138050 continuing, 3128 rejecting), 111 distinct opcodes, 0 mismatches
+seed 11: 3000 programs, 155865 steps checked (152605 continuing, 3260 rejecting), 111 distinct opcodes, 0 mismatches
+seed 22: 3000 programs, 144293 steps checked (141069 continuing, 3224 rejecting), 111 distinct opcodes, 0 mismatches
+seed 33: 3000 programs, 148457 steps checked (145211 continuing, 3246 rejecting), 111 distinct opcodes, 0 mismatches
+seed 44: 3000 programs, 144540 steps checked (141279 continuing, 3261 rejecting), 111 distinct opcodes, 0 mismatches
+seed 55: 3000 programs, 158719 steps checked (155460 continuing, 3259 rejecting), 111 distinct opcodes, 0 mismatches
+seed 66: 3000 programs, 141782 steps checked (138641 continuing, 3141 rejecting), 111 distinct opcodes, 0 mismatches

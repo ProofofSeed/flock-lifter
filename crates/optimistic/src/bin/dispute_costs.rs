@@ -121,6 +121,51 @@ fn main() {
         println!("{arity:>6} {moves:>12} {:>14} {:>14} {:>16}", d.gas, c.gas, moves as u64 * (d.gas + c.gas));
     }
 
+    // The unchallenged path on the proof itself: upload, assert, confirm after the window.
+    let args = Abi::default()
+        .uint(U256::from_be_slice(onestep.as_slice()))
+        .uint(ether(1))
+        .uint(U256::from(7 * 86_400))
+        .uint(U256::from(86_400))
+        .uint(U256::from(16))
+        .finish(Vec::new());
+    let mut code = artifact("Dispute.sol", "Dispute");
+    code.extend_from_slice(&args);
+    let (dispute, _) = machine.deploy(code);
+    machine.set_time(1_800_000_000);
+    let mut honest = Vec::new();
+    let out = machine.call_as(ASSERTER, dispute, encode("beginUpload(uint256)", |a| a.uint(U256::from(proof.len()))), U256::ZERO);
+    honest.push(("beginUpload".to_string(), out.gas));
+    let id = word(&out, 0);
+    for (i, chunk) in proof.chunks(32 << 13).enumerate() {
+        let out = machine.call_as(ASSERTER, dispute, encode("upload(uint256,bytes)", |a| a.uint(id).bytes(chunk)), U256::ZERO);
+        assert!(out.success && out.gas <= CAP, "upload chunk {i}");
+        honest.push((format!("upload chunk {i} ({} bytes)", chunk.len()), out.gas));
+    }
+    let out = machine.call_as(ASSERTER, dispute, encode("finishUpload(uint256)", |a| a.uint(id)), U256::ZERO);
+    assert!(out.success, "finishUpload");
+    honest.push(("finishUpload".to_string(), out.gas));
+    let out = machine.call_as(
+        ASSERTER,
+        dispute,
+        encode("assertLift(bytes,uint256,bytes,uint256,uint256)", |a| {
+            a.bytes(&out_bytes).uint(counts).bytes(BINDING).uint(id).uint(U256::from(steps))
+        }),
+        ether(1),
+    );
+    assert!(out.success, "assertLift");
+    honest.push(("assertLift".to_string(), out.gas));
+    let assertion = word(&out, 0);
+    machine.set_time(1_800_000_000 + 7 * 86_400);
+    let out = machine.call_as(ASSERTER, dispute, encode("confirm(uint256)", |a| a.uint(assertion)), U256::ZERO);
+    assert!(out.success, "confirm");
+    honest.push(("confirm".to_string(), out.gas));
+    println!("unchallenged path:");
+    for (label, gas) in &honest {
+        println!("  {label:<32} {gas:>10}");
+    }
+    println!("  {:<32} {:>10}", "in all", honest.iter().map(|h| h.1).sum::<u64>());
+
     // Blobs: the proof as field elements of 31 bytes each, 4096 to a blob.
     let per_blob = 4096 * 31;
     let blobs = proof.len().div_ceil(per_blob);
