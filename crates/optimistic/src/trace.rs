@@ -9,8 +9,12 @@ use std::{
 };
 
 use revm::{
-    interpreter::{Interpreter, interpreter::EthInterpreter, interpreter_types::Jumps},
-    primitives::B256,
+    interpreter::{
+        InstructionResult, Interpreter,
+        interpreter::EthInterpreter,
+        interpreter_types::{Jumps, LoopControl},
+    },
+    primitives::{B256, U256},
 };
 
 use crate::{
@@ -72,6 +76,7 @@ pub type OnCapture = Box<dyn FnMut(Captured) + Send>;
 
 /// A sink capturing the steps it is told to, by index or by first sight of a program counter.
 pub struct Capture {
+    stop_after: Option<u64>,
     targets: Vec<u64>,
     next: usize,
     first_pcs: Option<Vec<bool>>,
@@ -80,8 +85,8 @@ pub struct Capture {
     on: OnCapture,
     /// Steps seen.
     pub total: Arc<Mutex<u64>>,
-    /// Steps the machine rejects at although revm went on: an opcode outside the machine, or
-    /// memory past its limit.
+    /// Steps the machine rejects at although revm went on: an opcode outside the machine, a
+    /// static call to anything but the SHA-256 precompile, or memory past its limit.
     pub unsupported: Arc<Mutex<Vec<u64>>>,
 }
 
@@ -90,6 +95,7 @@ impl Capture {
     /// `first_pcs` is `Some(code_len)`.
     pub fn new(targets: BTreeSet<u64>, first_pcs: Option<usize>, on: OnCapture) -> Self {
         return Self {
+            stop_after: None,
             targets: targets.into_iter().collect(),
             next: 0,
             first_pcs: first_pcs.map(|n| vec![false; n + 1]),
@@ -99,6 +105,14 @@ impl Capture {
             total: Arc::new(Mutex::new(0)),
             unsupported: Arc::new(Mutex::new(Vec::new())),
         };
+    }
+}
+
+impl Capture {
+    /// The same sink, halting the call once `steps` steps have run.
+    pub fn stopping_after(mut self, steps: u64) -> Self {
+        self.stop_after = Some(steps);
+        return self;
     }
 }
 
@@ -120,7 +134,8 @@ impl Sink for Capture {
         let k = self.steps;
         self.steps += 1;
         let op = interp.bytecode.opcode();
-        if !supported(op) {
+        let foreign_call = op == 0xfa && interp.stack.len() >= 6 && interp.stack.peek(1).is_ok_and(|a| a != U256::from(2));
+        if !supported(op) || foreign_call {
             self.unsupported.lock().unwrap().push(k);
         }
         if k > 0 && interp.memory.len() > MEM_LIMIT {
@@ -144,6 +159,12 @@ impl Sink for Capture {
                 pre: snap(interp),
                 post: None,
             });
+        }
+    }
+
+    fn step_end(&mut self, interp: &mut Interpreter<EthInterpreter>) {
+        if self.stop_after.is_some_and(|n| self.steps > n) && interp.bytecode.is_not_end() {
+            interp.halt(InstructionResult::Stop);
         }
     }
 

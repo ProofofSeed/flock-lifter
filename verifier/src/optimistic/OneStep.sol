@@ -98,6 +98,25 @@ contract OneStep {
         p.jumps = CodeStore.buildJumps(p.code, p.codeLen);
     }
 
+    /// Program `which`: the contracts holding its code, its length, its jump table and the
+    /// address it runs as.
+    function program(uint256 which) external view returns (address[] memory, uint256, address, address) {
+        Program storage p = which == 0 ? lift : discharge;
+        return (p.code, p.codeLen, p.jumps, p.self);
+    }
+
+    /// The Keccak-256 hash of program `which`'s code, to compare with the audited bytecode.
+    function codeHash(uint256 which) external view returns (bytes32) {
+        Program memory p = which == 0 ? lift : discharge;
+        bytes memory code = new bytes(p.codeLen);
+        uint256 at;
+        assembly ("memory-safe") {
+            at := add(code, 0x20)
+        }
+        CodeStore.read(p.code, 0, p.codeLen, at);
+        return keccak256(code);
+    }
+
     /// Whether both programs' bitmaps are built.
     function ready() external view returns (bool) {
         return lift.jumps != address(0) && discharge.jumps != address(0);
@@ -390,8 +409,11 @@ contract OneStep {
         } else if (op == 0x08 || op == 0x09) {
             uint256 b = _pop(f);
             uint256 n = _pop(f);
-            r = op == 0x08 ? addmod(a, b, n) : mulmod(a, b, n);
-            if (n == 0) r = 0;
+            assembly ("memory-safe") {
+                switch op
+                case 0x08 { r := addmod(a, b, n) }
+                default { r := mulmod(a, b, n) }
+            }
         } else {
             uint256 b = _pop(f);
             assembly ("memory-safe") {
@@ -518,7 +540,7 @@ contract OneStep {
         uint256 dst = _pop(f);
         uint256 src = _pop(f);
         uint256 len = _pop(f);
-        if (op == 0x3e && (src + len < src || src + len > f.ret.length)) {
+        if (op == 0x3e && (len > f.ret.length || src > f.ret.length - len)) {
             _reject(f);
             return;
         }

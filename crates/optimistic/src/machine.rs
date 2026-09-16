@@ -197,8 +197,13 @@ impl Machine {
 
     /// Calls `to` with `data`, with `sink` observing its steps.
     pub fn call_traced(&mut self, to: Address, data: Vec<u8>, sink: Option<Box<dyn Sink>>) -> (Outcome, Option<Box<dyn Sink>>) {
-        self.evm.inspector.sink = sink;
         let gas = self.default_gas();
+        return self.call_traced_gas(to, data, sink, gas);
+    }
+
+    /// Calls `to` with `data` and `gas`, with `sink` observing its steps.
+    pub fn call_traced_gas(&mut self, to: Address, data: Vec<u8>, sink: Option<Box<dyn Sink>>, gas: u64) -> (Outcome, Option<Box<dyn Sink>>) {
+        self.evm.inspector.sink = sink;
         let result = self.run(TxKind::Call(to), data, gas, U256::ZERO);
         let sink = self.evm.inspector.sink.take();
         return (outcome(result), sink);

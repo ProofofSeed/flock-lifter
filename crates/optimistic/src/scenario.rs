@@ -31,20 +31,12 @@ pub const CALLS: usize = 4;
 
 /// The verification of one lift, ready to run.
 pub struct Scenario {
-    /// Responses in the lift.
-    pub n: usize,
-    /// The block.
-    pub program: Arc<Program>,
     /// The discharge stream, in one segment.
     pub stream: Stream,
     /// The lift contract's deployed address.
     pub lift: Address,
     /// The discharge contract's deployed address.
     pub discharge: Address,
-    /// The lift contract's constructor arguments.
-    pub lift_args: Vec<u8>,
-    /// The discharge contract's constructor arguments.
-    pub discharge_args: Vec<u8>,
     /// The expected output, as serialised bytes.
     pub output: Vec<u8>,
     /// The output's word counts.
@@ -116,16 +108,36 @@ impl Scenario {
         let y = &statement.expected_output;
         let counts = U256::from(y.as_vec::<u8>().len() | (y.as_vec::<u32>().len() << 16) | (y.as_vec::<u64>().len() << 32));
         return Self {
-            n,
-            program,
             stream,
             lift,
             discharge,
-            lift_args,
-            discharge_args,
             output: y.as_bytes(),
             counts,
             proof: encode_lift(&lifted),
+        };
+    }
+
+    /// A scenario of the same shape over stand-in contracts whose verification is a few
+    /// thousand steps, deployed into `machine`: the stand-in lift rejects a proof starting with
+    /// `0xff`, and the stand-in discharge checks the stream's hash chain.
+    pub fn mock(machine: &mut Machine) -> Self {
+        let segment: Vec<u8> = (0..1000u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8).collect();
+        let stream = Stream {
+            segments: vec![segment],
+            head_words: 0,
+        };
+        let (lift, _) = machine.deploy(artifact("Mock.sol", "MockLift"));
+        let mut code = artifact("Mock.sol", "MockDischarge");
+        code.extend_from_slice(&stream.digest());
+        let (discharge, _) = machine.deploy(code);
+        let proof: Vec<u8> = (0..300u32).map(|i| (i.wrapping_mul(40_503) >> 3) as u8 | 1).collect();
+        return Self {
+            stream,
+            lift,
+            discharge,
+            output: b"stand-in expected output".to_vec(),
+            counts: U256::from(24),
+            proof,
         };
     }
 

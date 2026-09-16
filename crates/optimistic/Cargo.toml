@@ -31,3 +31,11 @@ path = "src/bin/onestep_check.rs"
 [[bin]]
 name = "dispute-sim"
 path = "src/bin/dispute_sim.rs"
+
+[[bin]]
+name = "dispute-costs"
+path = "src/bin/dispute_costs.rs"
+
+[[bin]]
+name = "onestep-fuzz"
+path = "src/bin/onestep_fuzz.rs"
