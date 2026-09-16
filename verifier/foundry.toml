@@ -1,0 +1,19 @@
+# The Flock lifter's Ethereum verifier. Built with `forge build`; exercised and metered by the
+# Rust harness in `crates/evm`, which runs the artefacts in an in-process EVM.
+
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+libs = []
+solc = "0.8.30"
+evm_version = "prague"
+optimizer = true
+optimizer_runs = 1
+via_ir = false
+
+[profile.default.optimizer_details]
+inliner = false
+
+[lint]
+lint_on_build = false

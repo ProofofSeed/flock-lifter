@@ -285,6 +285,11 @@ impl Program {
         return 1 << self.geometry.k_log();
     }
 
+    /// Explicit row `r`: the column it defines, then its A-side and B-side columns.
+    pub fn explicit_row(&self, r: usize) -> (u32, &[u32], &[u32]) {
+        return (self.rows.cols[r], self.row_a(r), self.row_b(r));
+    }
+
     fn row_a(&self, r: usize) -> &[u32] {
         return &self.rows.a_idx[self.rows.a_ptr[r] as usize..self.rows.a_ptr[r + 1] as usize];
     }

@@ -96,7 +96,8 @@ impl Statement {
     }
 }
 
-fn domain(digest: &[u8; 32], chunk_index: usize) -> Vec<u8> {
+/// The transcript domain of chunk `chunk_index` of a lift whose statement digest is `digest`.
+pub fn domain(digest: &[u8; 32], chunk_index: usize) -> Vec<u8> {
     let mut d = LIFT_VERSION.to_vec();
     d.extend_from_slice(digest);
     d.extend_from_slice(&(chunk_index as u64).to_le_bytes());
