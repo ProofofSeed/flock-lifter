@@ -31,6 +31,10 @@ pub const P_ROWS: usize = 128;
 /// Columns of the prefix table: run ends `0..=64`.
 pub const P_COLS: usize = 65;
 
+/// Address stride of the prefix table: an address is `u·P_STRIDE + j`, so that its bits split
+/// into those of `u` and those of `j`.
+pub const P_STRIDE: usize = 128;
+
 /// Bits of the prefix-table address.
 pub const P_BITS: usize = 14;
 
@@ -43,14 +47,14 @@ pub const LOOKUP_BITS: [usize; 8] = [1, 8, 8, 6, 8, 8, 6, P_BITS];
 pub const WORD_BITS: usize = 22;
 
 /// An entry, packed: bit 0 the side (0 for A, 1 for B), bits 1..23 the row word, bits 23..45 the
-/// column word, bits 45..59 the prefix-table address `u·65 + j`.
+/// column word, bits 45..59 the prefix-table address `u·128 + j`.
 pub type Entry = u64;
 
 /// Packs an entry.
 pub fn pack(side: usize, row_word: u32, col_word: u32, u: usize, j: usize) -> Entry {
     debug_assert!(side < 2 && u < P_ROWS && j < P_COLS);
     debug_assert!(row_word >> WORD_BITS == 0 && col_word >> WORD_BITS == 0);
-    return side as u64 | (row_word as u64) << 1 | (col_word as u64) << 23 | ((u * P_COLS + j) as u64) << 45;
+    return side as u64 | (row_word as u64) << 1 | (col_word as u64) << 23 | ((u * P_STRIDE + j) as u64) << 45;
 }
 
 /// The address an entry reads in lookup `l`.
@@ -163,7 +167,7 @@ impl Tables {
         for u in 0..P_ROWS {
             let mut acc = F128::ZERO;
             for j in 0..P_COLS {
-                p[u * P_COLS + j] = acc;
+                p[u * P_STRIDE + j] = acc;
                 if j < 64 {
                     let zt = if u < 64 { z[(j + u) % 64] } else { z[u - 64] };
                     acc += skip[j] * zt;

@@ -30,7 +30,7 @@ use flock_prover::{
     verifier::verify_claims_ligerito,
     zerocheck::PaddingSpec,
 };
-use pofseed_flock_lift_block::committed::{Entry, LOOKUP_BITS, P_COLS, P_ROWS, Tables, address};
+use pofseed_flock_lift_block::committed::{Entry, LOOKUP_BITS, P_COLS, P_ROWS, P_STRIDE, Tables, address};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -59,9 +59,15 @@ const LOOKUP_POINT_BITS: u32 = 5;
 const COUNT_BITS: u32 = 4;
 const ZETA_BITS: u32 = 6;
 
-/// Addresses a lookup can read: the prefix table uses `P_ROWS·P_COLS` of its `2^14`.
+/// Counts a lookup sends: all its addresses, except that the prefix table sends only the
+/// `P_COLS` run ends of each of its `P_ROWS` rows, the others being unread.
 fn addresses(l: usize) -> usize {
     return if l == LOOKUPS - 1 { P_ROWS * P_COLS } else { 1 << LOOKUP_BITS[l] };
+}
+
+/// The address of the `i`-th count lookup `l` sends.
+fn sent_address(l: usize, i: usize) -> usize {
+    return if l == LOOKUPS - 1 { (i / P_COLS) * P_STRIDE + i % P_COLS } else { i };
 }
 
 /// Entry-index bits a list is padded to at least, so that its commitment has a registered
@@ -337,11 +343,11 @@ fn prove_inner<Ch: Challenger>(
     let eq_rho = build_eq_table(&rho);
     let mut counts = Vec::new();
     for l in 0..LOOKUPS {
-        let mut c = vec![F128::ZERO; addresses(l)];
+        let mut c = vec![F128::ZERO; 1 << LOOKUP_BITS[l]];
         for (k, &x) in key.entries.iter().enumerate() {
             c[address(x, l)] += eq_rho[k];
         }
-        counts.extend(c);
+        counts.extend((0..addresses(l)).map(|i| c[sent_address(l, i)]));
     }
     #[cfg(feature = "forgery")]
     if forge.is_some() {
@@ -462,7 +468,7 @@ fn main_expected(tables: &[Tables], weights: &[F128], counts: &[F128]) -> F128 {
         for l in 0..LOOKUPS {
             let c = &counts[at..at + addresses(l)];
             at += addresses(l);
-            term *= c.iter().zip(&t.tables[l]).fold(F128::ZERO, |a, (&x, &y)| a + x * y);
+            term *= c.iter().enumerate().fold(F128::ZERO, |a, (i, &x)| a + x * t.tables[l][sent_address(l, i)]);
         }
         expected += term;
     }
@@ -490,7 +496,7 @@ fn count_claim(counts: &[F128], gammas: &[F128], points: &[Vec<F128>]) -> F128 {
         let eq = build_eq_table(&points[l]);
         let c = &counts[at..at + addresses(l)];
         at += addresses(l);
-        acc += gammas[l] * c.iter().zip(&eq).fold(F128::ZERO, |a, (&x, &y)| a + x * y);
+        acc += gammas[l] * c.iter().enumerate().fold(F128::ZERO, |a, (i, &x)| a + x * eq[sent_address(l, i)]);
     }
     return acc;
 }
