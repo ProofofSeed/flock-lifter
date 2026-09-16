@@ -337,6 +337,19 @@ library Piop {
         }
     }
 
+    /// The nibble tables of `e ↦ Σ_j bit_j(e)·coeffs[j]`, laid out as `linearTable`'s.
+    function bitTable(uint256[] memory coeffs) internal pure returns (uint256[] memory t) {
+        t = new uint256[](32 * 16);
+        for (uint256 k = 0; k < 32; ++k) {
+            uint256 base = 16 * k;
+            for (uint256 n = 1; n < 16; ++n) {
+                uint256 low = n & (~n + 1);
+                uint256 bit = low == 1 ? 0 : low == 2 ? 1 : low == 4 ? 2 : 3;
+                t[base + n] = t[base + (n ^ low)] ^ coeffs[4 * k + bit];
+            }
+        }
+    }
+
     /// The linear map of `linearTable` applied to a word.
     function applyTable(uint256[] memory t, uint256 word) internal pure returns (uint256 acc) {
         assembly ("memory-safe") {

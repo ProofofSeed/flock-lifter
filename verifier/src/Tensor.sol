@@ -2,46 +2,55 @@
 pragma solidity ^0.8.30;
 
 import {GF2} from "./GF2.sol";
+import {Tables} from "./Tables.sol";
 
 /// The ring-switching basis evaluation of Flock (`eval_rs_eq_prefix_f256` and
 /// `eval_rs_eq_finish_from_prefix_binary_q_f256`), over the tensor algebra
 /// `GF(2^256) ⊗ GF(2^128)` held as two 128-element coefficient vectors `c0` and `c1`: element `i`
 /// of a vector is the right-hand coefficient of `x^i` on the left.
+///
+/// Left multiplication by a base element combines the rows by the rows of its multiplication
+/// matrix, which a linear recurrence gives in 128 steps; right multiplication multiplies every
+/// row by the same element. Both are table lookups, so no bit matrix is ever transposed.
 library Tensor {
-    /// `dst[j] = Σ_i bit_j(src[i])·x^i`: the transpose of a 128×128 bit matrix, a byte of every
-    /// row at a time through `spread`, which puts bit `t` of a byte at bit `32·t`.
-    function transpose(uint256[] memory src, bytes memory spread) internal pure returns (uint256[] memory dst) {
-        dst = new uint256[](128);
+    /// Scratch space: four table regions and four row buffers.
+    struct Work {
+        uint256 tabA;
+        uint256 tabB;
+        uint256 tabF;
+        uint256 tabL;
+        uint256 m0;
+        uint256 m1;
+        uint256 n0;
+        uint256 n1;
+    }
+
+    function work() internal pure returns (Work memory w) {
+        w.tabA = Tables.region();
+        w.tabB = Tables.region();
+        w.tabF = Tables.region();
+        w.tabL = Tables.region();
+        w.m0 = _buffer();
+        w.m1 = _buffer();
+        w.n0 = _buffer();
+        w.n1 = _buffer();
+    }
+
+    function _buffer() private pure returns (uint256 b) {
         assembly ("memory-safe") {
-            let s := add(src, 0x20)
-            let d := add(dst, 0x20)
-            let tab := add(spread, 0x20)
-            for { let byteAt := 0 } lt(byteAt, 128) { byteAt := add(byteAt, 8) } {
-                for { let c := 0 } lt(c, 128) { c := add(c, 32) } {
-                    let acc := 0
-                    for { let t := 0 } lt(t, 32) { t := add(t, 1) } {
-                        let b := and(shr(byteAt, mload(add(s, shl(5, add(c, t))))), 0xff)
-                        acc := or(acc, shl(t, mload(add(tab, shl(5, b)))))
-                    }
-                    for { let k := 0 } lt(k, 8) { k := add(k, 1) } {
-                        let slot := add(d, shl(5, add(byteAt, k)))
-                        mstore(slot, or(mload(slot), shl(c, and(shr(shl(5, k), acc), 0xffffffff))))
-                    }
-                }
-            }
+            b := mload(0x40)
+            mstore(0x40, add(b, 0x1000))
         }
     }
 
-    /// `v[i]·s` for every entry.
-    function scale(uint256[] memory v, uint256 s) internal pure returns (uint256[] memory out) {
-        out = new uint256[](128);
-        for (uint256 i = 0; i < 128; ++i) {
-            out[i] = GF2.mul(v[i], s);
+    function _data(uint256[] memory v) private pure returns (uint256 p) {
+        assembly ("memory-safe") {
+            p := add(v, 0x20)
         }
     }
 
-    /// The prefix tensor `Π_i (1 ⊗ (1 + z_i) + q_i ⊗ 1)`.
-    function prefix(uint256[] memory z, uint256 zFrom, uint256[] memory q, bytes memory spread)
+    /// The prefix tensor `Π_i (1 ⊗ (1 + z_i) + q_i ⊗ 1)`, with `z_i = z[zFrom + i]`.
+    function prefix(uint256[] memory z, uint256 zFrom, uint256[] memory q, Work memory w)
         internal
         pure
         returns (uint256[] memory c0, uint256[] memory c1)
@@ -49,78 +58,108 @@ library Tensor {
         c0 = new uint256[](128);
         c1 = new uint256[](128);
         c0[0] = 1;
+        uint256 p0 = _data(c0);
+        uint256 p1 = _data(c1);
         for (uint256 i = 0; i < q.length; ++i) {
-            (uint256[] memory h0, uint256[] memory h1) = horizontal(c0, c1, q[i], spread);
-            uint256 a = 1 ^ z[zFrom + i];
+            _horizontal(p0, p1, q[i], w);
+            Tables.buildMul(w.tabF, 1 ^ z[zFrom + i]);
+            uint256 tabF = w.tabF;
+            uint256 n0 = w.n0;
+            uint256 n1 = w.n1;
             for (uint256 k = 0; k < 128; ++k) {
-                c0[k] = GF2.mul(c0[k], a) ^ h0[k];
-                c1[k] = GF2.mul(c1[k], a) ^ h1[k];
-            }
-        }
-    }
-
-    /// `(q ⊗ 1)·(c0 + u·c1)` for an extension element `q`, by Karatsuba over `u² = u + x^-1`,
-    /// every horizontal scaling done in the transposed domain.
-    function horizontal(uint256[] memory c0, uint256[] memory c1, uint256 q, bytes memory spread)
-        internal
-        pure
-        returns (uint256[] memory h0, uint256[] memory h1)
-    {
-        uint256 q0 = q & GF2.M128;
-        uint256 q1 = q >> 128;
-        uint256[] memory t0 = transpose(c0, spread);
-        uint256[] memory t1 = transpose(c1, spread);
-        for (uint256 k = 0; k < 128; ++k) {
-            uint256 a = t0[k];
-            uint256 b = t1[k];
-            uint256 p0 = GF2.mul(a, q0);
-            t0[k] = p0 ^ GF2.mulXInv(GF2.mul(b, q1));
-            t1[k] = GF2.mul(a ^ b, q0 ^ q1) ^ p0;
-        }
-        h0 = transpose(t0, spread);
-        h1 = transpose(t1, spread);
-    }
-
-    /// The nibble tables of `e ↦ Σ_j bit_j(e)·coeffs[j]`.
-    function foldTable(uint256[] memory coeffs) internal pure returns (uint256[] memory t) {
-        t = new uint256[](32 * 16);
-        for (uint256 k = 0; k < 32; ++k) {
-            uint256 base = 16 * k;
-            for (uint256 n = 1; n < 16; ++n) {
-                uint256 low = n & (~n + 1);
-                uint256 bit = low == 1 ? 0 : low == 2 ? 1 : low == 4 ? 2 : 3;
-                t[base + n] = t[base + (n ^ low)] ^ coeffs[4 * k + bit];
-            }
-        }
-    }
-
-    /// `Σ_i x^i · L(v[i]·s)`, `L` the map of `table`: Flock's `fold_vertical` of the vector
-    /// scaled by `s`.
-    function foldScaled(uint256[] memory v, uint256 s, uint256[] memory table) internal pure returns (uint256 acc) {
-        for (uint256 i = 128; i > 0; --i) {
-            uint256 e = GF2.mul(v[i - 1], s);
-            uint256 l;
-            assembly ("memory-safe") {
-                let base := add(table, 0x20)
-                for { let k := 0 } lt(k, 32) { k := add(k, 1) } {
-                    let n := and(shr(mul(k, 4), e), 15)
-                    l := xor(l, mload(add(base, shl(5, add(mul(k, 16), n)))))
+                uint256 at = k << 5;
+                uint256 a;
+                uint256 b;
+                uint256 x0;
+                uint256 x1;
+                assembly ("memory-safe") {
+                    a := mload(add(p0, at))
+                    b := mload(add(p1, at))
+                    x0 := mload(add(n0, at))
+                    x1 := mload(add(n1, at))
                 }
-                let top := shr(127, acc)
-                acc := xor(and(shl(1, acc), 0xffffffffffffffffffffffffffffffff), mul(top, 0x87))
+                a = Tables.lookup(tabF, a) ^ x0;
+                b = Tables.lookup(tabF, b) ^ x1;
+                assembly ("memory-safe") {
+                    mstore(add(p0, at), a)
+                    mstore(add(p1, at), b)
+                }
             }
-            acc ^= l;
         }
     }
 
-    /// The finished evaluation at binary suffix `y`, as an extension element.
+    /// Writes `(q ⊗ 1)·(c0 + u·c1)` to `w.n0`, `w.n1`, by schoolbook over `u² = u + x^-1`:
+    /// `c0' = q0·c0 + x^-1·q1·c1` and `c1' = (q0 + q1)·c1 + q1·c0`.
+    function _horizontal(uint256 p0, uint256 p1, uint256 q, Work memory w) private pure {
+        Tables.masks(q & GF2.M128, w.m0);
+        Tables.masks(q >> 128, w.m1);
+        Tables.build(w.tabA, p0);
+        Tables.build(w.tabB, p1);
+        uint256 tabA = w.tabA;
+        uint256 tabB = w.tabB;
+        uint256 m0 = w.m0;
+        uint256 m1 = w.m1;
+        uint256 n0 = w.n0;
+        uint256 n1 = w.n1;
+        for (uint256 k = 0; k < 128; ++k) {
+            uint256 at = k << 5;
+            uint256 mask0;
+            uint256 mask1;
+            assembly ("memory-safe") {
+                mask0 := mload(add(m0, at))
+                mask1 := mload(add(m1, at))
+            }
+            uint256 a0 = Tables.lookup(tabA, mask0);
+            uint256 b1 = Tables.lookup(tabB, mask1);
+            uint256 x1 = Tables.lookup(tabB, mask0 ^ mask1) ^ Tables.lookup(tabA, mask1);
+            assembly ("memory-safe") {
+                mstore(add(n0, at), a0)
+                mstore(add(m0, at), b1)
+                mstore(add(n1, at), x1)
+            }
+        }
+        assembly ("memory-safe") {
+            let first := mload(m0)
+            for { let k := 0 } lt(k, 127) { k := add(k, 1) } {
+                let slot := add(n0, shl(5, k))
+                mstore(slot, xor(mload(slot), mload(add(m0, shl(5, add(k, 1))))))
+            }
+            for { let j := 0 } lt(j, 4) { j := add(j, 1) } {
+                let k := byte(j, 0x0001067f00000000000000000000000000000000000000000000000000000000)
+                let slot := add(n0, shl(5, k))
+                mstore(slot, xor(mload(slot), first))
+            }
+        }
+    }
+
+    /// Prepares `w.tabL` for folds against the coefficients `coeffs`.
+    function foldTable(uint256[] memory coeffs, Work memory w) internal pure {
+        Tables.build(w.tabL, _data(coeffs));
+    }
+
+    /// `Σ_i x^i · L(v[i]·s)` with `L` the map of `w.tabL` and `w.tabF` the table of `s`.
+    function _fold(uint256 v, Work memory w) private pure returns (uint256 acc) {
+        uint256 tabF = w.tabF;
+        uint256 tabL = w.tabL;
+        for (uint256 i = 128; i > 0; --i) {
+            uint256 e;
+            assembly ("memory-safe") {
+                e := mload(add(v, shl(5, sub(i, 1))))
+            }
+            uint256 l = Tables.lookup(tabL, Tables.lookup(tabF, e));
+            acc = ((acc << 1) & GF2.M128) ^ ((acc >> 127) * 0x87) ^ l;
+        }
+    }
+
+    /// The finished evaluation at binary suffix `y`, as an extension element, against the
+    /// coefficients prepared by `foldTable`.
     function finish(
         uint256[] memory c0,
         uint256[] memory c1,
         uint256[] memory zSuffix,
         uint256 zFrom,
         uint256 y,
-        uint256[] memory table
+        Work memory w
     ) internal pure returns (uint256) {
         uint256 s = 1;
         uint256 n = zSuffix.length - zFrom;
@@ -128,6 +167,7 @@ library Tensor {
             uint256 zj = zSuffix[zFrom + j];
             s = GF2.mul(s, (y >> j) & 1 == 1 ? zj : 1 ^ zj);
         }
-        return (foldScaled(c1, s, table) << 128) | foldScaled(c0, s, table);
+        Tables.buildMul(w.tabF, s);
+        return (_fold(_data(c1), w) << 128) | _fold(_data(c0), w);
     }
 }

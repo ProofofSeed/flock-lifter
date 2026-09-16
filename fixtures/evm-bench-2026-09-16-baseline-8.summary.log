@@ -1,0 +1,33 @@
+# evm-bench 8, baseline contracts (commit 9fde7f5), same conditions as the 219-response baseline: one chunk, so one matrix claim.
+
+block built in 0.65 s
+lift proved in 3.43 s
+responses 8, chunks 1, lift calldata 504116 bytes
+FlockLift: initcode 58435 bytes, deployment 12560115 gas
+lift contract ran in 0.28 s
+chunk 1:
+  published words                      0.18 M
+  zerocheck                            1.36 M
+  lincheck                             0.92 M
+  published-word claim                 1.95 M
+  ring switches                        6.33 M
+  Ligerito level 0 opening            46.49 M
+  Ligerito level 1 opening             4.82 M
+  Ligerito level 2 opening             3.02 M
+  Ligerito level 3 opening             2.31 M
+  Ligerito level 4 opening             1.92 M
+  Ligerito final opening               1.65 M
+  ring-switch residual               211.84 M
+  out-of-domain residual               2.37 M
+  consistency residual               122.76 M
+  final check                          0.07 M
+  Fiat-Shamir gate                     0.08 M
+lift contract: 416.21 M total = 408.16 M execution + 8.05 M intrinsic (calldata)
+FlockDischarge deployed; stream of 8689741 rows in 9 segments (0.4 s to hash)
+discharge ran in 212.5 s
+discharge, 1 claims:
+  Keccak-f sub-blocks                652.43 M
+  explicit rows                   353665.30 M execution + 3920.75 M calldata
+  final check                          0.32 M
+verification in all: 358655.19 M gas, 354726.22 M of it execution
+at least 21378 transactions under the 16777216-gas cap

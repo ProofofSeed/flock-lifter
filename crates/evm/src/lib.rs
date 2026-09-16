@@ -7,3 +7,5 @@ pub mod calldata;
 pub mod discharge;
 pub mod evm;
 pub mod mirror;
+pub mod stream;
+pub mod tables;

@@ -130,6 +130,19 @@ fn main() {
     }
     writeln!(s, "    /// Keccak's ρ offsets modulo 64, `RHO[5·a + b]`.").unwrap();
     writeln!(s, "    bytes internal constant RHO = hex\"{rho}\";").unwrap();
+    let wide = eval_sk_at_vks(32);
+    let mut subspace = String::new();
+    for k in 0..24usize {
+        for b in 0..32usize {
+            let mut w = F128::new(1u64 << b, 0);
+            for sk in &wide[..k] {
+                w = w * w + *sk * w;
+            }
+            subspace.push_str(&hex(w * wide[k].inv())[2..]);
+        }
+    }
+    writeln!(s, "    /// `s_k(x^b)/s_k(v_k)` for k in 0..24 and b in 0..32, row k then column b, sixteen bytes each.").unwrap();
+    writeln!(s, "    bytes internal constant SUBSPACE = hex\"{subspace}\";").unwrap();
     let (_, chain_code) = bip32_vector_1();
     let program = Program::new(&HardenedChildCircuit::public_only(chain_code, HARDENED_OFFSET));
     for m in M_RANGE {

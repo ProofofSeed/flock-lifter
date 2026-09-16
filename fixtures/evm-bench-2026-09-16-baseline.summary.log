@@ -1,0 +1,72 @@
+# evm-bench 219, baseline contracts (commit 9fde7f5: transposing tensor algebra, per-row discharge over factorised eq tables)
+# 2026-09-16, M4 Max, revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted; one process, quiet machine.
+# Gas is measured by revm per call; the discharge ran as keccakPart, nine rows segments of 1,000,000 rows, then finish.
+# 'intrinsic' is 21,000 plus standard calldata pricing (4 per zero byte, 16 per nonzero); the EIP-7623 floor never binds here.
+
+block built in 0.64 s
+lift proved in 13.38 s
+responses 219, chunks 2, lift calldata 1215008 bytes
+FlockLift: initcode 58435 bytes, deployment 12560115 gas
+lift contract ran in 0.75 s
+chunk 1:
+  published words                      1.52 M
+  zerocheck                            1.44 M
+  lincheck                             0.92 M
+  published-word claim                13.81 M
+  ring switches                        6.34 M
+  Ligerito level 0 opening            47.08 M
+  Ligerito level 1 opening             5.01 M
+  Ligerito level 2 opening             3.14 M
+  Ligerito level 3 opening             2.40 M
+  Ligerito level 4 opening             1.99 M
+  Ligerito level 5 opening             1.76 M
+  Ligerito final opening               1.59 M
+  ring-switch residual               274.28 M
+  out-of-domain residual               4.73 M
+  consistency residual               188.61 M
+  final check                          0.15 M
+chunk 2:
+  published words                      2.34 M
+  zerocheck                            1.52 M
+  lincheck                             0.99 M
+  published-word claim                10.46 M
+  ring switches                        6.85 M
+  Ligerito level 0 opening            47.34 M
+  Ligerito level 1 opening             5.09 M
+  Ligerito level 2 opening             3.19 M
+  Ligerito level 3 opening             2.44 M
+  Ligerito level 4 opening             2.02 M
+  Ligerito level 5 opening             1.79 M
+  Ligerito final opening               1.62 M
+  ring-switch residual               282.41 M
+  out-of-domain residual               4.81 M
+  consistency residual               188.84 M
+  final check                          0.15 M
+  Fiat-Shamir gate                     2.40 M
+lift contract: 1138.56 M total = 1119.30 M execution + 19.26 M intrinsic (calldata)
+FlockDischarge deployed; stream of 8689741 rows in 9 segments (0.4 s to hash)
+discharge ran in 422.5 s
+discharge, 2 claims:
+  Keccak-f sub-blocks               1413.01 M
+  explicit rows                   665598.85 M execution + 3921.35 M calldata
+  final check                          0.64 M
+verification in all: 672072.73 M gas, 668131.80 M of it execution
+at least 40059 transactions under the 16777216-gas cap
+      438.08 real       568.62 user        21.26 sys
+         73908633600  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             6900945  page reclaims
+                 191  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  13  signals received
+                  57  voluntary context switches
+              232549  involuntary context switches
+      10850793184392  instructions retired
+       2488236412410  cycles elapsed
+         73676951848  peak memory footprint

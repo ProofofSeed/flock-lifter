@@ -136,7 +136,7 @@ library Opening {
         if (claimCheck(Piop.lagrange(phi, claim.z), claim.x[0], p) != claim.value) revert RingSwitchClaim();
         uint256[] memory rdp = Transcript.powSampleVec(tr, Calldata.nonce(p + 128 * 16), 3, 7);
         eq = GF2.eqTable(rdp);
-        uint256[] memory table = Tensor.foldTable(eq);
+        uint256[] memory table = Piop.bitTable(eq);
         for (uint256 i = 128; i > 0; --i) {
             uint256 l = Piop.applyTable(table, Calldata.f128(p + 16 * (i - 1)));
             uint256 top = sum >> 127;
@@ -568,23 +568,13 @@ library Opening {
         uint256[] memory fixedPart,
         uint256 ext
     ) internal pure returns (uint256[] memory out) {
-        bytes memory sks = Constants.SKS;
-        bytes memory sksInv = Constants.SKS_INV;
         uint256[] memory weights = GF2.eqTable(alpha);
         uint256 f = fixedPart.length;
         out = new uint256[](1 << ext);
         uint256[] memory w = new uint256[](logCols);
+        bytes memory table = Constants.SUBSPACE;
         for (uint256 q = 0; q < qs.length; ++q) {
-            if (logCols > 0) {
-                w[0] = qs[q];
-                for (uint256 k = 1; k < logCols; ++k) {
-                    uint256 prev = w[k - 1];
-                    w[k] = GF2.sq(prev) ^ GF2.mul(Constants.at(sks, k - 1), prev);
-                }
-                for (uint256 k = 0; k < logCols; ++k) {
-                    w[k] = GF2.mul(w[k], Constants.at(sksInv, k));
-                }
-            }
+            _subspace(w, qs[q], table);
             uint256 prefix = 1;
             for (uint256 k = 0; k < f; ++k) {
                 prefix = GF2.mul256(prefix, 1 ^ GF2.mul256By128(fixedPart[k], 1 ^ w[k]));
@@ -602,21 +592,43 @@ library Opening {
         }
     }
 
+    /// `w[k] = s_k(q)/s_k(v_k)` for every `k`, from the table of the normalised subspace
+    /// polynomials at the basis elements: each is linear in the bits of `q`.
+    function _subspace(uint256[] memory w, uint256 q, bytes memory table) internal pure {
+        uint256 n = w.length;
+        assembly ("memory-safe") {
+            let dst := add(w, 0x20)
+            for { let k := 0 } lt(k, n) { k := add(k, 1) } {
+                mstore(add(dst, shl(5, k)), 0)
+            }
+            let src := add(table, 0x20)
+            for { let b := 0 } lt(b, 32) { b := add(b, 1) } {
+                if and(shr(b, q), 1) {
+                    for { let k := 0 } lt(k, n) { k := add(k, 1) } {
+                        let slot := add(dst, shl(5, k))
+                        let entry := shr(128, mload(add(src, mul(16, add(mul(k, 32), b)))))
+                        mstore(slot, xor(mload(slot), entry))
+                    }
+                }
+            }
+        }
+    }
+
     /// The ring-switch part of the residual basis at every binary suffix.
     function rsResidual(uint256[] memory ris, uint256 ext, Switched memory sw)
         internal
         pure
         returns (uint256[] memory out)
     {
-        bytes memory spread = Constants.SPREAD8;
+        Tensor.Work memory w = Tensor.work();
         uint256 pLen = ris.length;
         out = new uint256[](1 << ext);
         for (uint256 c = 0; c < sw.claims.length; ++c) {
             uint256[] memory x = sw.claims[c].x;
-            (uint256[] memory c0, uint256[] memory c1) = Tensor.prefix(x, 1, ris, spread);
-            uint256[] memory table = Tensor.foldTable(sw.eqs[c]);
+            (uint256[] memory c0, uint256[] memory c1) = Tensor.prefix(x, 1, ris, w);
+            Tensor.foldTable(sw.eqs[c], w);
             for (uint256 y = 0; y < out.length; ++y) {
-                uint256 e = Tensor.finish(c0, c1, x, 1 + pLen, y, table);
+                uint256 e = Tensor.finish(c0, c1, x, 1 + pLen, y, w);
                 out[y] ^= GF2.mul256By128(e, sw.gammas[c]);
             }
         }
