@@ -422,6 +422,27 @@ impl Program {
     ) -> Vec<F128> {
         #[cfg(feature = "count")]
         let entry = flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv();
+        let mut out = self.comb_structured(alpha, beta, skip_weights, x_inner_rest, r_inner_rest);
+        let explicit = self.comb_explicit(alpha, skip_weights, x_inner_rest, r_inner_rest);
+        out.iter_mut().zip(explicit).for_each(|(o, e)| *o += e);
+        #[cfg(feature = "count")]
+        eprintln!(
+            "[count] structured comb_partial: F128 muls {}",
+            flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv() - entry
+        );
+        return out;
+    }
+
+    /// The part of [`Self::comb_partial`] that the Keccak-f sub-blocks and the constant-wire pin
+    /// contribute.
+    pub fn comb_structured(
+        &self,
+        alpha: F128,
+        beta: F128,
+        skip_weights: &[F128],
+        x_inner_rest: &[F128],
+        r_inner_rest: &[F128],
+    ) -> Vec<F128> {
         let n_skip = skip_weights.len();
         let k_skip = n_skip.trailing_zeros() as usize;
         assert!(n_skip == 1 << k_skip && k_skip <= 6 && k_skip < SUB_LOG);
@@ -429,8 +450,6 @@ impl Program {
         assert_eq!(r_inner_rest.len(), x_inner_rest.len());
         let mask = n_skip - 1;
         let lo = SUB_LOG - k_skip;
-        let eq_row_rest = build_eq_table(x_inner_rest);
-        let eq_col_rest = build_eq_table(r_inner_rest);
         let eq_row_lo = build_eq_table(&x_inner_rest[..lo]);
         let eq_row_hi = build_eq_table(&x_inner_rest[lo..]);
         let eq_col_hi = build_eq_table(&r_inner_rest[lo..]);
@@ -453,7 +472,18 @@ impl Program {
             }
             *o = weight * acc;
         }
-        out[CONST as usize & mask] += (weight_konst * konst_local + beta) * eq_col_rest[CONST as usize >> k_skip];
+        let eq_const = eq_col_lo[CONST as usize >> k_skip] * eq_col_hi[CONST as usize >> SUB_LOG];
+        out[CONST as usize & mask] += (weight_konst * konst_local + beta) * eq_const;
+        return out;
+    }
+
+    /// The part of [`Self::comb_partial`] that the explicit rows contribute.
+    pub fn comb_explicit(&self, alpha: F128, skip_weights: &[F128], x_inner_rest: &[F128], r_inner_rest: &[F128]) -> Vec<F128> {
+        let n_skip = skip_weights.len();
+        let k_skip = n_skip.trailing_zeros() as usize;
+        let mask = n_skip - 1;
+        let eq_row_rest = build_eq_table(x_inner_rest);
+        let eq_col_rest = build_eq_table(r_inner_rest);
         // The A and B sides are accumulated apart so that α multiplies once at the end rather
         // than once per row, and a row whose B side is the bare constant wire — every row but a
         // replay product — contributes its weight to one running scalar instead of a product.
@@ -508,15 +538,7 @@ impl Program {
                     x
                 },
             );
-        for ((o, a), b) in out.iter_mut().zip(side_a).zip(side_b) {
-            *o += alpha * a + b;
-        }
-        #[cfg(feature = "count")]
-        eprintln!(
-            "[count] structured comb_partial: F128 muls {}",
-            flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv() - entry
-        );
-        return out;
+        return side_a.into_iter().zip(side_b).map(|(a, b)| alpha * a + b).collect();
     }
 
     /// The published words of a block's witness.
