@@ -116,8 +116,8 @@ impl Program {
     }
 
     /// Builds the block of `circuit` from its uniform replay.
-    pub fn uniform<C: Circuit>(circuit: &C) -> Self {
-        return Self::build(circuit, replay::compile_uniform_fitting);
+    pub fn regular<C: Circuit>(circuit: &C) -> Self {
+        return Self::build(circuit, replay::compile_regular_fitting);
     }
 
     fn build<C: Circuit>(circuit: &C, compile: fn(&C, &Geometry) -> Result<Replay, usize>) -> Self {

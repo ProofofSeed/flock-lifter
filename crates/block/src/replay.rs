@@ -47,7 +47,7 @@ pub struct Replay {
     /// Materialised linear forms.
     pub materialised: usize,
     /// The origin of every column from the replay base on: gate, column kind within the gate,
-    /// and bit.
+    /// and bit; `u32::MAX` marks a column no gate uses.
     pub origins: Vec<(u32, u8, u16)>,
 }
 
@@ -82,7 +82,9 @@ struct Compiler<'g> {
     gate: u32,
     origin: (u8, u16),
     origins: Vec<(u32, u8, u16)>,
-    uniform: bool,
+    regular: bool,
+    base: u32,
+    words: std::collections::HashMap<(u32, u8, u16), u32>,
 }
 
 impl<'g> Compiler<'g> {
@@ -103,19 +105,36 @@ impl<'g> Compiler<'g> {
             gate: 0,
             origin: (0, 0),
             origins: Vec::new(),
-            uniform: false,
+            regular: false,
+            base: geometry.replay_base(),
+            words: std::collections::HashMap::new(),
         };
     }
 
     fn fresh_col(&mut self) -> u32 {
+        let (kind, bit) = self.origin;
+        if self.regular {
+            let key = (self.gate, kind, bit >> 6);
+            let words = self.words.len() as u32;
+            let word = *self.words.entry(key).or_insert(words);
+            let col = self.base + (word << 6) + (bit & 63) as u32;
+            let at = (col - self.base) as usize;
+            if self.origins.len() <= at {
+                self.origins.resize(at + 1, (u32::MAX, 0, 0));
+            }
+            assert_eq!(self.origins[at].0, u32::MAX, "a regular column is allocated twice");
+            self.origins[at] = (self.gate, kind, bit);
+            self.next_col = self.next_col.max(self.base + ((self.words.len() as u32) << 6));
+            return col;
+        }
         let col = self.next_col;
         self.next_col += 1;
-        self.origins.push((self.gate, self.origin.0, self.origin.1));
+        self.origins.push((self.gate, kind, bit));
         return col;
     }
 
     fn product(&mut self, l: &Form, r: &Form) -> Form {
-        if self.uniform {
+        if self.regular {
             let col = self.fresh_col();
             self.rows.push(Row {
                 col,
@@ -145,7 +164,7 @@ impl<'g> Compiler<'g> {
     }
 
     fn cap(&mut self, f: Form) -> Form {
-        if self.uniform || f.len() <= MAX_FORM_LEN {
+        if self.regular || f.len() <= MAX_FORM_LEN {
             return f;
         }
         return self.materialise(f);
@@ -223,7 +242,7 @@ impl<'g> Compiler<'g> {
             let all = forms.iter().any(|g| g.len() > MAX_FORM_LEN);
             for (b, g) in forms.into_iter().enumerate() {
                 self.at(s, b);
-                let g = if self.uniform { if all { self.materialise(g) } else { g } } else { self.cap(g) };
+                let g = if self.regular { if all { self.materialise(g) } else { g } } else { self.cap(g) };
                 res[s].push(g);
             }
         }
@@ -393,7 +412,7 @@ impl<'g> Backend for Compiler<'g> {
             let all = forms.iter().any(|f| f.len() > MAX_FORM_LEN);
             for (b, f) in forms.into_iter().enumerate() {
                 self.at(s, b);
-                let f = if self.uniform { if all { self.materialise(f) } else { f } } else { self.cap(f) };
+                let f = if self.regular { if all { self.materialise(f) } else { f } } else { self.cap(f) };
                 res[s].push(f);
             }
         }
@@ -419,11 +438,11 @@ impl<'g> Backend for Compiler<'g> {
             let tapes = self.gate_tape(0, b).xor(&self.gate_tape(1, b));
             let o0 = p00.xor(&p01).xor(&p10).xor(&tapes);
             self.at(4, b);
-            let o0 = if self.uniform { self.materialise(o0) } else { self.cap(o0) };
+            let o0 = if self.regular { self.materialise(o0) } else { self.cap(o0) };
             let m = Form::col(self.geometry.m_col(m_base + b));
             self.at(5, b);
             let o1 = p11.xor(&m);
-            let o1 = if self.uniform { self.materialise(o1) } else { self.cap(o1) };
+            let o1 = if self.regular { self.materialise(o1) } else { self.cap(o1) };
             self.streams[0].push(o0.clone());
             self.streams[1].push(o1.clone());
             res[0].push(o0);
@@ -512,9 +531,9 @@ impl<'g> Backend for Compiler<'g> {
             let m = Form::col(self.geometry.m_col(m_base + b));
             let n1 = x11.xor(&m).xor(&gs[1][b]);
             self.at(4, b);
-            let c0 = if self.uniform { self.materialise(n0) } else { self.cap(n0) };
+            let c0 = if self.regular { self.materialise(n0) } else { self.cap(n0) };
             self.at(5, b);
-            let c1 = if self.uniform { self.materialise(n1) } else { self.cap(n1) };
+            let c1 = if self.regular { self.materialise(n1) } else { self.cap(n1) };
             cs = [c0, c1];
         }
         self.streams[0].extend_from_slice(&res[0]);
@@ -526,11 +545,14 @@ impl<'g> Backend for Compiler<'g> {
 }
 
 /// Compiles the replay of `circuit` with every gate laid out the same way at every bit: no
-/// product is skipped for a constant operand, and a gate's forms are materialised at all its bits
-/// or at none. The result need not fit the geometry's head.
-pub fn compile_uniform<C: Circuit>(circuit: &C, geometry: &Geometry) -> Replay {
+/// product is skipped for a constant operand, a gate's forms are materialised at all its bits or
+/// at none, and every column kind of every gate limb has its own 64-bit word, bit `b` at column
+/// `b` of the word. The result need not fit the geometry's head.
+pub fn compile_regular<C: Circuit>(circuit: &C, geometry: &Geometry) -> Replay {
     let mut compiler = Compiler::new(geometry);
-    compiler.uniform = true;
+    compiler.regular = true;
+    compiler.base = geometry.replay_base().next_multiple_of(64);
+    compiler.next_col = compiler.base;
     let frontend = compiler.into_frontend();
     circuit.exec(&frontend);
     return frontend.finalize();
@@ -538,8 +560,8 @@ pub fn compile_uniform<C: Circuit>(circuit: &C, geometry: &Geometry) -> Replay {
 
 /// Compiles the uniform replay of `circuit` against `geometry`, or returns the head bits it needs
 /// if the head is too small.
-pub fn compile_uniform_fitting<C: Circuit>(circuit: &C, geometry: &Geometry) -> Result<Replay, usize> {
-    let replay = compile_uniform(circuit, geometry);
+pub fn compile_regular_fitting<C: Circuit>(circuit: &C, geometry: &Geometry) -> Result<Replay, usize> {
+    let replay = compile_regular(circuit, geometry);
     let shape = geometry.shape();
     assert_eq!(replay.streams[0].len(), shape.stream_bits(), "stream length disagrees with the shape");
     assert_eq!(replay.outputs[0].len(), shape.output_bits(), "output length disagrees with the shape");

@@ -135,8 +135,8 @@ fn toy_block_agrees_with_native_replay() {
 }
 
 #[test]
-fn toy_uniform_block_agrees_with_native_replay() {
-    check(Program::uniform, &Toy, &Toy, 24, 3);
+fn toy_regular_block_agrees_with_native_replay() {
+    check(Program::regular, &Toy, &Toy, 24, 3);
 }
 
 #[test]
@@ -145,8 +145,8 @@ fn toy_structured_discharge_matches_the_dense_fold() {
 }
 
 #[test]
-fn toy_uniform_structured_discharge_matches_the_dense_fold() {
-    check_discharge(Program::uniform, &Toy, 6, 4);
+fn toy_regular_structured_discharge_matches_the_dense_fold() {
+    check_discharge(Program::regular, &Toy, 6, 4);
 }
 
 #[test]
@@ -159,10 +159,10 @@ fn hardened_child_structured_discharge_matches_the_dense_fold() {
 
 #[test]
 #[ignore]
-fn hardened_child_uniform_structured_discharge_matches_the_dense_fold() {
+fn hardened_child_regular_structured_discharge_matches_the_dense_fold() {
     let hex = |s: &str| (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect::<Vec<u8>>();
     let chain_code = hex("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
-    check_discharge(Program::uniform, &HardenedChildCircuit::public_only(chain_code, 0x8000_0000), 6, 1);
+    check_discharge(Program::regular, &HardenedChildCircuit::public_only(chain_code, 0x8000_0000), 6, 1);
 }
 
 #[test]
@@ -179,12 +179,12 @@ fn hardened_child_block_agrees_with_native_replay() {
 
 #[test]
 #[ignore]
-fn hardened_child_uniform_block_agrees_with_native_replay() {
+fn hardened_child_regular_block_agrees_with_native_replay() {
     let hex = |s: &str| (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect::<Vec<u8>>();
     let parent_priv = hex("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35");
     let chain_code = hex("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
     let index = 0x8000_0000;
     let witness = HardenedChildCircuit::with_witness(chain_code.clone(), parent_priv, index);
     let public = HardenedChildCircuit::public_only(chain_code, index);
-    check(Program::uniform, &public, &witness, 24, 1);
+    check(Program::regular, &public, &witness, 24, 1);
 }

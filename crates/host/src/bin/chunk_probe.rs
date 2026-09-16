@@ -3,8 +3,8 @@
 //! Proves and verifies one Flock chunk over hardened-child responses, reporting the block, the
 //! time of each phase and the proof size.
 //!
-//! Usage: `chunk-probe [responses] [union|row-major] [compact|uniform]` (default 8, union,
-//! compact); `uniform` builds the block from the replay laid out the same way at every bit.
+//! Usage: `chunk-probe [responses] [union|row-major] [compact|regular]` (default 8, union,
+//! compact); `regular` builds the block from the replay laid out the same way at every bit.
 
 use std::{env, sync::Arc, time::Instant};
 
@@ -29,7 +29,7 @@ fn main() {
     let t = Instant::now();
     let program = Arc::new(match layout.as_str() {
         "compact" => Program::new(&public),
-        "uniform" => Program::uniform(&public),
+        "regular" => Program::regular(&public),
         other => panic!("unknown layout {other}"),
     });
     let g = program.geometry();

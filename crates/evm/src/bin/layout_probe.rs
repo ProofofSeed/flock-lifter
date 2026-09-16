@@ -190,70 +190,50 @@ fn main() {
     analyse("replay rows as compiled", &actual);
     analyse("replay rows, bit-aligned per gate and column kind", &virtual_rows);
     report_words("virtual layout", &replay.origins);
-    let uniform = replay::compile_uniform(&circuit, &geometry);
-    let ubase = base;
-    let uend = uniform.end_col as u64;
+    let program = Program::regular(&circuit);
+    let geometry = program.geometry().clone();
+    let regular = replay::compile_regular(&circuit, &geometry);
     println!(
-        "uniform replay: {} rows, {} columns, {} products, {} materialised",
-        uniform.rows.len(),
-        uend - ubase,
-        uniform.products,
-        uniform.materialised
+        "regular replay: {} rows, head columns up to {}, {} products, {} materialised",
+        regular.rows.len(),
+        regular.end_col,
+        regular.products,
+        regular.materialised
     );
-    let uremap = |c: u32| -> u64 {
-        let c = c as u64;
-        if c >= ubase && c < uend {
-            let (g, k, b) = uniform.origins[(c - ubase) as usize];
-            return vbase + ((((g as u64 * KINDS + k as u64) * LIMBS) + (b as u64 >> 6)) << 6) + (b as u64 & 63);
-        }
-        return c;
-    };
-    let urows: Vec<(u64, Vec<u64>, Vec<u64>)> = uniform
+    report_words("regular layout", &regular.origins);
+    let rows: Vec<(u64, Vec<u64>, Vec<u64>)> = regular
         .rows
         .iter()
-        .map(|r| (uremap(r.col), r.a.cols().iter().map(|&c| uremap(c)).collect(), r.b.cols().iter().map(|&c| uremap(c)).collect()))
+        .map(|r| (r.col as u64, r.a.cols().iter().map(|&c| c as u64).collect(), r.b.cols().iter().map(|&c| c as u64).collect()))
         .collect();
-    analyse("uniform replay rows, bit-aligned per gate and column kind", &urows);
-    report_words("uniform layout", &uniform.origins);
-    let program = Program::uniform(&circuit);
-    let geometry = program.geometry().clone();
-    let replay = replay::compile_uniform(&circuit, &geometry);
-    let base = geometry.replay_base() as u64;
-    let end = replay.end_col as u64;
-    let remap = |c: u32| -> u64 {
-        let c = c as u64;
-        if c >= base && c < end {
-            let (g, k, b) = replay.origins[(c - base) as usize];
-            return vbase + ((((g as u64 * KINDS + k as u64) * LIMBS) + (b as u64 >> 6)) << 6) + (b as u64 & 63);
-        }
-        return c;
-    };
+    analyse("regular replay rows", &rows);
+    let (base, end) = (geometry.replay_base() as u64, regular.end_col as u64);
     let mut replay_rows = Vec::new();
     let mut other_rows = Vec::new();
     for r in records(&program).iter().filter(|r| r[0] == ROW) {
-        let col = u32::from_be_bytes(r[1..5].try_into().unwrap());
+        let col = u32::from_be_bytes(r[1..5].try_into().unwrap()) as u64;
         let na = u16::from_be_bytes(r[5..7].try_into().unwrap()) as usize;
-        let cols: Vec<u64> = r[9..].chunks(4).map(|c| remap(u32::from_be_bytes(c.try_into().unwrap()))).collect();
-        let row = (remap(col), cols[..na].to_vec(), cols[na..].to_vec());
-        if (col as u64) >= base && (col as u64) < end {
+        let cols: Vec<u64> = r[9..].chunks(4).map(|c| u32::from_be_bytes(c.try_into().unwrap()) as u64).collect();
+        let row = (col, cols[..na].to_vec(), cols[na..].to_vec());
+        if col >= base && col < end {
             replay_rows.push(row);
         } else {
             other_rows.push(row);
         }
     }
-    analyse("uniform block, stream rows of the replay", &replay_rows);
-    analyse("uniform block, other stream rows", &other_rows);
+    analyse("regular block, stream rows of the replay", &replay_rows);
+    analyse("regular block, other stream rows", &other_rows);
 }
 
 fn report_words(name: &str, origins: &[(u32, u8, u16)]) {
     let mut kinds: HashMap<(u32, u8, u16), usize> = HashMap::new();
-    for o in origins {
+    for o in origins.iter().filter(|o| o.0 != u32::MAX) {
         *kinds.entry((o.0, o.1, o.2 >> 6)).or_insert(0) += 1;
     }
     println!(
         "{name}: {} gate-kind-limb words for {} columns ({} bits of head)",
         kinds.len(),
-        origins.len(),
+        origins.iter().filter(|o| o.0 != u32::MAX).count(),
         kinds.len() * 64
     );
 }
