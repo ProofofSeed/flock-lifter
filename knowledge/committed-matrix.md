@@ -4,7 +4,7 @@ Status: built and measured, 2026-09-16.
 A lift now discharges its matrix claims through a proof against a list of entries committed once per statement, instead of making the verifier walk the block's explicit rows.
 What made that affordable is a regular layout of the block, in which the rows of one gate differ only by a cyclic shift.
 On Ethereum, verifying the 219-response hardened-child lift went from 158.3 billion gas to **1.27 billion**, at least 76 transactions at the 2^24-gas cap.
-Natively, verification went from 0.05 s to 0.02 s, for about 0.9–1.4 s more proving and 441,752 more proof bytes.
+Natively, verification went from 0.06 s to 0.02 s, for 0.4 s more proving at 219 responses, 441,753 more proof bytes and a 1.2 s commitment once per statement.
 
 ## Why the rows had to be regular
 
@@ -81,8 +81,8 @@ The chunk verifier no longer evaluates the explicit rows. `verify_chunk_deferred
 - **Acceptance.** The run gained three cases, all refused: a tampered matrix proof, a missing one, and another lift's (`fixtures/acceptance-both-2026-09-16-committed-matrix.summary.log`).
 
 **Native cost at 219 responses.**
-- **Proving.** The key takes 1.1–1.4 s once per statement. Proving takes 0.9–1.4 s more, measured with a sibling session running, and the proof grows by 441,752 bytes to 1,675,231.
-- **Verifying.** Verification takes 0.02 s against 0.05 s.
+- **Proving.** The key takes 1.2 s once per statement. Proving takes 13.30 s against 12.92 s (16 threads), with 74.77 GB peak against 73.91, and the proof grows by 441,753 bytes to 1,675,231 (`fixtures/lift-bench-2026-09-16-committed-matrix.summary.log`, quiet machine; across the table's sizes the matrix proof adds 0.4–2.3 s).
+- **Verifying.** Verification takes 0.02 s against 0.06 s.
 
 ## The Keccak sub-blocks in rotation-invariant form
 

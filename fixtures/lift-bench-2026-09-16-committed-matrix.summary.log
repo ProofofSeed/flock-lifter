@@ -1,0 +1,16 @@
+Lift table re-measured with the regular block layout and the committed-matrix discharge, 2026-09-16, M4 Max, one process at a time, quiet machine (checked before starting). key_s is the per-statement commitment of the entry list, outside prove_s.
+The 438-response 12-thread row was run three times; the first run (32.36 s) is an outlier against the two repeats.
+
+result: responses=8 chunks=1 threads=16 zkboo_s=0.01 block_s=0.59 key_s=1.17 prove_s=4.15 verify_s=0.01 lifted_bytes=954094 chunk_proof_bytes=510073 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=22400925696
+result: responses=16 chunks=1 threads=16 zkboo_s=0.01 block_s=0.63 key_s=1.17 prove_s=4.78 verify_s=0.01 lifted_bytes=971350 chunk_proof_bytes=525089 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=33014677504
+result: responses=32 chunks=1 threads=16 zkboo_s=0.01 block_s=0.61 key_s=1.19 prove_s=5.89 verify_s=0.01 lifted_bytes=991102 chunk_proof_bytes=540361 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=55825924096
+result: responses=64 chunks=1 threads=16 zkboo_s=0.02 block_s=0.60 key_s=1.17 prove_s=5.37 verify_s=0.01 lifted_bytes=1030014 chunk_proof_bytes=570313 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=42498342912
+result: responses=128 chunks=1 threads=16 zkboo_s=0.04 block_s=0.63 key_s=1.18 prove_s=7.45 verify_s=0.01 lifted_bytes=1063686 chunk_proof_bytes=586065 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=64784973824
+result: responses=219 chunks=2 threads=16 zkboo_s=0.07 block_s=0.60 key_s=1.19 prove_s=13.30 verify_s=0.02 lifted_bytes=1675231 chunk_proof_bytes=1172130 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=74772545536
+result: responses=438 chunks=4 threads=16 zkboo_s=0.13 block_s=0.63 key_s=1.19 prove_s=23.99 verify_s=0.02 lifted_bytes=2892929 chunk_proof_bytes=2328508 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=79695216640
+result: responses=64 chunks=1 threads=12 zkboo_s=0.03 block_s=0.64 key_s=1.21 prove_s=5.45 verify_s=0.01 lifted_bytes=1030014 chunk_proof_bytes=570313 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=42022780928
+result: responses=128 chunks=1 threads=12 zkboo_s=0.05 block_s=0.62 key_s=1.22 prove_s=8.23 verify_s=0.01 lifted_bytes=1063686 chunk_proof_bytes=586065 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=64347815936
+result: responses=219 chunks=2 threads=12 zkboo_s=0.08 block_s=0.62 key_s=1.21 prove_s=15.23 verify_s=0.02 lifted_bytes=1675231 chunk_proof_bytes=1172130 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=74375380992
+result: responses=438 chunks=4 threads=12 zkboo_s=0.16 block_s=0.63 key_s=1.21 prove_s=32.36 verify_s=0.07 lifted_bytes=2892929 chunk_proof_bytes=2328508 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=79276081152
+result: responses=438 chunks=4 threads=12 zkboo_s=0.15 block_s=0.63 key_s=1.20 prove_s=27.85 verify_s=0.05 lifted_bytes=2892929 chunk_proof_bytes=2328508 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=79242182656
+result: responses=438 chunks=4 threads=12 zkboo_s=0.27 block_s=0.75 key_s=1.76 prove_s=27.73 verify_s=0.03 lifted_bytes=2892929 chunk_proof_bytes=2328508 matrix_proof_bytes=441753 gate=pass peak_rss_bytes=79239872512
