@@ -24,6 +24,33 @@ library Transcript {
         bytesFromCalldata(tr, domainOffset, domainLength);
     }
 
+    /// A transcript under a domain tag held in memory.
+    function createFromMemory(bytes memory domain) internal pure returns (uint256 tr) {
+        assembly ("memory-safe") {
+            tr := mload(0x40)
+            mstore(0x40, add(tr, add(CAPACITY, 128)))
+            mstore(tr, 0)
+            mstore(add(tr, 0x20), 0)
+        }
+        header(tr, 1, 0, domain.length);
+        assembly ("memory-safe") {
+            let len := mload(domain)
+            let dst := add(tr, 0x40)
+            mcopy(add(dst, 16), add(domain, 0x20), len)
+            mstore(add(add(dst, 16), len), 0)
+            mstore(add(tr, 0x20), add(16, and(add(len, 15), not(15))))
+        }
+    }
+
+    /// Appends one raw word.
+    function raw(uint256 tr, bytes32 w) internal pure {
+        assembly ("memory-safe") {
+            let l := mload(add(tr, 0x20))
+            mstore(add(add(tr, 0x40), l), w)
+            mstore(add(tr, 0x20), add(l, 32))
+        }
+    }
+
     /// Appends an operation header.
     function header(uint256 tr, uint256 op, uint256 kind, uint256 len) internal pure {
         assembly ("memory-safe") {

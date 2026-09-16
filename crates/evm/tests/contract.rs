@@ -93,3 +93,122 @@ fn contract_matches_the_mirror_on_an_eight_response_chunk() {
         assert!(!out.success || !refused_by_mirror, "byte {at}: the contract accepted what the mirror refused");
     }
 }
+
+fn deploy_lift(evm: &mut Evm, statement: &Statement, min: usize) -> revm::primitives::Address {
+    let mut code = artifact("FlockLift.sol", "FlockLift");
+    let fingerprint = zkboo_circuit_hash::hash_circuit::<_, pofseed_flock_lift_statement::H>(&statement.circuit());
+    code.extend_from_slice(&fingerprint);
+    code.extend_from_slice(&statement.chain_code);
+    code.extend_from_slice(&U256::from(statement.index).to_be_bytes::<32>());
+    code.extend_from_slice(&U256::from(min).to_be_bytes::<32>());
+    return evm.deploy(code).0;
+}
+
+fn counts(statement: &Statement) -> U256 {
+    let y = &statement.expected_output;
+    return U256::from(y.as_vec::<u8>().len() | (y.as_vec::<u32>().len() << 16) | (y.as_vec::<u64>().len() << 32));
+}
+
+#[test]
+fn lift_contract_verifies_a_lift_and_its_gate_refuses_forgeries() {
+    let n = 8;
+    let (_, chain_code) = bip32_vector_1();
+    let (_, output, proof) = vector_1_proof(n, b"flock-lifter evm lift entropy", BINDING);
+    let statement = Statement {
+        chain_code: chain_code.clone(),
+        index: HARDENED_OFFSET,
+        expected_output: output,
+        binding: BINDING.to_vec(),
+    };
+    let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code, HARDENED_OFFSET)));
+    let lifted = prove(&program, &statement, &proof, 4).expect("lift");
+    let mut evm = Evm::new();
+    let lift = deploy_lift(&mut evm, &statement, n);
+    let call = |binding: &[u8], data: &[u8]| {
+        encode("verify(bytes,uint256,bytes,bytes)", |a| {
+            a.bytes(&statement.expected_output.as_bytes()).uint(counts(&statement)).bytes(binding).bytes(data)
+        })
+    };
+    let data = pofseed_flock_lift_evm::calldata::encode_lift(&lifted);
+    let out = evm.call(lift, call(BINDING, &data));
+    assert!(out.success, "lift refused: {}", hex::encode(&out.output));
+    let words: Vec<U256> = (0..word(&out.output, 32).to::<usize>()).map(|i| word(&out.output, 64 + 32 * i)).collect();
+    assert_eq!(words.len(), 112 * 2);
+    for c in 0..2 {
+        let dom = domain(&statement.digest(n, 4), c);
+        let chunk = encode_chunk(&lifted.chunks[c], 4);
+        let mc = verify_chunk(&program, &lifted.words[4 * c..4 * c + 4], &dom, &chunk).expect("mirror verifies");
+        let b = 112 * c;
+        assert_eq!(words[b], u(mc.alpha));
+        assert_eq!(words[b + 3], u(mc.running));
+        assert_eq!(words[b + 48..b + 112].to_vec(), mc.z_partial.iter().map(|&v| u(v)).collect::<Vec<_>>());
+    }
+    eprintln!("lift of {n} in 2 chunks: {} gas, calldata {} bytes", out.gas, data.len());
+    assert!(!evm.call(lift, call(b"another binding", &data)).success, "a different binding was accepted");
+    let mut forged = lifted.clone();
+    forged.words[1][0] = if forged.words[1][0].lo == 1 { F128::new(2, 0) } else { F128::new(1, 0) };
+    let bad = pofseed_flock_lift_evm::calldata::encode_lift(&forged);
+    assert!(!evm.call(lift, call(BINDING, &bad)).success, "a changed challenge was accepted");
+}
+
+#[test]
+fn fiat_shamir_gate_refuses_what_the_native_gate_refuses() {
+    let n = 12;
+    let (_, chain_code) = bip32_vector_1();
+    let (_, output, proof) = vector_1_proof(n, b"flock-lifter evm gate entropy", BINDING);
+    let statement = Statement {
+        chain_code: chain_code.clone(),
+        index: HARDENED_OFFSET,
+        expected_output: output,
+        binding: BINDING.to_vec(),
+    };
+    let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code, HARDENED_OFFSET)));
+    let circuit = statement.circuit();
+    let words: Vec<Vec<F128>> = proof
+        .iter()
+        .map(|r| pofseed_flock_lift_block::native::io_words(&program, &circuit, &statement.expected_output, r).expect("replay"))
+        .collect();
+    let unopened: Vec<[u8; 32]> = proof.iter().map(|r| *r.commitment_digest_unopened()).collect();
+    let mut evm = Evm::new();
+    let (probe, _) = evm.deploy(artifact("GateProbe.sol", "GateProbe"));
+    let mut run = |binding: &[u8], words: &[Vec<F128>], unopened: &[[u8; 32]], output: &[u8]| {
+        let mut w = Writer::default();
+        words.iter().flatten().for_each(|&v| w.f128_native(v));
+        unopened.iter().for_each(|d| w.hash(d));
+        let out = evm.call(
+            probe,
+            encode("gate(bytes,uint256,bytes,uint256,bytes)", |a| {
+                a.bytes(output).uint(counts(&statement)).bytes(binding).uint(U256::from(n)).bytes(&w.bytes)
+            }),
+        );
+        (out.success, out.gas)
+    };
+    let y = statement.expected_output.as_bytes();
+    let (ok, gas) = run(BINDING, &words, &unopened, &y);
+    assert!(ok, "the genuine gate inputs were refused");
+    eprintln!("gate over {n} responses: {gas} gas");
+    assert!(!run(b"other", &words, &unopened, &y).0, "another binding passed the gate");
+    let mut bad = unopened.clone();
+    bad[5][0] ^= 1;
+    assert!(!run(BINDING, &words, &bad, &y).0, "a changed unopened digest passed the gate");
+    for i in [0, 7] {
+        let mut w = words.clone();
+        let next = match w[i][0].lo {
+            1 => 2,
+            2 => 4,
+            _ => 1,
+        };
+        w[i][0] = F128::new(next, 0);
+        assert!(!run(BINDING, &w, &unopened, &y).0, "a changed challenge at {i} passed the gate");
+        let mut w = words.clone();
+        w[i][6].lo ^= 1 << 9;
+        assert!(!run(BINDING, &w, &unopened, &y).0, "a changed output share at {i} passed the gate");
+        let mut w = words.clone();
+        w[i][2].hi ^= 1;
+        assert!(!run(BINDING, &w, &unopened, &y).0, "a changed view digest at {i} passed the gate");
+    }
+    let mut y2 = y.clone();
+    let last = y2.len() - 33;
+    y2[last] ^= 1;
+    assert!(!run(BINDING, &words, &unopened, &y2).0, "a changed expected output passed the gate");
+}

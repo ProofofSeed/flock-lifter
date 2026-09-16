@@ -17,10 +17,28 @@ use flock_prover::{
 };
 use flock_prover::field::PHI_8_TABLE;
 use pofseed_flock_lift::chunk_rm::{pcs_params, statement_digest};
-use pofseed_flock_lift_block::program::Program;
+use pofseed_flock_lift_block::{
+    keccak::{N_ROUNDS, ROUND_CONSTANTS, STATE_BITS, state_idx, theta_rho_pi_preimage},
+    program::Program,
+};
 use pofseed_flock_lift_evm::{calldata::M_RANGE, evm::project};
 use pofseed_flock_lift_host::{HARDENED_OFFSET, bip32_vector_1};
 use pofseed_flock_lift_statement::HardenedChildCircuit;
+
+/// `RHO_OFFSETS[a][b] mod 64`, recovered from the preimage map: the preimage of `(x, y, 0)` with
+/// `a = (x + 3y) mod 5`, `b = x` starts at `(a, b, (64 − r) mod 64)`.
+fn rho_offset(a: usize, b: usize) -> u32 {
+    for x in 0..5 {
+        for y in 0..5 {
+            if (x + 3 * y) % 5 == a && x == b {
+                let first = theta_rho_pi_preimage(x, y, 0)[0];
+                let c = first / 25;
+                return ((64 - c) % 64) as u32;
+            }
+        }
+    }
+    unreachable!("every (a, b) has a preimage position");
+}
 
 fn hex(v: F128) -> String {
     return format!("0x{:032x}", ((v.hi as u128) << 64) | v.lo as u128);
@@ -80,6 +98,38 @@ fn main() {
         .collect();
     writeln!(s, "    /// Byte `b` spread to one bit per 32-bit slot: bit `t` of `b` at bit `32·t`.").unwrap();
     writeln!(s, "    bytes internal constant SPREAD8 = hex\"{spread}\";").unwrap();
+    let mut rc = [false; STATE_BITS];
+    let mut masks = Vec::new();
+    for r in 0..=N_ROUNDS {
+        let lanes: Vec<u64> = (0..25)
+            .map(|l| (0..64).filter(|&z| rc[state_idx(l % 5, l / 5, z)]).fold(0u64, |m, z| m | (1 << z)))
+            .collect();
+        masks.push(lanes);
+        if r == N_ROUNDS {
+            break;
+        }
+        let mut next = [false; STATE_BITS];
+        for s_out in 0..STATE_BITS {
+            let pre = theta_rho_pi_preimage(s_out % 25 % 5, (s_out % 25) / 5, s_out / 25);
+            next[s_out] = pre.iter().fold(false, |acc, &p| acc ^ rc[p]);
+        }
+        for z in 0..64 {
+            if (ROUND_CONSTANTS[r] >> z) & 1 == 1 {
+                next[state_idx(0, 0, z)] ^= true;
+            }
+        }
+        rc = next;
+    }
+    let rc_hex: String = masks.iter().flatten().map(|m| format!("{m:016x}")).collect();
+    writeln!(s, "    /// The round-constant state before round r of Keccak-f (r = 24 after the last), 25 eight-byte lane masks per round.").unwrap();
+    writeln!(s, "    bytes internal constant RC_MASKS = hex\"{rc_hex}\";").unwrap();
+    let mut rho = String::new();
+    let offsets: Vec<u32> = (0..25).map(|i| rho_offset(i / 5, i % 5)).collect();
+    for o in &offsets {
+        rho.push_str(&format!("{o:02x}"));
+    }
+    writeln!(s, "    /// Keccak's ρ offsets modulo 64, `RHO[5·a + b]`.").unwrap();
+    writeln!(s, "    bytes internal constant RHO = hex\"{rho}\";").unwrap();
     let (_, chain_code) = bip32_vector_1();
     let program = Program::new(&HardenedChildCircuit::public_only(chain_code, HARDENED_OFFSET));
     for m in M_RANGE {
