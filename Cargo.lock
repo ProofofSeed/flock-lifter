@@ -2093,6 +2093,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pofseed-flock-lift-optimistic"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "c-kzg",
+ "hex",
+ "pofseed-flock-lift",
+ "pofseed-flock-lift-block",
+ "pofseed-flock-lift-evm",
+ "pofseed-flock-lift-host",
+ "pofseed-flock-lift-statement",
+ "rayon",
+ "revm",
+ "sha2 0.10.9",
+ "zkboo-circuit-hash",
+]
+
+[[package]]
 name = "pofseed-flock-lift-statement"
 version = "0.1.0"
 dependencies = [
