@@ -69,6 +69,9 @@ library Constants {
     uint256 internal constant L_LIGERITO_0 = 0x02000000000000000000000000000022666c6f636b2d6c6967657269746f2d62;
     uint256 internal constant L_LIGERITO_1 = 0x617369732d663235362d73706c69742d76300000000000000000000000000000;
     uint256 internal constant L_LIGERITO_LEN = 64;
+    uint256 internal constant L_MATRIX_0 = 0x02000000000000000000000000000023706f66736565642d666c6f636b2d6c69;
+    uint256 internal constant L_MATRIX_1 = 0x66742d636f6d6d69747465642d6d617472697800000000000000000000000000;
+    uint256 internal constant L_MATRIX_LEN = 64;
 
     /// Entry `i` of a table of sixteen-byte big-endian values.
     function at(bytes memory table, uint256 i) internal pure returns (uint256 v) {
@@ -77,9 +80,86 @@ library Constants {
         }
     }
 
-    /// The Ligerito schedule of a chunk committing `2^m` bits, under the `Fast` profile or,
-    /// with `slim`, the `Slim` one.
+    /// The Ligerito schedule of a commitment to `2^m` bits — a chunk, or the committed entry
+    /// list at `m = 28` — under the `Fast` profile or, with `slim`, the `Slim` one.
     function ligerito(uint256 m, bool slim) internal pure returns (LigeritoConfig memory c) {
+        if (m == 28 && !slim) {
+            c.steps = 4;
+            c.initialK = 4;
+            c.logInvRates = new uint256[](5);
+            c.logInvRates[0] = 1;
+            c.logInvRates[1] = 3;
+            c.logInvRates[2] = 5;
+            c.logInvRates[3] = 7;
+            c.logInvRates[4] = 9;
+            c.recursiveKs = new uint256[](4);
+            c.recursiveKs[0] = 4;
+            c.recursiveKs[1] = 4;
+            c.recursiveKs[2] = 4;
+            c.recursiveKs[3] = 4;
+            c.queries = new uint256[](5);
+            c.queries[0] = 244;
+            c.queries[1] = 79;
+            c.queries[2] = 48;
+            c.queries[3] = 35;
+            c.queries[4] = 29;
+            c.grindingBits = new uint256[](5);
+            c.grindingBits[0] = 16;
+            c.grindingBits[1] = 16;
+            c.grindingBits[2] = 16;
+            c.grindingBits[3] = 16;
+            c.grindingBits[4] = 16;
+            c.claimBits = new uint256[](5);
+            c.claimBits[0] = 6;
+            c.claimBits[1] = 7;
+            c.claimBits[2] = 8;
+            c.claimBits[3] = 9;
+            c.claimBits[4] = 10;
+            c.consistencyBits = new uint256[](5);
+            c.consistencyBits[0] = 9;
+            c.consistencyBits[1] = 9;
+            c.consistencyBits[2] = 10;
+            c.consistencyBits[3] = 11;
+            c.consistencyBits[4] = 12;
+            c.oodSamples = new uint256[](5);
+            c.oodSamples[0] = 1;
+            c.oodSamples[1] = 2;
+            c.oodSamples[2] = 2;
+            c.oodSamples[3] = 2;
+            c.oodSamples[4] = 2;
+            c.logBlockLens = new uint256[](5);
+            c.depths = new uint256[][](5);
+            c.logBlockLens[0] = 18;
+            c.depths[0] = new uint256[](5);
+            c.depths[0][0] = 7;
+            c.depths[0][1] = 6;
+            c.depths[0][2] = 5;
+            c.depths[0][3] = 4;
+            c.depths[0][4] = 2;
+            c.logBlockLens[1] = 17;
+            c.depths[1] = new uint256[](5);
+            c.depths[1][0] = 6;
+            c.depths[1][1] = 3;
+            c.depths[1][2] = 2;
+            c.depths[1][3] = 1;
+            c.depths[1][4] = 0;
+            c.logBlockLens[2] = 16;
+            c.depths[2] = new uint256[](2);
+            c.depths[2][0] = 5;
+            c.depths[2][1] = 4;
+            c.logBlockLens[3] = 15;
+            c.depths[3] = new uint256[](3);
+            c.depths[3][0] = 5;
+            c.depths[3][1] = 1;
+            c.depths[3][2] = 0;
+            c.logBlockLens[4] = 14;
+            c.depths[4] = new uint256[](4);
+            c.depths[4][0] = 4;
+            c.depths[4][1] = 3;
+            c.depths[4][2] = 2;
+            c.depths[4][3] = 0;
+            return c;
+        }
         if (m == 31 && !slim) {
             c.steps = 5;
             c.initialK = 6;
@@ -551,6 +631,82 @@ library Constants {
             c.depths[6][3] = 0;
             return c;
         }
+        if (m == 28 && slim) {
+            c.steps = 4;
+            c.initialK = 4;
+            c.logInvRates = new uint256[](5);
+            c.logInvRates[0] = 2;
+            c.logInvRates[1] = 4;
+            c.logInvRates[2] = 6;
+            c.logInvRates[3] = 8;
+            c.logInvRates[4] = 10;
+            c.recursiveKs = new uint256[](4);
+            c.recursiveKs[0] = 4;
+            c.recursiveKs[1] = 4;
+            c.recursiveKs[2] = 4;
+            c.recursiveKs[3] = 4;
+            c.queries = new uint256[](5);
+            c.queries[0] = 119;
+            c.queries[1] = 60;
+            c.queries[2] = 41;
+            c.queries[3] = 32;
+            c.queries[4] = 27;
+            c.grindingBits = new uint256[](5);
+            c.grindingBits[0] = 16;
+            c.grindingBits[1] = 16;
+            c.grindingBits[2] = 16;
+            c.grindingBits[3] = 16;
+            c.grindingBits[4] = 16;
+            c.claimBits = new uint256[](5);
+            c.claimBits[0] = 6;
+            c.claimBits[1] = 7;
+            c.claimBits[2] = 8;
+            c.claimBits[3] = 9;
+            c.claimBits[4] = 10;
+            c.consistencyBits = new uint256[](5);
+            c.consistencyBits[0] = 9;
+            c.consistencyBits[1] = 10;
+            c.consistencyBits[2] = 11;
+            c.consistencyBits[3] = 11;
+            c.consistencyBits[4] = 12;
+            c.oodSamples = new uint256[](5);
+            c.oodSamples[0] = 1;
+            c.oodSamples[1] = 2;
+            c.oodSamples[2] = 2;
+            c.oodSamples[3] = 2;
+            c.oodSamples[4] = 2;
+            c.logBlockLens = new uint256[](5);
+            c.depths = new uint256[][](5);
+            c.logBlockLens[0] = 19;
+            c.depths[0] = new uint256[](6);
+            c.depths[0][0] = 6;
+            c.depths[0][1] = 5;
+            c.depths[0][2] = 4;
+            c.depths[0][3] = 2;
+            c.depths[0][4] = 1;
+            c.depths[0][5] = 0;
+            c.logBlockLens[1] = 18;
+            c.depths[1] = new uint256[](4);
+            c.depths[1][0] = 5;
+            c.depths[1][1] = 4;
+            c.depths[1][2] = 3;
+            c.depths[1][3] = 2;
+            c.logBlockLens[2] = 17;
+            c.depths[2] = new uint256[](3);
+            c.depths[2][0] = 5;
+            c.depths[2][1] = 3;
+            c.depths[2][2] = 0;
+            c.logBlockLens[3] = 16;
+            c.depths[3] = new uint256[](1);
+            c.depths[3][0] = 5;
+            c.logBlockLens[4] = 15;
+            c.depths[4] = new uint256[](4);
+            c.depths[4][0] = 4;
+            c.depths[4][1] = 3;
+            c.depths[4][2] = 1;
+            c.depths[4][3] = 0;
+            return c;
+        }
         if (m == 31 && slim) {
             c.steps = 5;
             c.initialK = 6;
@@ -1010,6 +1166,6 @@ library Constants {
             c.depths[6][2] = 1;
             return c;
         }
-        revert("unsupported chunk size");
+        revert("unsupported commitment size");
     }
 }

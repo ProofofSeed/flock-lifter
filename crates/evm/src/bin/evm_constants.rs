@@ -22,7 +22,10 @@ use pofseed_flock_lift_block::{
     keccak::{N_ROUNDS, ROUND_CONSTANTS, STATE_BITS, state_idx, theta_rho_pi_preimage},
     program::Program,
 };
-use pofseed_flock_lift_evm::{calldata::M_RANGE, evm::project};
+use pofseed_flock_lift_evm::{
+    calldata::{M_RANGE, MATRIX_M},
+    evm::project,
+};
 use pofseed_flock_lift_host::{HARDENED_OFFSET, bip32_vector_1};
 use pofseed_flock_lift_statement::HardenedChildCircuit;
 
@@ -157,13 +160,14 @@ fn main() {
         ("L_OPEN", b"flock-pcs-open-batch-v0"),
         ("L_RING", b"flock-ring-switch-v0"),
         ("L_LIGERITO", b"flock-ligerito-basis-f256-split-v0"),
+        ("L_MATRIX", b"pofseed-flock-lift-committed-matrix"),
     ] {
         s.push_str(&label(name, bytes));
     }
     s.push_str("\n    /// Entry `i` of a table of sixteen-byte big-endian values.\n    function at(bytes memory table, uint256 i) internal pure returns (uint256 v) {\n        assembly (\"memory-safe\") {\n            v := shr(128, mload(add(add(table, 32), mul(i, 16))))\n        }\n    }\n\n");
-    s.push_str("    /// The Ligerito schedule of a chunk committing `2^m` bits, under the `Fast` profile or,\n    /// with `slim`, the `Slim` one.\n    function ligerito(uint256 m, bool slim) internal pure returns (LigeritoConfig memory c) {\n");
+    s.push_str("    /// The Ligerito schedule of a commitment to `2^m` bits — a chunk, or the committed entry\n    /// list at `m = 28` — under the `Fast` profile or, with `slim`, the `Slim` one.\n    function ligerito(uint256 m, bool slim) internal pure returns (LigeritoConfig memory c) {\n");
     for (slim, profile) in [(false, LigeritoProfile::Fast), (true, LigeritoProfile::Slim)] {
-    for m in M_RANGE {
+    for m in std::iter::once(MATRIX_M).chain(M_RANGE) {
         let cfg = pcs_params_for(m, profile).ligerito_verifier_config().expect("registered configuration");
         writeln!(s, "        if (m == {m} && {}slim) {{", if slim { "" } else { "!" }).unwrap();
         writeln!(s, "            c.steps = {};", cfg.recursive_steps).unwrap();
@@ -197,7 +201,7 @@ fn main() {
         s.push_str("            return c;\n        }\n");
     }
     }
-    s.push_str("        revert(\"unsupported chunk size\");\n    }\n}\n");
+    s.push_str("        revert(\"unsupported commitment size\");\n    }\n}\n");
     let path = project().join("src/Constants.sol");
     std::fs::write(&path, s).expect("write constants");
     println!("wrote {}", path.display());

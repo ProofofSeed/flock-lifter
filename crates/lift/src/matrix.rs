@@ -37,42 +37,45 @@ use serde::{Deserialize, Serialize};
 use crate::chunk_rm::pcs_params;
 
 /// Lookups an entry makes.
-const LOOKUPS: usize = LOOKUP_BITS.len();
+pub const LOOKUPS: usize = LOOKUP_BITS.len();
 
 /// Bit position of each lookup's address in a packed entry.
-const OFFSETS: [usize; LOOKUPS] = [0, 1, 9, 17, 23, 31, 39, 45];
+pub const OFFSETS: [usize; LOOKUPS] = [0, 1, 9, 17, 23, 31, 39, 45];
 
 /// Address bits of all lookups together.
-const ADDRESS_BITS: usize = 59;
+pub const ADDRESS_BITS: usize = 59;
 
 /// Degree of the main sumcheck.
-const MAIN_DEGREE: usize = LOOKUPS;
+pub const MAIN_DEGREE: usize = LOOKUPS;
 
 /// Degree of the count sumcheck: the `eq` factor and the widest address.
-const COUNT_DEGREE: usize = 1 + 14;
+pub const COUNT_DEGREE: usize = 1 + 14;
 
-/// Grinding bits of the claim batching, of each main round, of the count points, of each count
-/// round, and of the opening's skip point.
-const MU_BITS: u32 = 2;
-const MAIN_BITS: u32 = 3;
-const LOOKUP_POINT_BITS: u32 = 5;
-const COUNT_BITS: u32 = 4;
-const ZETA_BITS: u32 = 6;
+/// Grinding bits of the claim batching.
+pub const MU_BITS: u32 = 2;
+/// Grinding bits of each main sumcheck round.
+pub const MAIN_BITS: u32 = 3;
+/// Grinding bits of the count points.
+pub const LOOKUP_POINT_BITS: u32 = 5;
+/// Grinding bits of each count sumcheck round.
+pub const COUNT_BITS: u32 = 4;
+/// Grinding bits of the opening's skip point.
+pub const ZETA_BITS: u32 = 6;
 
 /// Counts a lookup sends: all its addresses, except that the prefix table sends only the
 /// `P_COLS` run ends of each of its `P_ROWS` rows, the others being unread.
-fn addresses(l: usize) -> usize {
+pub fn addresses(l: usize) -> usize {
     return if l == LOOKUPS - 1 { P_ROWS * P_COLS } else { 1 << LOOKUP_BITS[l] };
 }
 
 /// The address of the `i`-th count lookup `l` sends.
-fn sent_address(l: usize, i: usize) -> usize {
+pub fn sent_address(l: usize, i: usize) -> usize {
     return if l == LOOKUPS - 1 { (i / P_COLS) * P_STRIDE + i % P_COLS } else { i };
 }
 
 /// Entry-index bits a list is padded to at least, so that its commitment has a registered
 /// Ligerito configuration.
-const MIN_LOG_LEN: usize = 22;
+pub const MIN_LOG_LEN: usize = 22;
 
 /// The per-statement proving key: the padded entry list and its commitment.
 pub struct MatrixKey {
@@ -193,7 +196,7 @@ impl ExplicitClaim {
     }
 }
 
-fn observe_claims<Ch: Challenger>(ch: &mut Ch, claims: &[ExplicitClaim]) {
+pub fn observe_claims<Ch: Challenger>(ch: &mut Ch, claims: &[ExplicitClaim]) {
     ch.observe_label(b"pofseed-flock-lift-committed-matrix");
     ch.observe_bytes(&(claims.len() as u64).to_le_bytes());
     for c in claims {
@@ -206,7 +209,7 @@ fn observe_claims<Ch: Challenger>(ch: &mut Ch, claims: &[ExplicitClaim]) {
     }
 }
 
-fn powers(x: F128, n: usize) -> Vec<F128> {
+pub fn powers(x: F128, n: usize) -> Vec<F128> {
     return (0..n)
         .scan(F128::ONE, |p, _| {
             let v = *p;
@@ -229,13 +232,13 @@ fn product(factors: impl Iterator<Item = (F128, F128)>, out: &mut Vec<F128>) {
     }
 }
 
-fn horner(coeffs: &[F128], x: F128) -> F128 {
+pub fn horner(coeffs: &[F128], x: F128) -> F128 {
     return coeffs.iter().rev().fold(F128::ZERO, |acc, &c| acc * x + c);
 }
 
 /// The full coefficients from a round message and the claim it must meet: `g(0) + g(1)` is the
 /// sum of the coefficients from degree 1 up, so the degree-1 coefficient is implied.
-fn expand(message: &[F128], claim: F128) -> Vec<F128> {
+pub fn expand(message: &[F128], claim: F128) -> Vec<F128> {
     let mut c = Vec::with_capacity(message.len() + 1);
     c.push(message[0]);
     let higher = message[1..].iter().fold(F128::ZERO, |a, &b| a + b);
@@ -460,7 +463,7 @@ fn prove_inner<Ch: Challenger>(
 }
 
 /// `Σ_c w_c·Π_l Σ_a T_{c,l}[a]·ĉ_l[a]`.
-fn main_expected(tables: &[Tables], weights: &[F128], counts: &[F128]) -> F128 {
+pub fn main_expected(tables: &[Tables], weights: &[F128], counts: &[F128]) -> F128 {
     let mut expected = F128::ZERO;
     for (t, &w) in tables.iter().zip(weights) {
         let mut term = w;
@@ -476,7 +479,7 @@ fn main_expected(tables: &[Tables], weights: &[F128], counts: &[F128]) -> F128 {
 }
 
 /// `Σ_l γ^l·Π_i (1 + r_{l,i} + b_{l,i})`.
-fn count_sum(gammas: &[F128], points: &[Vec<F128>], bits: &[F128]) -> F128 {
+pub fn count_sum(gammas: &[F128], points: &[Vec<F128>], bits: &[F128]) -> F128 {
     let mut sum = F128::ZERO;
     for l in 0..LOOKUPS {
         let mut prod = gammas[l];
@@ -489,7 +492,7 @@ fn count_sum(gammas: &[F128], points: &[Vec<F128>], bits: &[F128]) -> F128 {
 }
 
 /// `Σ_l γ^l·Σ_a eq(r_l, a)·ĉ_l[a]`.
-fn count_claim(counts: &[F128], gammas: &[F128], points: &[Vec<F128>]) -> F128 {
+pub fn count_claim(counts: &[F128], gammas: &[F128], points: &[Vec<F128>]) -> F128 {
     let mut at = 0;
     let mut acc = F128::ZERO;
     for l in 0..LOOKUPS {

@@ -26,9 +26,14 @@ library Transcript {
 
     /// A transcript under a domain tag held in memory.
     function createFromMemory(bytes memory domain) internal pure returns (uint256 tr) {
+        return createFromMemorySized(domain, CAPACITY);
+    }
+
+    /// A transcript under a domain tag held in memory, with room for `capacity` pending bytes.
+    function createFromMemorySized(bytes memory domain, uint256 capacity) internal pure returns (uint256 tr) {
         assembly ("memory-safe") {
             tr := mload(0x40)
-            mstore(0x40, add(tr, add(CAPACITY, 128)))
+            mstore(0x40, add(tr, add(capacity, 128)))
             mstore(tr, 0)
             mstore(add(tr, 0x20), 0)
         }

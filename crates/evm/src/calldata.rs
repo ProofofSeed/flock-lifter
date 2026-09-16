@@ -18,6 +18,7 @@ use flock_prover::{
 use pofseed_flock_lift::{
     chunk_rm::{ChunkProofRm, pcs_params},
     lift::LiftedProof,
+    matrix::{ADDRESS_BITS, COUNT_DEGREE, MAIN_DEGREE, MatrixCommitment, MatrixProof},
 };
 
 /// Log-size of a response block.
@@ -25,6 +26,9 @@ pub const K_LOG: usize = 28;
 
 /// Chunk sizes, in committed variables, the calldata format covers.
 pub const M_RANGE: core::ops::RangeInclusive<usize> = 31..=35;
+
+/// Committed bits of a statement's entry list.
+pub const MATRIX_M: usize = pofseed_flock_lift::matrix::MIN_LOG_LEN + 6;
 
 /// An appending calldata writer.
 #[derive(Default)]
@@ -222,6 +226,39 @@ pub fn encode_chunk(chunk: &ChunkProofRm, rows: usize) -> Vec<u8> {
     }
     assert_eq!(op.batching_nonces.len(), 1);
     w.nonce(op.batching_nonces[0]);
+    ligerito(&mut w, m, &op.ligerito);
+    return w.bytes;
+}
+
+/// Encodes a matrix proof: the commitment's cap, the main sumcheck, the counts, the count
+/// sumcheck, the address bits and the opening.
+pub fn encode_matrix(proof: &MatrixProof, key: &MatrixCommitment) -> Vec<u8> {
+    let m = key.log_len + 6;
+    assert_eq!(m, MATRIX_M, "entry lists commit at one size");
+    assert!(proof.opening.ligerito.initial_cap == key.commitment.cap, "initial cap");
+    let mut w = Writer::default();
+    key.commitment.cap.iter().for_each(|h| w.hash(h));
+    w.nonce(proof.mu_nonce);
+    for (msg, nonce) in &proof.main {
+        assert_eq!(msg.len(), MAIN_DEGREE);
+        msg.iter().for_each(|&v| w.f128(v));
+        w.nonce(*nonce);
+    }
+    proof.counts.iter().for_each(|&v| w.f128(v));
+    w.nonce(proof.lookup_nonce);
+    for (msg, nonce) in &proof.count {
+        assert_eq!(msg.len(), COUNT_DEGREE);
+        msg.iter().for_each(|&v| w.f128(v));
+        w.nonce(*nonce);
+    }
+    assert_eq!(proof.bits.len(), ADDRESS_BITS);
+    proof.bits.iter().for_each(|&v| w.f128(v));
+    w.nonce(proof.zeta_nonce);
+    let op = &proof.opening;
+    assert_eq!(op.ring_switches.len(), 1);
+    op.ring_switches[0].s_hat_v.iter().for_each(|&v| w.f128(v));
+    w.nonce(op.ring_switches[0].grinding_nonce);
+    assert!(op.batching_nonces.is_empty(), "a single claim is batched without grinding");
     ligerito(&mut w, m, &op.ligerito);
     return w.bytes;
 }
