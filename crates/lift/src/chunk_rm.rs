@@ -424,7 +424,7 @@ fn verify_lincheck_structured<Ch: Challenger>(
     let r_inner_rest = r_inner_rest;
     let skip = x_ab.z_skip.weights(k_skip);
     let pair = |comb: Vec<F128>| comb.iter().zip(&proof.z_partial).fold(F128::ZERO, |acc, (&c, &z)| acc + c * z);
-    let structured = pair(program.comb_structured(alpha, beta, &skip, &x_ab.x_inner_rest, &r_inner_rest));
+    let structured = program.structured_value(alpha, beta, &skip, &proof.z_partial, &x_ab.x_inner_rest, &r_inner_rest);
     let explicit = ExplicitClaim {
         alpha,
         skip,

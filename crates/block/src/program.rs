@@ -479,6 +479,37 @@ impl Program {
         return out;
     }
 
+    /// `Σ_s z[s]·comb_structured[s]`: the structured part of a matrix claim paired with the
+    /// collapsed witness `z`, computed from the Keccak-f fold's rotation-invariant form and closed
+    /// sums over the sub-block range.
+    pub fn structured_value(
+        &self,
+        alpha: F128,
+        beta: F128,
+        skip: &[F128],
+        z: &[F128],
+        x_inner_rest: &[F128],
+        r_inner_rest: &[F128],
+    ) -> F128 {
+        assert!(skip.len() == 64 && z.len() == 64, "the structured value assumes a 6-bit skip");
+        let lo = SUB_LOG - 6;
+        let row = build_eq_table(&x_inner_rest[..lo]);
+        let col = build_eq_table(&r_inner_rest[..lo]);
+        let (value, konst) = keccak::fold_shared_paired(alpha, skip, &row, z, &col);
+        let (x_hi, r_hi) = (&x_inner_rest[lo..], &r_inner_rest[lo..]);
+        let (first, subs) = (self.geometry.head_subs(), self.geometry.keccak_subs());
+        let both: Vec<(F128, F128)> = x_hi
+            .iter()
+            .zip(r_hi)
+            .map(|(&a, &b)| ((F128::ONE + a) * (F128::ONE + b), a * b))
+            .collect();
+        let rows: Vec<(F128, F128)> = x_hi.iter().map(|&a| (F128::ONE + a, a)).collect();
+        let weight = product_range_sum(&both, first, first + subs);
+        let weight_konst = product_range_sum(&rows, first, first + subs);
+        let eq_const = col[0] * r_hi.iter().fold(F128::ONE, |acc, &b| acc * (F128::ONE + b));
+        return weight * value + z[CONST as usize & 63] * eq_const * (weight_konst * konst + beta);
+    }
+
     /// The part of [`Self::comb_partial`] that the explicit rows contribute.
     pub fn comb_explicit(&self, alpha: F128, skip_weights: &[F128], x_inner_rest: &[F128], r_inner_rest: &[F128]) -> Vec<F128> {
         let n_skip = skip_weights.len();
@@ -552,6 +583,37 @@ impl Program {
             .map(|c| F128::new(z[2 * c], z[2 * c + 1]))
             .collect();
     }
+}
+
+/// `Σ_{a ≤ j < b} Π_i g_i(bit i of j)` for `g_i(0), g_i(1)` given as pairs, in time linear in the
+/// number of bits.
+pub fn product_range_sum(g: &[(F128, F128)], a: usize, b: usize) -> F128 {
+    assert!(a <= b && b <= 1 << g.len());
+    return prefix_product_sum(g, b) + prefix_product_sum(g, a);
+}
+
+/// `Σ_{j < n} Π_i g_i(bit i of j)`.
+fn prefix_product_sum(g: &[(F128, F128)], n: usize) -> F128 {
+    let k = g.len();
+    if n == 1 << k {
+        return g.iter().fold(F128::ONE, |acc, &(p, q)| acc * (p + q));
+    }
+    let mut full = vec![F128::ONE; k + 1];
+    for i in 0..k {
+        full[i + 1] = full[i] * (g[i].0 + g[i].1);
+    }
+    let mut acc = F128::ZERO;
+    let mut high = F128::ONE;
+    for i in (0..k).rev() {
+        let bit = (n >> i) & 1;
+        if bit == 1 {
+            acc += high * g[i].0 * full[i];
+            high *= g[i].1;
+        } else {
+            high *= g[i].0;
+        }
+    }
+    return acc;
 }
 
 impl LincheckCircuit for Program {

@@ -125,6 +125,12 @@ fn check_discharge<C: Circuit>(build: fn(&C) -> Program, circuit: &C, k_skip: us
         let r: Vec<F128> = (0..rest).map(|_| rng.f128()).collect();
         let structured = program.comb_partial(alpha, beta, &skip, &x, &r);
         assert_eq!(structured, dense_comb_partial(&program, alpha, beta, &skip, &x, &r));
+        if k_skip == 6 {
+            let z: Vec<F128> = (0..64).map(|_| rng.f128()).collect();
+            let pair = |c: Vec<F128>| c.iter().zip(&z).fold(F128::ZERO, |acc, (&a, &b)| acc + a * b);
+            let expected = pair(program.comb_structured(alpha, beta, &skip, &x, &r));
+            assert_eq!(program.structured_value(alpha, beta, &skip, &z, &x, &r), expected, "paired structured part");
+        }
         assert!(structured.iter().any(|&v| v != F128::ZERO), "the discharge is not trivially zero");
     }
 }

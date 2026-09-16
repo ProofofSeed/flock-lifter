@@ -312,6 +312,89 @@ pub fn fold_shared(alpha: F128, eq: &[F128], comb: &mut [F128]) -> F128 {
     return konst;
 }
 
+/// Word of χ output lane `lane` of round `r` in a sub-block.
+pub fn t_word(r: usize, lane: usize) -> usize {
+    return T_BASE / 64 + 25 * r + lane;
+}
+
+/// `K[d] = Σ_u skip[u]·z[(u + d) mod 64]`: how a unit kernel at shift `d` pairs with the row bit
+/// weights `skip` and the column bit weights `z`.
+pub fn shift_pairing(skip: &[F128], z: &[F128]) -> Vec<F128> {
+    return (0..64)
+        .map(|d| (0..64).fold(F128::ZERO, |acc, u| acc + skip[u] * z[(u + d) % 64]))
+        .collect();
+}
+
+/// The shared fold of [`fold_shared`] under local row weights `skip[p & 63]·row[p >> 6]`, paired
+/// with local column weights `col[c >> 6]·z[c & 63]`, and its constant-wire part, computed in
+/// rotation-invariant form.
+///
+/// Every map in the fold commutes with rotating all lanes together, so the fold of such row
+/// weights is, lane by lane, the row bit weights convolved with a kernel. The kernel is the fold
+/// of the row word weights alone, placed at bit 0 of each lane, which only reaches the positions
+/// its few inputs spread to; the pairing with the columns is then the kernel paired with
+/// [`shift_pairing`]. The round constants enter the fold's constant-wire part exactly where the
+/// χ outputs of their round enter the columns, so that part is the round constants' bits paired
+/// with the same kernels.
+pub fn fold_shared_paired(alpha: F128, skip: &[F128], row: &[F128], z: &[F128], col: &[F128]) -> (F128, F128) {
+    let lanes = STATE_BITS / 64;
+    let pair = shift_pairing(skip, z);
+    let lane_dot = |v: &[F128], lane: usize, w: &[F128]| (0..64).fold(F128::ZERO, |acc, d| acc + v[lane + 25 * d] * w[d]);
+    let mut chi = vec![vec![F128::ZERO; STATE_BITS]; N_ROUNDS];
+    let mut weights = F128::ZERO;
+    for r in 0..N_ROUNDS {
+        for y in 0..5 {
+            for x in 0..5 {
+                let e = row[t_word(r, x + 5 * y)];
+                weights += e;
+                let ae = alpha * e;
+                for &s in &theta_rho_pi_preimage((x + 1) % 5, y, 0) {
+                    chi[r][s] += ae;
+                }
+                for &s in &theta_rho_pi_preimage((x + 2) % 5, y, 0) {
+                    chi[r][s] += e;
+                }
+            }
+        }
+    }
+    let mut kernel = vec![F128::ZERO; STATE_BITS];
+    let mut pins = F128::ZERO;
+    for lane in 0..lanes {
+        let e = row[STATE24_BASE / 64 + lane];
+        kernel[lane] = alpha * e;
+        pins += e;
+    }
+    let skip_sum = skip.iter().fold(F128::ZERO, |a, &b| a + b);
+    let mut konst = skip_sum * (pins + alpha * weights);
+    let mut value = F128::ZERO;
+    let mut round_constant = |r: usize, kernel: &[F128], konst: &mut F128| {
+        let mut w = vec![F128::ZERO; 64];
+        for (d, wd) in w.iter_mut().enumerate() {
+            for c in 0..64 {
+                if (ROUND_CONSTANTS[r] >> c) & 1 == 1 {
+                    *wd += skip[(c + 64 - d) % 64];
+                }
+            }
+        }
+        *konst += lane_dot(kernel, 0, &w);
+    };
+    for r in (0..N_ROUNDS).rev() {
+        for lane in 0..lanes {
+            value += col[t_word(r, lane)] * lane_dot(&kernel, lane, &pair);
+        }
+        round_constant(r, &kernel, &mut konst);
+        let mut next = apply_phi_t(&kernel);
+        for (n, c) in next.iter_mut().zip(&chi[r]) {
+            *n += *c;
+        }
+        kernel = next;
+    }
+    for lane in 0..lanes {
+        value += col[STATE0_BASE / 64 + lane] * lane_dot(&kernel, lane, &pair);
+    }
+    return (value, konst);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,5 +538,20 @@ mod tests {
         }
         assert_eq!(konst, expected[CONST_BIT]);
         assert_eq!(&comb[..], &expected[..SUB_BITS]);
+    }
+
+    #[test]
+    fn paired_fold_matches_the_dense_fold() {
+        let mut rng = Rng(0x5eed_1234_abcd_0001);
+        let alpha = rng.f128();
+        let skip: Vec<F128> = (0..64).map(|_| rng.f128()).collect();
+        let z: Vec<F128> = (0..64).map(|_| rng.f128()).collect();
+        let row: Vec<F128> = (0..SUB_BITS / 64).map(|_| rng.f128()).collect();
+        let col: Vec<F128> = (0..SUB_BITS / 64).map(|_| rng.f128()).collect();
+        let eq: Vec<F128> = (0..SUB_BITS).map(|p| skip[p & 63] * row[p >> 6]).collect();
+        let mut comb = vec![F128::ZERO; SUB_BITS];
+        let konst = fold_shared(alpha, &eq, &mut comb);
+        let value = (0..SUB_BITS).fold(F128::ZERO, |acc, c| acc + comb[c] * col[c >> 6] * z[c & 63]);
+        assert_eq!(fold_shared_paired(alpha, &skip, &row, &z, &col), (value, konst));
     }
 }
