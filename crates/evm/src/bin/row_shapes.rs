@@ -2,9 +2,11 @@
 
 //! Measures how regular the block's explicit rows are: how many fall into periodic runs in which
 //! every column below the fixed head shifts by one per period, and how those runs align with
-//! the 64-bit word boundaries of the rows and columns.
+//! the 64-bit word boundaries of the rows and columns, and what the contract's discharge stream
+//! is left with once its row families are folded.
 
 use pofseed_flock_lift_block::program::Program;
+use pofseed_flock_lift_evm::stream::{ROW, records};
 use pofseed_flock_lift_host::{HARDENED_OFFSET, bip32_vector_1};
 use pofseed_flock_lift_statement::HardenedChildCircuit;
 
@@ -80,4 +82,13 @@ fn main() {
         println!("  period {k}: {rows} rows");
     }
     println!("head rows outside runs: {loose}, carrying {nnz_loose} nonzeros");
+    let recs = records(&program);
+    let rows: Vec<&Vec<u8>> = recs.iter().filter(|r| r[0] == ROW).collect();
+    let refs: usize = rows.iter().map(|r| (r.len() - 9) / 4).sum();
+    let bytes: usize = recs.iter().map(|r| r.len()).sum();
+    println!(
+        "stream: {} records, {} of them rows carrying {refs} column references, {bytes} bytes",
+        recs.len(),
+        rows.len()
+    );
 }
