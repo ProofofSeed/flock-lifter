@@ -46,8 +46,14 @@ impl Stream {
     pub fn digest(&self) -> [u8; 32] {
         let mut chain = [0u8; 32];
         for seg in &self.segments {
+            let mut hashed = [0u8; 32];
+            for piece in seg.chunks(32768) {
+                let mut buf = hashed.to_vec();
+                buf.extend_from_slice(piece);
+                hashed = keccak256(&buf).0;
+            }
             let mut buf = chain.to_vec();
-            buf.extend_from_slice(keccak256(seg).as_slice());
+            buf.extend_from_slice(&hashed);
             chain = keccak256(&buf).0;
         }
         return chain;

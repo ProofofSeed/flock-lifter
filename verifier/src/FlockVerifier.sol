@@ -62,7 +62,7 @@ contract FlockVerifier {
     function _verify(Ctx memory x) private returns (MatrixClaim memory mc) {
         Piop.observeWords(x.tr, x.wordsAt, x.live, x.nIo, x.nu);
         Meter.mark(1);
-        x.capLen = 1 << Constants.ligerito(x.m).depths[0][0];
+        x.capLen = 1 << Constants.ligerito(x.m, false).depths[0][0];
         uint256 p = x.capAt + 32 * x.capLen;
         Transcript.label(x.tr, Constants.L_R1CS_0, Constants.L_R1CS_1, Constants.L_R1CS_LEN);
         Transcript.header(x.tr, 5, 0, 32);
@@ -78,7 +78,7 @@ contract FlockVerifier {
         claims[1] = Claim(zc.z, zc.rRest, zc.c);
         claims[2] = Piop.ioClaim(x.tr, x.phi, x.wordsAt, x.live, x.nIo, x.nu);
         Meter.mark(4);
-        Opening.verify(x.tr, x.phi, p, x.end, x.m, x.capAt, x.capLen, claims);
+        Opening.verify(x.tr, x.phi, p, x.end, Constants.ligerito(x.m, false), x.m, x.capAt, x.capLen, claims);
         Meter.mark(5);
     }
 

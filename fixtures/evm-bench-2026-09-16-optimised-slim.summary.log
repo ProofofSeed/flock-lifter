@@ -1,0 +1,73 @@
+# evm-bench 219, optimised contracts, Slim Ligerito profile (POFSEED_LIGERITO_PROFILE=slim, rate 1/4); contracts as in evm-bench-2026-09-16-optimised.summary.log.
+# 2026-09-16, M4 Max, revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted; one process, quiet machine.
+# The lift was read from a cache proved earlier the same day by this binary: 16.50 s, 83.56 GB peak RSS for that whole process, while another single-threaded evm-bench was running, so that prove time is not a clean figure.
+# The discharge does not depend on the profile and matches the Fast run to the gas.
+# 'intrinsic' is 21,000 plus standard calldata pricing (4 per zero byte, 16 per nonzero); the EIP-7623 floor never binds here.
+
+block built in 0.61 s
+responses 219, chunks 2, lift calldata 807072 bytes
+FlockLift: initcode 87607 bytes, deployment 18833035 gas
+lift contract ran in 0.45 s
+chunk 1:
+  published words                      1.52 M
+  zerocheck                            1.44 M
+  lincheck                             0.92 M
+  published-word claim                13.81 M
+  ring switches                        6.35 M
+  Ligerito level 0 opening            23.59 M
+  Ligerito level 1 opening             3.88 M
+  Ligerito level 2 opening             2.78 M
+  Ligerito level 3 opening             2.17 M
+  Ligerito level 4 opening             1.90 M
+  Ligerito level 5 opening             1.71 M
+  Ligerito final opening               1.55 M
+  ring-switch residual               186.72 M
+  out-of-domain residual               4.69 M
+  consistency residual                79.42 M
+  final check                          0.00 M
+chunk 2:
+  published words                      2.01 M
+  zerocheck                            1.49 M
+  lincheck                             0.96 M
+  published-word claim                10.38 M
+  ring switches                        6.68 M
+  Ligerito level 0 opening            23.68 M
+  Ligerito level 1 opening             3.91 M
+  Ligerito level 2 opening             2.81 M
+  Ligerito level 3 opening             2.20 M
+  Ligerito level 4 opening             1.92 M
+  Ligerito level 5 opening             1.73 M
+  Ligerito final opening               1.57 M
+  ring-switch residual               188.95 M
+  out-of-domain residual               4.72 M
+  consistency residual                79.85 M
+  final check                          0.00 M
+  Fiat-Shamir gate                     2.04 M
+lift contract: 680.28 M total = 667.53 M execution + 12.75 M intrinsic (calldata)
+FlockDischarge deployed; stream of 238409152 bytes in 1 segments, 36117 head words (0.7 s to build)
+discharge ran in 107.3 s
+discharge, 2 claims:
+  Keccak-f sub-blocks               1037.24 M
+  stream                          153311.00 M execution + 3112.35 M calldata
+    of it, per-call tables          1783.58 M
+  final check                         50.95 M
+verification in all: 158192.06 M gas, 155066.72 M of it execution
+at least 9429 transactions under the 16777216-gas cap
+      109.20 real       110.21 user         0.54 sys
+          1806516224  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              176671  page reclaims
+                 111  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  15  signals received
+                  50  voluntary context switches
+                5060  involuntary context switches
+       1889187229095  instructions retired
+        492414640687  cycles elapsed
+          1285556072  peak memory footprint

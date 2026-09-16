@@ -16,7 +16,8 @@ use flock_prover::{
     },
 };
 use flock_prover::field::PHI_8_TABLE;
-use pofseed_flock_lift::chunk_rm::{pcs_params, statement_digest};
+use flock_prover::pcs::ligerito::LigeritoProfile;
+use pofseed_flock_lift::chunk_rm::{pcs_params_for, statement_digest};
 use pofseed_flock_lift_block::{
     keccak::{N_ROUNDS, ROUND_CONSTANTS, STATE_BITS, state_idx, theta_rho_pi_preimage},
     program::Program,
@@ -160,10 +161,11 @@ fn main() {
         s.push_str(&label(name, bytes));
     }
     s.push_str("\n    /// Entry `i` of a table of sixteen-byte big-endian values.\n    function at(bytes memory table, uint256 i) internal pure returns (uint256 v) {\n        assembly (\"memory-safe\") {\n            v := shr(128, mload(add(add(table, 32), mul(i, 16))))\n        }\n    }\n\n");
-    s.push_str("    /// The Ligerito schedule of a chunk committing `2^m` bits.\n    function ligerito(uint256 m) internal pure returns (LigeritoConfig memory c) {\n");
+    s.push_str("    /// The Ligerito schedule of a chunk committing `2^m` bits, under the `Fast` profile or,\n    /// with `slim`, the `Slim` one.\n    function ligerito(uint256 m, bool slim) internal pure returns (LigeritoConfig memory c) {\n");
+    for (slim, profile) in [(false, LigeritoProfile::Fast), (true, LigeritoProfile::Slim)] {
     for m in M_RANGE {
-        let cfg = pcs_params(m).ligerito_verifier_config().expect("registered configuration");
-        writeln!(s, "        if (m == {m}) {{").unwrap();
+        let cfg = pcs_params_for(m, profile).ligerito_verifier_config().expect("registered configuration");
+        writeln!(s, "        if (m == {m} && {}slim) {{", if slim { "" } else { "!" }).unwrap();
         writeln!(s, "            c.steps = {};", cfg.recursive_steps).unwrap();
         writeln!(s, "            c.initialK = {};", cfg.initial_k).unwrap();
         for (field, v) in [
@@ -193,6 +195,7 @@ fn main() {
             let _ = list(&l.summand_depths);
         }
         s.push_str("            return c;\n        }\n");
+    }
     }
     s.push_str("        revert(\"unsupported chunk size\");\n    }\n}\n");
     let path = project().join("src/Constants.sol");

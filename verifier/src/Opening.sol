@@ -91,6 +91,7 @@ library Opening {
         bytes memory phi,
         uint256 p,
         uint256 end,
+        LigeritoConfig memory cfg,
         uint256 m,
         uint256 capAt,
         uint256 capLen,
@@ -121,7 +122,7 @@ library Opening {
         st.target = target;
         st.capAt = capAt;
         st.capLen = capLen;
-        ligerito(st, Constants.ligerito(m), sw);
+        ligerito(st, cfg, sw);
     }
 
     /// One claim's ring switch: checks the claim against the sliced message at `p` and returns
@@ -444,9 +445,9 @@ library Opening {
         }
         addOods(st, residual, original, ext);
         Meter.mark(22);
-        addConsistency(st, residual, ext);
+        uint256 got = splitDot(residual, yrAt) ^ consistencyDot(st, weightsOf(yrAt, ext), ext);
         Meter.mark(23);
-        if (splitDot(residual, yrAt) != st.claim) revert Residual();
+        if (got != st.claim) revert Residual();
     }
 
     function addOods(LigeritoState memory st, uint256[] memory residual, uint256[] memory original, uint256 ext)
@@ -471,15 +472,21 @@ library Opening {
         }
     }
 
-    function addConsistency(LigeritoState memory st, uint256[] memory residual, uint256 ext) internal pure {
+    /// `μ_y = yr[2y] + u·yr[2y+1]`: the final check's weight on residual point `y`.
+    function weightsOf(uint256 yrAt, uint256 ext) internal pure returns (uint256[] memory mu) {
+        mu = new uint256[](1 << ext);
+        for (uint256 y = 0; y < mu.length; ++y) {
+            mu[y] = (Calldata.f128(yrAt + 32 * y + 16) << 128) | Calldata.f128(yrAt + 32 * y);
+        }
+    }
+
+    /// `Σ_y μ_y·C[y]` for `C` the consistency part of the residual.
+    function consistencyDot(LigeritoState memory st, uint256[] memory mu, uint256 ext) internal pure returns (uint256 got) {
         for (uint256 c = 0; c < st.nCons; ++c) {
             Consistency memory cn = st.cons[c];
             uint256[] memory fixedPart = originalChallenges(st, cn.start, false);
-            uint256[] memory values = inducedBasis(cn.logCols, cn.queries, cn.alpha, fixedPart, ext);
-            uint256 scale = GF2.mul256By128(factorProduct(st, cn.start), cn.beta);
-            for (uint256 y = 0; y < residual.length; ++y) {
-                residual[y] ^= GF2.mul256(values[y], scale);
-            }
+            uint256 value = inducedBasis(cn.logCols, cn.queries, cn.alpha, fixedPart, ext, mu);
+            got ^= GF2.mul256(value, GF2.mul256By128(factorProduct(st, cn.start), cn.beta));
         }
     }
 
@@ -561,35 +568,56 @@ library Opening {
         }
     }
 
+    /// `Σ_y μ_y·B[y]` for `B` the basis a level's queried consistency induces at the residual
+    /// points: for each query, its prefix weight times the multilinear form in its suffix.
     function inducedBasis(
         uint256 logCols,
         uint256[] memory qs,
         uint256[] memory alpha,
         uint256[] memory fixedPart,
-        uint256 ext
-    ) internal pure returns (uint256[] memory out) {
+        uint256 ext,
+        uint256[] memory mu
+    ) internal pure returns (uint256 total) {
         uint256[] memory weights = GF2.eqTable(alpha);
         uint256 f = fixedPart.length;
-        out = new uint256[](1 << ext);
         uint256[] memory w = new uint256[](logCols);
+        uint256[] memory v = new uint256[](mu.length);
         bytes memory table = Constants.SUBSPACE;
         for (uint256 q = 0; q < qs.length; ++q) {
             _subspace(w, qs[q], table);
-            uint256 prefix = 1;
-            for (uint256 k = 0; k < f; ++k) {
-                prefix = GF2.mul256(prefix, 1 ^ GF2.mul256By128(fixedPart[k], 1 ^ w[k]));
-            }
-            prefix = GF2.mul256By128(prefix, weights[q]);
-            for (uint256 y = 0; y < out.length; ++y) {
-                uint256 tail = 1;
-                for (uint256 j = 0; j < ext; ++j) {
-                    if ((y >> j) & 1 == 1) {
-                        tail = GF2.mul(tail, w[f + j]);
-                    }
-                }
-                out[y] ^= GF2.mul256By128(prefix, tail);
+            total ^= GF2.mul256(_prefix(weights[q], fixedPart, w, f), _suffixForm(mu, v, w, f, ext));
+        }
+    }
+
+    /// `weight·Π_{k < f} (1 + fixed[k]·(1 + w[k]))`.
+    function _prefix(uint256 weight, uint256[] memory fixedPart, uint256[] memory w, uint256 f)
+        internal
+        pure
+        returns (uint256 prefix)
+    {
+        prefix = weight;
+        for (uint256 k = 0; k < f; ++k) {
+            prefix = GF2.mul256(prefix, 1 ^ GF2.mul256By128(fixedPart[k], 1 ^ w[k]));
+        }
+    }
+
+    /// `Σ_y μ_y·Π_{j ∈ y} w[f + j]`, by folding the top variable first.
+    function _suffixForm(uint256[] memory mu, uint256[] memory v, uint256[] memory w, uint256 f, uint256 ext)
+        internal
+        pure
+        returns (uint256)
+    {
+        for (uint256 y = 0; y < mu.length; ++y) {
+            v[y] = mu[y];
+        }
+        for (uint256 j = ext; j > 0; --j) {
+            uint256 half = 1 << (j - 1);
+            uint256 s = w[f + j - 1];
+            for (uint256 y = 0; y < half; ++y) {
+                v[y] ^= GF2.mul256By128(v[y + half], s);
             }
         }
+        return v[0];
     }
 
     /// `w[k] = s_k(q)/s_k(v_k)` for every `k`, from the table of the normalised subspace

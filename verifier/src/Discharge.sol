@@ -454,8 +454,13 @@ contract FlockDischarge {
             uint256 hashed;
             assembly ("memory-safe") {
                 let buf := mload(0x40)
-                calldatacopy(buf, at, len)
-                hashed := keccak256(buf, len)
+                for { let off := 0 } lt(off, len) { off := add(off, 32768) } {
+                    let piece := sub(len, off)
+                    if gt(piece, 32768) { piece := 32768 }
+                    mstore(buf, hashed)
+                    calldatacopy(add(buf, 32), add(at, off), piece)
+                    hashed := keccak256(buf, add(32, piece))
+                }
             }
             chainOut = keccak256(abi.encodePacked(chain, hashed));
         }
@@ -474,10 +479,11 @@ contract FlockDischarge {
     }
 
     function _records(Ctx[] memory ctx, uint256 at, uint256 end) internal view {
+        uint256[4] memory consts = [headWords, headSubs, subsPerSlot, prgBlocks];
         while (at < end) {
             uint256 tag = _byteAt(at);
             if (tag == 0) {
-                at = _rowRecord(ctx, at + 1);
+                at = _rowRecord(ctx, consts, at + 1);
             } else if (tag == 1) {
                 _identity(ctx, at + 1);
                 at += 9;
@@ -507,81 +513,166 @@ contract FlockDischarge {
     }
 
     /// One explicit row, for every claim.
-    function _rowRecord(Ctx[] memory ctx, uint256 at) internal view returns (uint256 next) {
-        uint256 col;
-        uint256 na;
-        uint256 nb;
+    function _rowRecord(Ctx[] memory ctx, uint256[4] memory consts, uint256 at) internal pure returns (uint256 next) {
         assembly ("memory-safe") {
-            let w := calldataload(at)
-            col := shr(224, w)
-            na := and(shr(208, w), 0xffff)
-            nb := and(shr(192, w), 0xffff)
+            function gmul(a, b) -> r {
+                let t := mload(0x40)
+                let a2 := shl(1, a)
+                let a3 := xor(a2, a)
+                let a4 := shl(2, a)
+                let a8 := shl(3, a)
+                let a12 := xor(a8, a4)
+                mstore(t, 0)
+                mstore(add(t, 0x20), a)
+                mstore(add(t, 0x40), a2)
+                mstore(add(t, 0x60), a3)
+                mstore(add(t, 0x80), a4)
+                mstore(add(t, 0xa0), xor(a4, a))
+                mstore(add(t, 0xc0), xor(a4, a2))
+                mstore(add(t, 0xe0), xor(a4, a3))
+                mstore(add(t, 0x100), a8)
+                mstore(add(t, 0x120), xor(a8, a))
+                mstore(add(t, 0x140), xor(a8, a2))
+                mstore(add(t, 0x160), xor(a8, a3))
+                mstore(add(t, 0x180), a12)
+                mstore(add(t, 0x1a0), xor(a12, a))
+                mstore(add(t, 0x1c0), xor(a12, a2))
+                mstore(add(t, 0x1e0), xor(a12, a3))
+                r := mload(add(t, shl(5, and(shr(124, b), 15))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(120, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(116, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(112, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(108, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(104, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(100, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(96, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(92, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(88, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(84, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(80, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(76, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(72, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(68, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(64, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(60, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(56, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(52, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(48, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(44, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(40, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(36, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(32, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(28, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(24, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(20, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(16, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(12, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(8, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(shr(4, b), 15)))))
+                r := xor(shl(4, r), mload(add(t, shl(5, and(b, 15)))))
+                let h := shr(128, r)
+                r := xor(and(r, 0xffffffffffffffffffffffffffffffff), xor(h, xor(shl(1, h), xor(shl(2, h), shl(7, h)))))
+                h := shr(128, r)
+                r := xor(and(r, 0xffffffffffffffffffffffffffffffff), xor(h, xor(shl(1, h), xor(shl(2, h), shl(7, h)))))
         }
-        next = at + 8 + 4 * (na + nb);
-        bool konstRow = nb == 1 && _colAt(at + 8 + 4 * na) == 0;
-        for (uint256 i = 0; i < ctx.length; ++i) {
-            Ctx memory c = ctx[i];
-            uint256 e = GF2.mul(_at(c.skip, col & 63), _rowWeight(c, col));
-            uint256 d = Tables.lookup(c.alphaTab, _gather(c, c.slotA, at + 8, na));
-            if (konstRow) {
-                c.konst ^= e;
-            } else if (nb > 0) {
-                d ^= _gather(c, c.slotB, at + 8 + 4 * na, nb);
+            function lookup(tab, mask) -> r {
+                r := mload(add(tab, shl(5, and(mask, 0xff))))
+                r := xor(r, mload(add(tab, shl(5, add(256, and(shr(8, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(512, and(shr(16, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(768, and(shr(24, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(1024, and(shr(32, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(1280, and(shr(40, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(1536, and(shr(48, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(1792, and(shr(56, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(2048, and(shr(64, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(2304, and(shr(72, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(2560, and(shr(80, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(2816, and(shr(88, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(3072, and(shr(96, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(3328, and(shr(104, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(3584, and(shr(112, mask), 0xff))))))
+                r := xor(r, mload(add(tab, shl(5, add(3840, and(shr(120, mask), 0xff))))))
             }
-            c.f ^= GF2.mul(e, d);
-        }
-    }
-
-    function _rowWeight(Ctx memory c, uint256 col) internal view returns (uint256) {
-        uint256 w = col >> 6;
-        if (w < headWords) return _at(c.rHead, w);
-        uint256 lo = w & 1023;
-        uint256 rel = (col >> 16) - headSubs;
-        uint256 within = rel % subsPerSlot;
-        if (within > prgBlocks && lo < 17) {
-            uint256 sponges = subsPerSlot - 1 - prgBlocks;
-            return _at(c.rSponge, ((rel / subsPerSlot) * sponges + within - 1 - prgBlocks) * 17 + lo);
-        }
-        return GF2.mul(_at(c.rowLo, lo), _at(c.rowHi, col >> 16));
-    }
-
-    function _colWeight(Ctx memory c, uint256 col) internal view returns (uint256) {
-        uint256 w = col >> 6;
-        if (w < headWords) return _at(c.cHead, w);
-        uint256 lo = w & 1023;
-        uint256 sub = col >> 16;
-        if (sub >= headSubs && lo >= 32 && lo < 36) {
-            return _at(c.cTape, (sub - headSubs) * 4 + lo - 32);
-        }
-        return GF2.mul(_at(c.colLo, lo), _at(c.colHi, sub));
-    }
-
-    /// `Σ_t zp[t]·S[t]` over the slot sums `S` of `count` columns at `at`, using `slots` as
-    /// scratch.
-    function _gather(Ctx memory c, uint256 slots, uint256 at, uint256 count) internal view returns (uint256 d) {
-        uint256 touched;
-        for (uint256 k = 0; k < count; ++k) {
-            uint256 col = _colAt(at + 4 * k);
-            uint256 v = _colWeight(c, col);
-            uint256 t = col & 63;
-            assembly ("memory-safe") {
-                let slot := add(slots, shl(5, t))
-                mstore(slot, xor(mload(slot), v))
+            function spongeRow(kp, sb, lo) -> idx {
+                let spp := mload(add(kp, 0x40))
+                let prg := mload(add(kp, 0x60))
+                let rel := sub(sb, mload(add(kp, 0x20)))
+                idx := add(mul(add(mul(div(rel, spp), sub(sub(spp, 1), prg)), sub(sub(mod(rel, spp), 1), prg)), 17), lo)
             }
-            touched |= 1 << t;
-        }
-        uint256 zpTab = c.zpTab;
-        for (uint256 t = 0; touched != 0; ++t) {
-            if (touched & 1 == 1) {
-                uint256 v;
-                assembly ("memory-safe") {
-                    let slot := add(slots, shl(5, t))
-                    v := mload(slot)
-                    mstore(slot, 0)
+            function isSponge(kp, sb, lo) -> yes {
+                let within := mod(sub(sb, mload(add(kp, 0x20))), mload(add(kp, 0x40)))
+                yes := and(gt(within, mload(add(kp, 0x60))), lt(lo, 17))
+            }
+            function rowWeight(c, kp, col) -> r {
+                let w := shr(6, col)
+                switch lt(w, mload(kp))
+                case 1 { r := mload(add(mload(add(c, 0xa0)), shl(5, w))) }
+                default {
+                    let lo := and(w, 1023)
+                    let sb := shr(16, col)
+                    switch isSponge(kp, sb, lo)
+                    case 1 { r := mload(add(mload(add(c, 0x100)), shl(5, spongeRow(kp, sb, lo)))) }
+                    default {
+                        r := gmul(mload(add(mload(add(c, 0x120)), shl(5, lo))), mload(add(mload(add(c, 0x140)), shl(5, sb))))
+                    }
                 }
-                d ^= Tables.lookup(zpTab + t * TAB, v);
             }
-            touched >>= 1;
+            function colWeight(c, kp, col) -> v {
+                let w := shr(6, col)
+                switch lt(w, mload(kp))
+                case 1 { v := mload(add(mload(add(c, 0xc0)), shl(5, w))) }
+                default {
+                    let lo := and(w, 1023)
+                    let sb := shr(16, col)
+                    let hs := mload(add(kp, 0x20))
+                    switch and(iszero(lt(sb, hs)), and(iszero(lt(lo, 32)), lt(lo, 36)))
+                    case 1 { v := mload(add(mload(add(c, 0xe0)), shl(5, add(mul(sub(sb, hs), 4), sub(lo, 32))))) }
+                    default {
+                        v := gmul(mload(add(mload(add(c, 0x160)), shl(5, lo))), mload(add(mload(add(c, 0x180)), shl(5, sb))))
+                    }
+                }
+            }
+            function scatter(c, kp, slots, from, count) -> touched {
+                for { let j := 0 } lt(j, count) { j := add(j, 1) } {
+                    let col := shr(224, calldataload(add(from, shl(2, j))))
+                    let slot := add(slots, shl(5, and(col, 63)))
+                    mstore(slot, xor(mload(slot), colWeight(c, kp, col)))
+                    touched := or(touched, shl(and(col, 63), 1))
+                }
+            }
+            function collect(c, slots, touched) -> d {
+                let zpTab := mload(add(c, 0x60))
+                for { let t := 0 } touched { t := add(t, 1) } {
+                    if and(touched, 1) {
+                        let slot := add(slots, shl(5, t))
+                        d := xor(d, lookup(add(zpTab, mul(t, 0x20000)), mload(slot)))
+                        mstore(slot, 0)
+                    }
+                    touched := shr(1, touched)
+                }
+            }
+            function side(c, kp, slots, from, count) -> d {
+                d := collect(c, slots, scatter(c, kp, slots, from, count))
+            }
+            function claim(c, kp, rec) {
+                let col := shr(224, calldataload(rec))
+                let na := and(shr(208, calldataload(rec)), 0xffff)
+                let nb := and(shr(192, calldataload(rec)), 0xffff)
+                let bAt := add(add(rec, 8), shl(2, na))
+                let e := gmul(mload(add(mload(add(c, 0x40)), shl(5, and(col, 63)))), rowWeight(c, kp, col))
+                let d := lookup(mload(add(c, 0x80)), side(c, kp, mload(add(c, 0x1a0)), add(rec, 8), na))
+                switch and(eq(nb, 1), iszero(shr(224, calldataload(bAt))))
+                case 1 { mstore(add(c, 0x20), xor(mload(add(c, 0x20)), e)) }
+                default {
+                    if nb { d := xor(d, side(c, kp, mload(add(c, 0x1c0)), bAt, nb)) }
+                }
+                mstore(c, xor(mload(c), gmul(e, d)))
+            }
+            let head := calldataload(at)
+            next := add(add(at, 8), shl(2, add(and(shr(208, head), 0xffff), and(shr(192, head), 0xffff))))
+            for { let i := 0 } lt(i, mload(ctx)) { i := add(i, 1) } {
+                claim(mload(add(ctx, shl(5, add(i, 1)))), consts, at)
+            }
         }
     }
 

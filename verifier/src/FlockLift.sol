@@ -24,12 +24,15 @@ contract FlockLift {
     uint32 public immutable index;
     /// The fewest responses a lift may carry.
     uint256 public immutable minResponses;
+    /// Whether chunks are opened under Ligerito's `Slim` profile rather than `Fast`.
+    bool public immutable slim;
 
     error Shape();
     error AssertionWord();
     error TooFewResponses();
 
-    constructor(bytes32 fingerprint_, bytes32 chainCode_, uint32 index_, uint256 minResponses_) {
+    constructor(bytes32 fingerprint_, bytes32 chainCode_, uint32 index_, uint256 minResponses_, bool slim_) {
+        slim = slim_;
         fingerprint = fingerprint_;
         chainCode = chainCode_;
         index = index_;
@@ -183,7 +186,7 @@ contract FlockLift {
     function _verifyChunk(Ctx memory x) private returns (MatrixClaim memory mc) {
         Piop.observeWords(x.tr, x.wordsAt, x.live, x.nIo, x.nu);
         Meter.mark(1);
-        x.capLen = 1 << Constants.ligerito(x.m).depths[0][0];
+        x.capLen = 1 << Constants.ligerito(x.m, slim).depths[0][0];
         uint256 p = x.capAt + 32 * x.capLen;
         Transcript.label(x.tr, Constants.L_R1CS_0, Constants.L_R1CS_1, Constants.L_R1CS_LEN);
         Transcript.header(x.tr, 5, 0, 32);
@@ -199,7 +202,7 @@ contract FlockLift {
         cl[1] = Claim(zc.z, zc.rRest, zc.c);
         cl[2] = Piop.ioClaim(x.tr, x.phi, x.wordsAt, x.live, x.nIo, x.nu);
         Meter.mark(4);
-        Opening.verify(x.tr, x.phi, p, x.end, x.m, x.capAt, x.capLen, cl);
+        Opening.verify(x.tr, x.phi, p, x.end, Constants.ligerito(x.m, slim), x.m, x.capAt, x.capLen, cl);
         Meter.mark(5);
     }
 

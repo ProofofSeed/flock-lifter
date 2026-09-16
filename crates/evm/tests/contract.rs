@@ -101,6 +101,8 @@ fn deploy_lift(evm: &mut Evm, statement: &Statement, min: usize) -> revm::primit
     code.extend_from_slice(&statement.chain_code);
     code.extend_from_slice(&U256::from(statement.index).to_be_bytes::<32>());
     code.extend_from_slice(&U256::from(min).to_be_bytes::<32>());
+    let slim = pofseed_flock_lift::chunk_rm::profile() == flock_prover::pcs::ligerito::LigeritoProfile::Slim;
+    code.extend_from_slice(&U256::from(slim as u8).to_be_bytes::<32>());
     return evm.deploy(code).0;
 }
 

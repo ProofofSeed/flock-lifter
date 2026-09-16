@@ -103,7 +103,11 @@ pub fn statement_digest(program: &Program, nu: usize) -> [u8; 32] {
 
 /// The PCS parameters a chunk committing `2^m` bits is proved and verified under.
 pub fn pcs_params(m: usize) -> PcsParams {
-    let profile = profile();
+    return pcs_params_for(m, profile());
+}
+
+/// The PCS parameters of a chunk committing `2^m` bits under `profile`.
+pub fn pcs_params_for(m: usize, profile: LigeritoProfile) -> PcsParams {
     return PcsParams {
         m,
         log_inv_rate: profile.log_inv_rate(),

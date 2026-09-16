@@ -100,6 +100,8 @@ fn main() {
     code.extend_from_slice(&chain_code);
     code.extend_from_slice(&U256::from(HARDENED_OFFSET).to_be_bytes::<32>());
     code.extend_from_slice(&U256::from(n).to_be_bytes::<32>());
+    let slim = pofseed_flock_lift::chunk_rm::profile() == flock_prover::pcs::ligerito::LigeritoProfile::Slim;
+    code.extend_from_slice(&U256::from(slim as u8).to_be_bytes::<32>());
     let (lift, lift_deploy) = evm.deploy(code);
     println!("FlockLift: initcode {runtime_len} bytes, deployment {} gas", lift_deploy);
     let y = &statement.expected_output;
