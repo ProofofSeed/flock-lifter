@@ -134,6 +134,27 @@ fn main() {
     }
     writeln!(s, "    /// Keccak's ρ offsets modulo 64, `RHO[5·a + b]`.").unwrap();
     writeln!(s, "    bytes internal constant RHO = hex\"{rho}\";").unwrap();
+    let rcs: String = ROUND_CONSTANTS.iter().map(|c| format!("{c:016x}")).collect();
+    writeln!(s, "    /// Keccak-f's round constants, eight bytes each.").unwrap();
+    writeln!(s, "    bytes internal constant ROUND_CONSTANTS = hex\"{rcs}\";").unwrap();
+    let mut rc_bits = String::new();
+    for c in ROUND_CONSTANTS {
+        let bits: Vec<u32> = (0..64).filter(|&b| (c >> b) & 1 == 1).collect();
+        assert!(bits.len() <= 8, "a round constant has at most eight set bits");
+        for k in 0..8 {
+            rc_bits.push_str(&format!("{:02x}", bits.get(k).copied().unwrap_or(0xff)));
+        }
+    }
+    writeln!(s, "    /// The set bit positions of each round constant, eight bytes per round, padded with 0xff.").unwrap();
+    writeln!(s, "    bytes internal constant ROUND_CONSTANT_BITS = hex\"{rc_bits}\";").unwrap();
+    let mut pre0 = String::new();
+    for i in 0..25 {
+        for &idx in &theta_rho_pi_preimage(i % 5, i / 5, 0) {
+            pre0.push_str(&format!("{:02x}{:02x}", idx % 25, idx / 25));
+        }
+    }
+    writeln!(s, "    /// The eleven `(lane, bit)` pairs whose XOR is bit 0 of lane `x + 5y` of `φ(state)`, lane by lane.").unwrap();
+    writeln!(s, "    bytes internal constant PREIMAGE0 = hex\"{pre0}\";").unwrap();
     let wide = eval_sk_at_vks(32);
     let mut subspace = String::new();
     for k in 0..24usize {

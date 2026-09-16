@@ -38,7 +38,7 @@ fn label(id: u64) -> String {
         11 => "Ligerito level 0 opening".into(),
         12..=19 => format!("Ligerito level {} opening", id - 11),
         20 => "Ligerito final opening".into(),
-        301 => "matrix claims".into(),
+        301 => "claims and structured parts".into(),
         302 => "matrix main sumcheck".into(),
         303 => "matrix count claim".into(),
         304 => "matrix count sumcheck".into(),
@@ -146,16 +146,13 @@ fn main() {
     if std::env::var("POFSEED_EVM_DISCHARGE").as_deref() != Ok("stream") {
         let digest = statement.digest(n, lifted.chunk);
         let vk = key.verifying();
-        let structured_at = committed::deploy_structured(&mut evm, &program);
-        let (keccak, parts) = committed::structured(&mut evm, structured_at, &claims);
-        let (matrix_at, matrix_deploy) = committed::deploy_matrix(&mut evm, &vk.matrix, slim);
+        let (matrix_at, matrix_deploy) = committed::deploy_matrix(&mut evm, &program, &vk.matrix, slim);
         let data = encode_matrix(lifted.matrix.as_ref().expect("a matrix proof"), &vk.matrix);
         let t = Instant::now();
-        let out = committed::verify(&mut evm, matrix_at, &claims, &parts, &digest, &data);
+        let out = committed::verify(&mut evm, matrix_at, &claims, &digest, &data);
         assert!(out.success, "the matrix contract refused: {}", hex::encode(&out.output));
         println!("FlockMatrix: deployment {matrix_deploy} gas; ran in {:.2} s", t.elapsed().as_secs_f64());
         println!("discharge, {} claims:", claims.len() / 112);
-        println!("  {:<28} {:>14}", "Keccak-f sub-blocks", mgas(keccak.execution()));
         for (id, gas) in phases(&out) {
             println!("  {:<28} {:>14}", label(id), mgas(gas));
         }
@@ -166,8 +163,8 @@ fn main() {
             mgas(out.intrinsic),
             data.len()
         );
-        let total_exec = lift_exec + keccak.execution() + out.execution();
-        let total = lift_gas + keccak.gas + out.gas;
+        let total_exec = lift_exec + out.execution();
+        let total = lift_gas + out.gas;
         println!("verification in all: {} gas, {} of it execution", mgas(total), mgas(total_exec));
         println!("at least {} transactions under the {}-gas cap", total.div_ceil(TX_CAP), TX_CAP);
         return;

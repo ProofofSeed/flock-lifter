@@ -367,7 +367,7 @@ pub fn fold_shared_paired(alpha: F128, skip: &[F128], row: &[F128], z: &[F128], 
     let skip_sum = skip.iter().fold(F128::ZERO, |a, &b| a + b);
     let mut konst = skip_sum * (pins + alpha * weights);
     let mut value = F128::ZERO;
-    let mut round_constant = |r: usize, kernel: &[F128], konst: &mut F128| {
+    let round_constant = |r: usize, kernel: &[F128], konst: &mut F128| {
         let mut w = vec![F128::ZERO; 64];
         for (d, wd) in w.iter_mut().enumerate() {
             for c in 0..64 {
@@ -553,5 +553,50 @@ mod tests {
         let konst = fold_shared(alpha, &eq, &mut comb);
         let value = (0..SUB_BITS).fold(F128::ZERO, |acc, c| acc + comb[c] * col[c >> 6] * z[c & 63]);
         assert_eq!(fold_shared_paired(alpha, &skip, &row, &z, &col), (value, konst));
+    }
+
+    /// The transpose of `φ` on a lane-major vector (`lane·64 + bit`): the inverse of π∘ρ, then
+    /// the transpose of θ through column sums.
+    fn phi_t_lane_major(v: &[F128]) -> Vec<F128> {
+        let mut w = vec![F128::ZERO; STATE_BITS];
+        for a in 0..5 {
+            for b in 0..5 {
+                let y = (2 * (a + 5 - b)) % 5;
+                let r = (RHO_OFFSETS[a][b] as usize) % 64;
+                for c in 0..64 {
+                    w[64 * (a + 5 * b) + c] = v[64 * (b + 5 * y) + (c + r) % 64];
+                }
+            }
+        }
+        let mut col = [[F128::ZERO; 64]; 5];
+        for a in 0..5 {
+            for b in 0..5 {
+                for c in 0..64 {
+                    col[a][c] += w[64 * (a + 5 * b) + c];
+                }
+            }
+        }
+        let mut out = w;
+        for a in 0..5 {
+            for c in 0..64 {
+                let d = col[(a + 1) % 5][c] + col[(a + 4) % 5][(c + 1) % 64];
+                for b in 0..5 {
+                    out[64 * (a + 5 * b) + c] += d;
+                }
+            }
+        }
+        return out;
+    }
+
+    #[test]
+    fn lane_major_phi_transpose_matches() {
+        let mut rng = Rng(0x7070_1234_5678_9abc);
+        let v: Vec<F128> = (0..STATE_BITS).map(|_| rng.f128()).collect();
+        let lane_major: Vec<F128> = (0..STATE_BITS).map(|p| v[p / 64 + 25 * (p % 64)]).collect();
+        let expected = apply_phi_t(&v);
+        let got = phi_t_lane_major(&lane_major);
+        for p in 0..STATE_BITS {
+            assert_eq!(got[p], expected[p / 64 + 25 * (p % 64)], "position {p}");
+        }
     }
 }

@@ -12,7 +12,7 @@ use pofseed_flock_lift::{
 use pofseed_flock_lift_block::program::Program;
 use pofseed_flock_lift_evm::{
     calldata::{encode_lift, encode_matrix},
-    committed::{deploy_matrix, deploy_structured, structured, verify},
+    committed::{deploy_matrix, verify},
     evm::{Evm, artifact, encode},
     mirror::verify_matrix,
 };
@@ -73,10 +73,8 @@ fn matrix_contract_matches_the_mirror_and_refuses_tampering() {
     );
     assert!(out.success, "lift refused");
     let packed: Vec<U256> = (0..word(&out.output, 32).to::<usize>()).map(|i| word(&out.output, 64 + 32 * i)).collect();
-    let discharge = deploy_structured(&mut evm, &program);
-    let (_, parts) = structured(&mut evm, discharge, &packed);
-    let (at, deploy_gas) = deploy_matrix(&mut evm, &vk.matrix, false);
-    let good = verify(&mut evm, at, &packed, &parts, &digest, &data);
+    let (at, deploy_gas) = deploy_matrix(&mut evm, &program, &vk.matrix, false);
+    let good = verify(&mut evm, at, &packed, &digest, &data);
     assert!(good.success, "matrix contract refused: {}", hex::encode(&good.output));
     let mut last = 0u64;
     for (topics, body) in &good.logs {
@@ -98,7 +96,7 @@ fn matrix_contract_matches_the_mirror_and_refuses_tampering() {
     for at_byte in [5, cap_bytes + 3, cap_bytes + 8 + 40, data.len() / 4, data.len() / 3, data.len() / 2, data.len() - 30] {
         let mut bad = data.clone();
         bad[at_byte] ^= 0x04;
-        let out = verify(&mut evm, at, &packed, &parts, &digest, &bad);
+        let out = verify(&mut evm, at, &packed, &digest, &bad);
         assert!(!out.success, "byte {at_byte}: the contract accepted a tampered proof");
         assert!(
             verify_matrix(vk.matrix.log_len, &vk.matrix.commitment.cap, &claims, &mdom, &bad).is_err(),
@@ -107,15 +105,18 @@ fn matrix_contract_matches_the_mirror_and_refuses_tampering() {
     }
     let mut other = digest;
     other[0] ^= 1;
-    assert!(!verify(&mut evm, at, &packed, &parts, &other, &data).success, "another digest");
+    assert!(!verify(&mut evm, at, &packed, &other, &data).success, "another digest");
     let mut wrong = packed.clone();
     wrong[112 + 3] ^= U256::from(1);
-    assert!(!verify(&mut evm, at, &wrong, &parts, &digest, &data).success, "a changed running claim");
-    let mut wrong_parts = parts.clone();
-    wrong_parts[70] ^= U256::from(1);
-    assert!(!verify(&mut evm, at, &packed, &wrong_parts, &digest, &data).success, "a changed structured part");
+    assert!(!verify(&mut evm, at, &wrong, &digest, &data).success, "a changed running claim");
+    let mut wrong_beta = packed.clone();
+    wrong_beta[1] ^= U256::from(1);
+    assert!(!verify(&mut evm, at, &wrong_beta, &digest, &data).success, "a changed constant-wire pin");
+    let mut wrong_alpha = packed.clone();
+    wrong_alpha[112] ^= U256::from(1);
+    assert!(!verify(&mut evm, at, &wrong_alpha, &digest, &data).success, "a changed A-side challenge");
     let mut other_key = vk.matrix.clone();
     other_key.commitment.cap[0][0] ^= 1;
-    let (elsewhere, _) = deploy_matrix(&mut evm, &other_key, false);
-    assert!(!verify(&mut evm, elsewhere, &packed, &parts, &digest, &data).success, "another pinned commitment");
+    let (elsewhere, _) = deploy_matrix(&mut evm, &program, &other_key, false);
+    assert!(!verify(&mut evm, elsewhere, &packed, &digest, &data).success, "another pinned commitment");
 }

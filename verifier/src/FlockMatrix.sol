@@ -8,6 +8,7 @@ import {GF2} from "./GF2.sol";
 import {Meter} from "./Meter.sol";
 import {Opening} from "./Opening.sol";
 import {Claim, Piop} from "./Piop.sol";
+import {Structured} from "./Structured.sol";
 import {Transcript} from "./Transcript.sol";
 
 /// The verifier of a lift's matrix proof for one pinned statement: that the explicit rows' share
@@ -29,15 +30,21 @@ contract FlockMatrix {
     bytes32 public immutable capHash;
     /// Whether the entry list is opened under Ligerito's `Slim` profile rather than `Fast`.
     bool public immutable slim;
+    /// The first Keccak-f sub-block of the statement's block.
+    uint256 public immutable firstKeccak;
+    /// The Keccak-f sub-blocks of the statement's block.
+    uint256 public immutable keccakSubs;
 
     error Shape();
     error EntryCommitment();
     error MainSumcheck();
     error CountSumcheck();
 
-    constructor(bytes32 capHash_, bool slim_) {
+    constructor(bytes32 capHash_, bool slim_, uint256 firstKeccak_, uint256 keccakSubs_) {
         capHash = capHash_;
         slim = slim_;
+        firstKeccak = firstKeccak_;
+        keccakSubs = keccakSubs_;
     }
 
     /// The running state of one verification.
@@ -60,14 +67,14 @@ contract FlockMatrix {
     }
 
     /// Verifies the matrix proof `proof` of the lift whose statement digest is `digest`, for the
-    /// flattened matrix claims `claims` of its chunks and their structured parts `parts`.
-    function verify(uint256[] calldata claims, uint256[] calldata parts, bytes32 digest, bytes calldata proof)
+    /// flattened matrix claims `claims` of its chunks.
+    function verify(uint256[] calldata claims, bytes32 digest, bytes calldata proof)
         external
         returns (bool)
     {
         Meter.mark(300);
         uint256 n = claims.length / CLAIM_WORDS;
-        if (n == 0 || claims.length != n * CLAIM_WORDS || parts.length != 64 * n) revert Shape();
+        if (n == 0 || claims.length != n * CLAIM_WORDS) revert Shape();
         St memory st;
         st.n = n;
         uint256 capAt = _offset(proof);
@@ -77,7 +84,7 @@ contract FlockMatrix {
         st.tr = Transcript.createFromMemorySized(
             abi.encodePacked(LIFT_VERSION, digest, "committed-matrix"), COUNTS * 16 + 4096
         );
-        _claims(st, claims, parts);
+        _claims(st, claims);
         Meter.mark(301);
         _main(st);
         Meter.mark(302);
@@ -95,7 +102,7 @@ contract FlockMatrix {
         return true;
     }
 
-    function _claims(St memory st, uint256[] calldata claims, uint256[] calldata parts) private pure {
+    function _claims(St memory st, uint256[] calldata claims) private view {
         uint256 n = st.n;
         st.alpha = new uint256[](n);
         st.skip = new uint256[][](n);
@@ -103,6 +110,7 @@ contract FlockMatrix {
         st.x = new uint256[][](n);
         st.r = new uint256[][](n);
         uint256[] memory values = new uint256[](n);
+        uint256[] memory work = Structured.work();
         Transcript.label(st.tr, Constants.L_MATRIX_0, Constants.L_MATRIX_1, Constants.L_MATRIX_LEN);
         Transcript.header(st.tr, 5, 0, 8);
         _word16(st.tr, FiatShamir.uint64le(n) << 64);
@@ -113,10 +121,10 @@ contract FlockMatrix {
             st.x[c] = _slice(claims, b + 4, LOG_LEN);
             st.r[c] = _slice(claims, b + 26, LOG_LEN);
             st.zp[c] = _slice(claims, b + 48, 64);
-            uint256 v = claims[b + 3];
-            for (uint256 s = 0; s < 64; ++s) {
-                v ^= GF2.mul(st.zp[c][s], parts[64 * c + s]);
-            }
+            uint256 v = claims[b + 3] ^ Structured.value(
+                Structured.Input(claims[b], claims[b + 1], st.skip[c], st.zp[c], st.x[c], st.r[c], firstKeccak, keccakSubs),
+                work
+            );
             values[c] = v;
             Transcript.observe(st.tr, st.alpha[c]);
             Transcript.observeSlice(st.tr, st.skip[c]);
