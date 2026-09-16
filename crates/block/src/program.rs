@@ -110,14 +110,16 @@ impl StatementShape {
 }
 
 impl Program {
-    /// Builds the block of `circuit`.
+    /// Builds the block of `circuit`, laid out regularly: every gate word bit-aligned, every bit
+    /// laid out alike.
     pub fn new<C: Circuit>(circuit: &C) -> Self {
-        return Self::build(circuit, replay::compile);
+        return Self::build(circuit, replay::compile_regular_fitting);
     }
 
-    /// Builds the block of `circuit` from its uniform replay.
-    pub fn regular<C: Circuit>(circuit: &C) -> Self {
-        return Self::build(circuit, replay::compile_regular_fitting);
+    /// Builds the block of `circuit` with the compact layout, which skips constant products and
+    /// allocates columns in evaluation order.
+    pub fn compact<C: Circuit>(circuit: &C) -> Self {
+        return Self::build(circuit, replay::compile);
     }
 
     fn build<C: Circuit>(circuit: &C, compile: fn(&C, &Geometry) -> Result<Replay, usize>) -> Self {

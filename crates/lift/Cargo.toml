@@ -9,6 +9,8 @@ publish = false
 [features]
 # Counts the verifier's field multiplications and hash compressions, per phase.
 count = ["flock-prover/mul-count", "flock-prover/hash-count", "pofseed-flock-lift-block/count"]
+# Exposes a matrix prover that forges chosen parts of its proof, for soundness tests.
+forgery = []
 
 [dependencies]
 flock-prover = { workspace = true }

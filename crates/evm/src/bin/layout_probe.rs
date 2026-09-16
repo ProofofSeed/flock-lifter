@@ -190,7 +190,7 @@ fn main() {
     analyse("replay rows as compiled", &actual);
     analyse("replay rows, bit-aligned per gate and column kind", &virtual_rows);
     report_words("virtual layout", &replay.origins);
-    let program = Program::regular(&circuit);
+    let program = Program::new(&circuit);
     let geometry = program.geometry().clone();
     let regular = replay::compile_regular(&circuit, &geometry);
     println!(

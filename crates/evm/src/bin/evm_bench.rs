@@ -8,7 +8,7 @@
 
 use std::{env, fs, sync::Arc, time::Instant};
 
-use pofseed_flock_lift::lift::{MAX_CHUNK, Statement, prove, verify};
+use pofseed_flock_lift::lift::{LiftKey, MAX_CHUNK, Statement, prove, verify};
 use pofseed_flock_lift_block::program::Program;
 use pofseed_flock_lift_evm::{
     calldata::encode_lift,
@@ -77,11 +77,12 @@ fn main() {
     let t = Instant::now();
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code.clone(), HARDENED_OFFSET)));
     println!("block built in {:.2} s", t.elapsed().as_secs_f64());
+    let key = LiftKey::new(program.clone());
     let lifted = match cache.as_deref().and_then(|p| fs::read(p).ok()) {
         Some(bytes) => bincode::deserialize(&bytes).expect("cached lift"),
         None => {
             let t = Instant::now();
-            let lifted = prove(&program, &statement, &proof, MAX_CHUNK).expect("lift");
+            let lifted = prove(&key, &statement, &proof, MAX_CHUNK).expect("lift");
             println!("lift proved in {:.2} s", t.elapsed().as_secs_f64());
             if let Some(p) = cache.as_deref() {
                 fs::write(p, bincode::serialize(&lifted).expect("serialise")).expect("write cache");
@@ -89,7 +90,7 @@ fn main() {
             lifted
         }
     };
-    verify(&program, &statement, &lifted).expect("the native verifier accepts");
+    verify(&key.verifying(), &statement, &lifted).expect("the native verifier accepts");
     let data = encode_lift(&lifted);
     println!("responses {n}, chunks {}, lift calldata {} bytes", lifted.chunks.len(), data.len());
 

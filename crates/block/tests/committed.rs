@@ -58,23 +58,23 @@ fn hardened_child() -> HardenedChildCircuit {
 }
 
 #[test]
+fn toy_compact_entries_match_the_explicit_rows() {
+    check(Program::compact, &Toy, 3);
+}
+
+#[test]
 fn toy_entries_match_the_explicit_rows() {
     check(Program::new, &Toy, 3);
 }
 
 #[test]
-fn toy_regular_entries_match_the_explicit_rows() {
-    check(Program::regular, &Toy, 3);
-}
-
-#[test]
-#[ignore]
-fn hardened_child_regular_entries_match_the_explicit_rows() {
-    check(Program::regular, &hardened_child(), 2);
-}
-
-#[test]
 #[ignore]
 fn hardened_child_entries_match_the_explicit_rows() {
-    check(Program::new, &hardened_child(), 1);
+    check(Program::new, &hardened_child(), 2);
+}
+
+#[test]
+#[ignore]
+fn hardened_child_compact_entries_match_the_explicit_rows() {
+    check(Program::compact, &hardened_child(), 1);
 }

@@ -130,13 +130,18 @@ fn check_discharge<C: Circuit>(build: fn(&C) -> Program, circuit: &C, k_skip: us
 }
 
 #[test]
+fn toy_compact_block_agrees_with_native_replay() {
+    check(Program::compact, &Toy, &Toy, 24, 3);
+}
+
+#[test]
 fn toy_block_agrees_with_native_replay() {
     check(Program::new, &Toy, &Toy, 24, 3);
 }
 
 #[test]
-fn toy_regular_block_agrees_with_native_replay() {
-    check(Program::regular, &Toy, &Toy, 24, 3);
+fn toy_compact_structured_discharge_matches_the_dense_fold() {
+    check_discharge(Program::compact, &Toy, 6, 4);
 }
 
 #[test]
@@ -145,8 +150,11 @@ fn toy_structured_discharge_matches_the_dense_fold() {
 }
 
 #[test]
-fn toy_regular_structured_discharge_matches_the_dense_fold() {
-    check_discharge(Program::regular, &Toy, 6, 4);
+#[ignore]
+fn hardened_child_compact_structured_discharge_matches_the_dense_fold() {
+    let hex = |s: &str| (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect::<Vec<u8>>();
+    let chain_code = hex("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
+    check_discharge(Program::compact, &HardenedChildCircuit::public_only(chain_code, 0x8000_0000), 6, 1);
 }
 
 #[test]
@@ -159,10 +167,14 @@ fn hardened_child_structured_discharge_matches_the_dense_fold() {
 
 #[test]
 #[ignore]
-fn hardened_child_regular_structured_discharge_matches_the_dense_fold() {
+fn hardened_child_compact_block_agrees_with_native_replay() {
     let hex = |s: &str| (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect::<Vec<u8>>();
+    let parent_priv = hex("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35");
     let chain_code = hex("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
-    check_discharge(Program::regular, &HardenedChildCircuit::public_only(chain_code, 0x8000_0000), 6, 1);
+    let index = 0x8000_0000;
+    let witness = HardenedChildCircuit::with_witness(chain_code.clone(), parent_priv, index);
+    let public = HardenedChildCircuit::public_only(chain_code, index);
+    check(Program::compact, &public, &witness, 24, 1);
 }
 
 #[test]
@@ -175,16 +187,4 @@ fn hardened_child_block_agrees_with_native_replay() {
     let witness = HardenedChildCircuit::with_witness(chain_code.clone(), parent_priv, index);
     let public = HardenedChildCircuit::public_only(chain_code, index);
     check(Program::new, &public, &witness, 24, 1);
-}
-
-#[test]
-#[ignore]
-fn hardened_child_regular_block_agrees_with_native_replay() {
-    let hex = |s: &str| (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect::<Vec<u8>>();
-    let parent_priv = hex("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35");
-    let chain_code = hex("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
-    let index = 0x8000_0000;
-    let witness = HardenedChildCircuit::with_witness(chain_code.clone(), parent_priv, index);
-    let public = HardenedChildCircuit::public_only(chain_code, index);
-    check(Program::regular, &public, &witness, 24, 1);
 }

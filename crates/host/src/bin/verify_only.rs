@@ -7,7 +7,7 @@
 
 use std::{env, fs, sync::Arc, time::Instant};
 
-use pofseed_flock_lift::lift::{LiftedProof, MAX_CHUNK, Statement, prove, verify};
+use pofseed_flock_lift::lift::{LiftKey, LiftedProof, MAX_CHUNK, Statement, prove, verify};
 use pofseed_flock_lift_block::program::Program;
 use pofseed_flock_lift_host::{HARDENED_OFFSET, bip32_vector_1, vector_1_proof};
 use pofseed_flock_lift_statement::{
@@ -30,9 +30,11 @@ fn main() {
         binding: BINDING.to_vec(),
     };
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code.clone(), HARDENED_OFFSET)));
+    let key = LiftKey::new(program);
+    let vk = key.verifying();
     match mode.as_str() {
         "prove" => {
-            let lifted = prove(&program, &statement, &proof, MAX_CHUNK).expect("lift");
+            let lifted = prove(&key, &statement, &proof, MAX_CHUNK).expect("lift");
             fs::write(&file, bincode::serialize(&lifted).expect("serialise")).expect("write");
             println!("wrote {file}");
         }
@@ -40,7 +42,7 @@ fn main() {
             let bytes = fs::read(&file).expect("read");
             let lifted: LiftedProof = bincode::deserialize(&bytes).expect("deserialise");
             let t = Instant::now();
-            let journal = verify(&program, &statement, &lifted).expect("verify");
+            let journal = verify(&vk, &statement, &lifted).expect("verify");
             let verify_s = t.elapsed().as_secs_f64();
             let expectation = JournalExpectation {
                 fingerprint: hash_circuit::<_, H>(&statement.circuit()),

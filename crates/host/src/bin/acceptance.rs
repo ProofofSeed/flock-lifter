@@ -26,7 +26,7 @@
 use std::{env, sync::Arc, time::Instant};
 
 use flock_prover::field::F128;
-use pofseed_flock_lift::lift::{LiftError, LiftedProof, Statement, prove, verify};
+use pofseed_flock_lift::lift::{LiftError, LiftKey, LiftedProof, Statement, prove, verify};
 use pofseed_flock_lift_block::program::Program;
 use pofseed_flock_lift_host::{
     HARDENED_OFFSET, bip32_vector_1, n_eps,
@@ -81,6 +81,10 @@ fn main() {
         HARDENED_OFFSET,
     )));
     println!("block built in {:.2} s (k_log {})", t.elapsed().as_secs_f64(), program.geometry().k_log());
+    let t = Instant::now();
+    let key = LiftKey::new(program);
+    let vk = key.verifying();
+    println!("entry list committed in {:.2} s (2^{} entries)", t.elapsed().as_secs_f64(), key.matrix.log_len());
     if rejects {
         println!("── reject matrix (n=8) ──");
         let n = 8;
@@ -91,15 +95,15 @@ fn main() {
             expected_output: output.clone(),
             binding: BINDING.to_vec(),
         };
-        let lifted = prove(&program, &statement, &proof, 4).expect("control lift");
-        let journal = verify(&program, &statement, &lifted).expect("control must verify");
+        let lifted = prove(&key, &statement, &proof, 4).expect("control lift");
+        let journal = verify(&vk, &statement, &lifted).expect("control must verify");
         check_journal(&journal, &expectation(&statement, n as u32)).expect("control gate must pass");
         println!("  control (n=8, two chunks, matching expectation): accepted ✓");
 
         let mut tampered = proof.clone();
         tampered[3] = tamper_and_msg(&tampered[3]);
-        let lifted_r1 = prove(&program, &statement, &tampered, 4).expect("a tampered response still lays into a block");
-        expect_lift_refusal("R1 tampered proof", verify(&program, &statement, &lifted_r1), |e| {
+        let lifted_r1 = prove(&key, &statement, &tampered, 4).expect("a tampered response still lays into a block");
+        expect_lift_refusal("R1 tampered proof", verify(&vk, &statement, &lifted_r1), |e| {
             matches!(e, LiftError::FiatShamir)
         });
 
@@ -107,8 +111,8 @@ fn main() {
             binding: b"some other tx".to_vec(),
             ..statement.clone()
         };
-        let lifted_r2 = prove(&program, &other_binding, &proof, 4).expect("lift under another binding");
-        expect_lift_refusal("R2 wrong binding", verify(&program, &other_binding, &lifted_r2), |e| {
+        let lifted_r2 = prove(&key, &other_binding, &proof, 4).expect("lift under another binding");
+        expect_lift_refusal("R2 wrong binding", verify(&vk, &other_binding, &lifted_r2), |e| {
             matches!(e, LiftError::FiatShamir)
         });
 
@@ -119,8 +123,8 @@ fn main() {
         let exp = expectation(&statement, n_eps(64) as u32);
         expect_gate_refusal("R4 too few responses", &journal, &exp, JournalCheckError::TooFewResponses);
 
-        let lifted_empty = prove(&program, &statement, &[], 4).expect("an empty lift");
-        let empty_journal = verify(&program, &statement, &lifted_empty).expect("the empty proof verifies by design");
+        let lifted_empty = prove(&key, &statement, &[], 4).expect("an empty lift");
+        let empty_journal = verify(&vk, &statement, &lifted_empty).expect("the empty proof verifies by design");
         assert_eq!(empty_journal.num_responses, 0);
         expect_gate_refusal("R5 empty proof", &empty_journal, &expectation(&statement, 1), JournalCheckError::TooFewResponses);
 
@@ -130,7 +134,7 @@ fn main() {
 
         let mut malformed = proof.clone();
         malformed[5] = oversize_and_msg(&malformed[5]);
-        match prove(&program, &statement, &malformed, 4) {
+        match prove(&key, &statement, &malformed, 4) {
             Err(e @ LiftError::Witness(5, _)) => println!("  R7 malformed response: refused by the prover ({e:?}) ✓"),
             other => panic!("R7 malformed response: expected a witness refusal at response 5, got {:?}", other.map(|_| ())),
         }
@@ -141,32 +145,46 @@ fn main() {
 
         let mut f1 = lifted.clone();
         f1.words[6][1] += F128::ONE;
-        expect_lift_refusal("F1 tampered published word", verify(&program, &statement, &f1), |e| {
+        expect_lift_refusal("F1 tampered published word", verify(&vk, &statement, &f1), |e| {
             matches!(e, LiftError::Chunk(1, _))
         });
 
         let mut f2: LiftedProof = lifted.clone();
         f2.unopened[2][0] ^= 1;
-        expect_lift_refusal("F2 tampered unopened digest", verify(&program, &statement, &f2), |e| {
+        expect_lift_refusal("F2 tampered unopened digest", verify(&vk, &statement, &f2), |e| {
             matches!(e, LiftError::FiatShamir)
         });
 
         let mut f3 = lifted.clone();
         f3.chunks.swap(0, 1);
         f3.words.rotate_left(4);
-        expect_lift_refusal("F3 swapped chunks", verify(&program, &statement, &f3), |e| matches!(e, LiftError::Chunk(0, _)));
+        expect_lift_refusal("F3 swapped chunks", verify(&vk, &statement, &f3), |e| matches!(e, LiftError::Chunk(0, _)));
 
         let other_index = Statement {
             index: HARDENED_OFFSET + 1,
             ..statement.clone()
         };
-        expect_lift_refusal("F4 another statement", verify(&program, &other_index, &lifted), |e| {
+        expect_lift_refusal("F4 another statement", verify(&vk, &other_index, &lifted), |e| {
             matches!(e, LiftError::Chunk(0, _))
         });
 
         let mut f5 = lifted.clone();
         f5.words.pop();
-        expect_lift_refusal("F5 truncated lift", verify(&program, &statement, &f5), |e| matches!(e, LiftError::Shape));
+        expect_lift_refusal("F5 truncated lift", verify(&vk, &statement, &f5), |e| matches!(e, LiftError::Shape));
+
+        let mut f6 = lifted.clone();
+        f6.matrix.as_mut().expect("a matrix proof").counts[40] += F128::ONE;
+        expect_lift_refusal("F6 tampered matrix proof", verify(&vk, &statement, &f6), |e| matches!(e, LiftError::Matrix(_)));
+
+        let mut f7 = lifted.clone();
+        f7.matrix = None;
+        expect_lift_refusal("F7 missing matrix proof", verify(&vk, &statement, &f7), |e| matches!(e, LiftError::Shape));
+
+        let mut f8 = lifted.clone();
+        f8.matrix = lifted_r2.matrix.clone();
+        expect_lift_refusal("F8 another lift's matrix proof", verify(&vk, &statement, &f8), |e| {
+            matches!(e, LiftError::Matrix(_))
+        });
         println!("reject matrix: PASS");
         println!();
     }
@@ -183,12 +201,12 @@ fn main() {
             binding: BINDING.to_vec(),
         };
         let t = Instant::now();
-        let lifted = prove(&program, &statement, &proof, pofseed_flock_lift::lift::MAX_CHUNK).expect("full-scale lift");
+        let lifted = prove(&key, &statement, &proof, pofseed_flock_lift::lift::MAX_CHUNK).expect("full-scale lift");
         println!("  lifted in {:.2} s ({} chunks)", t.elapsed().as_secs_f64(), lifted.chunks.len());
         let bytes = bincode::serialize(&lifted).expect("serialise");
         println!("  lifted proof: {} B", bytes.len());
         let t = Instant::now();
-        let journal = verify(&program, &statement, &lifted).expect("full-scale verify");
+        let journal = verify(&vk, &statement, &lifted).expect("full-scale verify");
         println!("  verified in {:.2} s", t.elapsed().as_secs_f64());
         check_journal(&journal, &expectation(&statement, n_eps(64) as u32)).expect("relying-party gate");
         println!("  journal passes the relying-party gate: {} responses ✓", journal.num_responses);
