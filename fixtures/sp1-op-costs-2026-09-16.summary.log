@@ -1,0 +1,28 @@
+# SP1 6.4.0 executor, instruction counts per operation (execute only, no proving), 2026-09-16, M4 Max.
+# Probe guests built by sp1-build (Succinct toolchain rustc 1.94.0-dev) outside this repository; flock at b684b12; tiny-keccak patch-2.0.2-sp1-6.0.0; sha2 patch-sha2-0.10.9-sp1-6.0.0.
+# Each figure is (instructions with n operations - instructions with 0) / n; a precompile call counts one instruction and its proving cost is not in the count.
+# modes: 0 loop only; 1 flock-field F128 mul (portable path); 2 flock-field square; 3 4-bit windowed mul; 4 8-bit table build per multiplicand (n=1000); 5 8-bit table lookup per multiplier; 6 per-byte-position reduced table build (n=100); 7 per-byte-position lookup; 8 SHA-256 compression, patched; 9 Keccak-256 of 64 bytes, patched; sha-unpatched: SHA-256 compression, unpatched.
+# A check mode asserted the windowed and table multipliers against flock-field on 1,000 random pairs, square against a*a, and the hash test vectors.
+
+RESULT ops mode=0 n=0 nmax=10000 exit=0 instructions=322756 sha_compress=1 keccak=0
+RESULT ops mode=0 n=10000 nmax=10000 exit=0 instructions=472759 sha_compress=1 keccak=0
+RESULT ops mode=1 n=0 nmax=10000 exit=0 instructions=322756 sha_compress=1 keccak=0
+RESULT ops mode=1 n=10000 nmax=10000 exit=0 instructions=22962909 sha_compress=1 keccak=0
+RESULT ops mode=2 n=0 nmax=10000 exit=0 instructions=322756 sha_compress=1 keccak=0
+RESULT ops mode=2 n=10000 nmax=10000 exit=0 instructions=11772834 sha_compress=1 keccak=0
+RESULT ops mode=3 n=0 nmax=10000 exit=0 instructions=322756 sha_compress=1 keccak=0
+RESULT ops mode=3 n=10000 nmax=10000 exit=0 instructions=9672760 sha_compress=1 keccak=0
+RESULT ops mode=5 n=0 nmax=10000 exit=0 instructions=328418 sha_compress=1 keccak=0
+RESULT ops mode=5 n=10000 nmax=10000 exit=0 instructions=3818422 sha_compress=1 keccak=0
+RESULT ops mode=7 n=0 nmax=10000 exit=0 instructions=432041 sha_compress=1 keccak=0
+RESULT ops mode=7 n=10000 nmax=10000 exit=0 instructions=2272045 sha_compress=1 keccak=0
+RESULT ops mode=9 n=0 nmax=10000 exit=0 instructions=1343322 sha_compress=1 keccak=0
+RESULT ops mode=9 n=10000 nmax=10000 exit=0 instructions=10873331 sha_compress=1 keccak=10000
+RESULT ops mode=8 n=0 nmax=10000 exit=0 instructions=5053342 sha_compress=1 keccak=0
+RESULT ops mode=8 n=10000 nmax=10000 exit=0 instructions=10153351 sha_compress=10001 keccak=0
+RESULT ops mode=4 n=0 nmax=1000 exit=0 instructions=34756 sha_compress=1 keccak=0
+RESULT ops mode=4 n=1000 nmax=1000 exit=0 instructions=5709762 sha_compress=1 keccak=0
+RESULT ops mode=6 n=0 nmax=100 exit=0 instructions=5956 sha_compress=1 keccak=0
+RESULT ops mode=6 n=100 nmax=100 exit=0 instructions=10935760 sha_compress=1 keccak=0
+RESULT sha-unpatched mode=0 n=0 nmax=10000 exit=0 instructions=5930162 sha_compress=0 keccak=0
+RESULT sha-unpatched mode=0 n=10000 nmax=10000 exit=0 instructions=46405592 sha_compress=0 keccak=0

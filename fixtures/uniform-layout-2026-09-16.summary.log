@@ -1,0 +1,65 @@
+# layout-probe, 2026-09-16, M4 Max: the hardened-child replay rows grouped into classes a contract could sum in closed form, as compiled, remapped bit-aligned, and compiled uniformly.
+# Gas figures are a model (1,800 per field multiplication, 150 per table lookup, 2,000 per class), not a measurement; against the measured contract the model is about 15% pessimistic on the rows as compiled (80.7 B modelled per claim against about 70 B measured, apportioning the measured stream's 151.5 B for two claims to the replay rows by their share of column references).
+
+replay: 1894121 rows, columns 417360..2311481, 17249 column-allocating gates, 1579812 products, 314309 materialised
+replay rows as compiled:
+  rows 1894121, column references 49209928
+  classes 1893654, carrying 48824828 operands; 330 rows in classes of 8 bits or more
+  bit counts of classes (rows): 1: 1893523, 2-7: 268, 8-63: 330, 64: 0
+  classes over a whole word 0, over a contiguous bit range 1893523, over other bit sets 131
+  modelled work per claim: 32937313 multiplications, 117773508 lookups, 1893654 classes
+  modelled closed-form gas per claim: 80740.5 M
+replay rows, bit-aligned per gate and column kind:
+  rows 1894121, column references 49209928
+  classes 1292205, carrying 39260045 operands; 270449 rows in classes of 8 bits or more
+  bit counts of classes (rows): 1: 1090510, 2-7: 533162, 8-63: 270449, 64: 0
+  classes over a whole word 0, over a contiguous bit range 1098561, over other bit sets 193644
+  modelled work per claim: 9719849 multiplications, 67488419 lookups, 1292205 classes
+  modelled closed-form gas per claim: 30203.4 M
+virtual layout: 45068 gate-kind-limb words for 1894121 columns (2884352 bits of head)
+uniform replay: 2685558 rows, 2685558 columns, 1638308 products, 1047250 materialised
+uniform replay rows, bit-aligned per gate and column kind:
+  rows 2685558, column references 45378093
+  classes 227123, carrying 5660561 operands; 2435843 rows in classes of 8 bits or more
+  bit counts of classes (rows): 1: 113818, 2-7: 135897, 8-63: 2202115, 64: 233728
+  classes over a whole word 3652, over a contiguous bit range 154590, over other bit sets 68881
+  modelled work per claim: 2403675 multiplications, 15817689 lookups, 227123 classes
+  modelled closed-form gas per claim: 7153.5 M
+uniform layout: 42356 gate-kind-limb words for 2685558 columns (2710784 bits of head)
+uniform block, stream rows of the replay:
+  rows 2685558, column references 45378093
+  classes 227123, carrying 5660561 operands; 2435843 rows in classes of 8 bits or more
+  bit counts of classes (rows): 1: 113818, 2-7: 135897, 8-63: 2202115, 64: 233728
+  classes over a whole word 3652, over a contiguous bit range 154590, over other bit sets 68881
+  modelled work per claim: 2403675 multiplications, 15817689 lookups, 227123 classes
+  modelled closed-form gas per claim: 7153.5 M
+uniform block, other stream rows:
+  rows 824870, column references 838126
+  classes 26059, carrying 27260 operands; 824586 rows in classes of 8 bits or more
+  bit counts of classes (rows): 1: 42, 2-7: 242, 8-63: 821514, 64: 3072
+  classes over a whole word 48, over a contiguous bit range 25957, over other bit sets 54
+  modelled work per claim: 52581 multiplications, 136400 lookups, 26059 classes
+  modelled closed-form gas per claim: 167.2 M
+
+# chunk-probe 128 row-major, compact and uniform layouts alternated, one process each, quiet machine.
+
+compact response block: k_log 28, 3988 Keccak-f, 1579812 products, 314309 materialised, 8689741 explicit rows (0.64 s)
+row-major: prove 6.58 s, verify 0.02 s, proof 586065 B
+         63623135232  maximum resident set size
+                   0  block input operations
+                   0  block output operations
+uniform response block: k_log 28, 3988 Keccak-f, 1638308 products, 1047250 materialised, 9481178 explicit rows (0.58 s)
+row-major: prove 6.47 s, verify 0.02 s, proof 586065 B
+         63693832192  maximum resident set size
+                   0  block input operations
+                   0  block output operations
+compact response block: k_log 28, 3988 Keccak-f, 1579812 products, 314309 materialised, 8689741 explicit rows (0.67 s)
+row-major: prove 6.54 s, verify 0.02 s, proof 586065 B
+         63621087232  maximum resident set size
+                   0  block input operations
+                   0  block output operations
+uniform response block: k_log 28, 3988 Keccak-f, 1638308 products, 1047250 materialised, 9481178 explicit rows (0.57 s)
+row-major: prove 6.44 s, verify 0.02 s, proof 586065 B
+         63691014144  maximum resident set size
+                   0  block input operations
+                   0  block output operations

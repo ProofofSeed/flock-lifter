@@ -112,6 +112,15 @@ impl StatementShape {
 impl Program {
     /// Builds the block of `circuit`.
     pub fn new<C: Circuit>(circuit: &C) -> Self {
+        return Self::build(circuit, replay::compile);
+    }
+
+    /// Builds the block of `circuit` from its uniform replay.
+    pub fn uniform<C: Circuit>(circuit: &C) -> Self {
+        return Self::build(circuit, replay::compile_uniform_fitting);
+    }
+
+    fn build<C: Circuit>(circuit: &C, compile: fn(&C, &Geometry) -> Result<Replay, usize>) -> Self {
         let shape = StatementShape::of(circuit);
         let mut k_log = SUB_LOG + 1;
         let mut head_bits = 0;
@@ -120,7 +129,7 @@ impl Program {
                 k_log += 1;
                 continue;
             };
-            match replay::compile(circuit, &geometry) {
+            match compile(circuit, &geometry) {
                 Ok(replay) => break (geometry, replay),
                 Err(needed) => head_bits = needed,
             }

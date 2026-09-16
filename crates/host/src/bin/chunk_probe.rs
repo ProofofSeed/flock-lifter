@@ -3,7 +3,8 @@
 //! Proves and verifies one Flock chunk over hardened-child responses, reporting the block, the
 //! time of each phase and the proof size.
 //!
-//! Usage: `chunk-probe [responses] [union|row-major]` (default 8, union).
+//! Usage: `chunk-probe [responses] [union|row-major] [compact|uniform]` (default 8, union,
+//! compact); `uniform` builds the block from the replay laid out the same way at every bit.
 
 use std::{env, sync::Arc, time::Instant};
 
@@ -19,16 +20,21 @@ const DOMAIN: &[u8] = b"pofseed-flock-lift-chunk-probe";
 fn main() {
     let n: usize = env::args().nth(1).map(|a| a.parse().expect("response count")).unwrap_or(8);
     let path = env::args().nth(2).unwrap_or_else(|| "union".into());
+    let layout = env::args().nth(3).unwrap_or_else(|| "compact".into());
     let t = Instant::now();
     let (_, output, proof) = vector_1_proof(n, b"chunk-probe", b"");
     println!("zkboo proof of {n} responses: {:.2} s", t.elapsed().as_secs_f64());
     let (_, chain_code) = bip32_vector_1();
     let public = HardenedChildCircuit::public_only(chain_code, HARDENED_OFFSET);
     let t = Instant::now();
-    let program = Arc::new(Program::new(&public));
+    let program = Arc::new(match layout.as_str() {
+        "compact" => Program::new(&public),
+        "uniform" => Program::uniform(&public),
+        other => panic!("unknown layout {other}"),
+    });
     let g = program.geometry();
     println!(
-        "response block: k_log {}, {} Keccak-f, {} products, {} materialised, {} explicit rows ({:.2} s)",
+        "{layout} response block: k_log {}, {} Keccak-f, {} products, {} materialised, {} explicit rows ({:.2} s)",
         g.k_log(),
         g.keccak_subs(),
         program.replay_products(),
