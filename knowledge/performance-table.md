@@ -107,7 +107,7 @@ the moment chunk verification is arithmetised.
 | prove | 3,613.03 s | 12.33 s |
 | peak RSS | 48.39 GB | 73.91 GB |
 | proof | 356 B Groth16 + 219 B journal | 1,233,478 B |
-| verify | 280,590 gas on L1 (225,975 pairing + 54,615 gate) | 0.06 s native, in 0.82 GB |
+| verify | 280,590 gas on L1 (225,975 pairing + 54,615 gate) | 0.06 s native, in 0.82 GB; 158.3 B gas in EVM contracts |
 | weakest link | BN254 pairing, about 100 bits | Flock `Fast` profile and ZKBoo, 128 classical |
 
 Proving is about **293× faster**, for about half as much memory again (+53%).
@@ -129,5 +129,19 @@ This lifter never executes a machine. Each two-party AND is one committed bit an
 every XOR is free, and the 219-response lift commits about 34 × 10⁹ AND constraints and proves them
 in 12.33 s — ~2.8 × 10⁹ AND gates per second. What it pays instead is the compilation: the block is
 a hand-written encoding of the verifier, which is why `crates/block/tests/block.rs` exists.
-What is traded for it is everything after proving: the SP1 lifter ends in a constant-size proof a contract checks for under 300k gas, and the Flock lifter in a megabyte-scale proof with only a native verifier.
+What is traded for it is everything after proving: the SP1 lifter ends in a constant-size proof a contract checks for under 300k gas, and the Flock lifter in a megabyte-scale proof whose EVM verification costs over half a million times as much.
 The two also differ in what is trusted: the SP1 guest is the ZKBoo verifier itself, while the Flock block is a compilation of it checked differentially against ZKBoo's replay.
+
+## On chain
+
+From `evm-bench 219` on 2026-09-16, in an in-process EVM under Osaka rules with the gas cap and the size limits lifted (`fixtures/evm-bench-2026-09-16-*.summary.log`).
+Gas includes calldata at standard pricing.
+The transaction count is a lower bound, because the verification is not yet split into transactions; `evm-verifier.md` records what is missing and why.
+
+| contracts                     | lift contract (M gas) | matrix discharge (M gas) | in all (M gas) | transactions at 2^24, at least |
+| ----------------------------- | --------------------: | -----------------------: | -------------: | -----------------------------: |
+| first working version         |              1,138.56 |                  670,934 |        672,073 |                         40,059 |
+| optimised, `Fast` profile     |                830.28 |                  157,512 |        158,342 |                          9,438 |
+| optimised, `Slim` profile     |                680.28 |                  157,512 |        158,192 |                          9,429 |
+
+The discharge does not depend on the profile, and it is 99% of the total.

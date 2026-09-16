@@ -99,7 +99,7 @@ This is the lift-fidelity gap the SP1 lifter does not have, since its guest is t
 
 The assumptions stack as follows.
 ZKBoo's soundness at 219 responses is the classical-128 figure in the forgery-work-ratio sense, with the caveat the SP1 lifter records.
-Flock's Ligerito `Fast` profile targets 128-bit component security (`docs/128-bit-grinding-audit.md` in Flock), on proximity-gap results in the proven regime and SHA-256 for its Merkle commitments and transcript.
+Flock's Ligerito `Fast` profile targets 128-bit component security (`docs/128-bit-grinding-audit.md` in Flock), on proximity-gap results in the proven regime and SHA-256 for its Merkle commitments; the lifter's transcript is a Keccak-256 hash chain, so that an EVM contract can replay it (`evm-verifier.md`).
 The composition of an in-circuit Keccak with a random-oracle Fiat-Shamir argument is heuristic exactly where every hash-based recursion is.
 There is no pairing anywhere, so the BN254 ceiling of about 100 bits that caps the SP1 lifter does not apply; whether the lift is post-quantum depends on Flock's grinding being re-accounted under Grover, which is not established here, and on lifting 438 responses rather than 219.
 Flock describes itself as a research prototype not for production use, and this lifter inherits that.
@@ -111,30 +111,16 @@ Its responses carry about 23.5 million AND-message bits, so its block would need
 The verifier no longer builds that vector, and its structured discharge would want about 8.6 GB at `k_log = 34`; the **prover** still builds it, because its sumcheck binds the folded vector round by round.
 So what blocks the elephant is the prover's fold, not the verifier's, and the compiler's inability to handle inputs allocated after the first AND gate.
 
-There is no on-chain verifier, and the measured verifier costs say what one would need.
+An on-chain verifier exists and is measured, and it is not deployable (`evm-verifier.md`).
+Verifying the 219-response lift in EVM contracts costs about 158 billion gas, at least 9,438 transactions at the 2^24-gas cap.
+99% of that is the matrix discharge, which pays for the block's 53.5 million column references, per claim, however it is written.
+The lift contract without the discharge is 680–830 M gas, two thirds of it the opening's last-level residuals.
+That matches the estimate recorded here on 2026-09-15 of 100–400 M gas per chunk for the opening alone.
 
-Verifying a chunk costs 201,565 field multiplications and about 15,600 SHA-256 compressions in the
-opening, against 62 million multiplications in the core — down from 713 million, but still the
-matrix, now paid per explicit row rather than per column (`matrix-discharge.md`).
-Taking the opening alone, and assuming an emulated GF(2^128) multiplication costs a few hundred to
-a couple of thousand gas (the EVM has no binary-field precompile), that is ~100–400 M gas against a
-~30 M block, before the ~8 M gas of calldata for a 500 kB proof at 16 gas per byte — or ~20 M under
-EIP-7623's floor pricing for calldata-heavy transactions.
-SHA-256 is a precompile and would be the cheap part.
-So direct EVM verification is about two orders of magnitude out with the matrix term removed
-entirely, and about three with it as it now stands.
-
-Two further things an on-chain verifier would need from this lifter: the published words are linear
-in the response count (52.6 kB at 219) unless the Fiat-Shamir gate moves into the circuit, and
-Flock's transcript is BLAKE3 by default, which has no precompile — `FsChallenger::with_hash`
-selects SHA-256.
-
-The plausible route is recursion rather than a verifier contract: verify the Flock proof inside SP1
-and reuse the SP1 lifter's Groth16 path at ~280k gas. The structured discharge makes that a
-different proposition — tens of millions of field operations to prove rather than hundreds — though
-still far more than the opening alone, which is what a committed matrix would leave.
-A search on 2026-09-15 found no published on-chain verifier for Flock or Ligerito to calibrate
-against.
+To serve the contract, the lifter's transcript is a Keccak-256 hash chain and its Merkle trees are SHA-256, both of which the EVM has natively.
+The published words stay linear in the response count (52.6 kB at 219) unless the Fiat-Shamir gate moves into the circuit.
+The routes that would change the order of magnitude are a committed matrix, a shift-regular block layout, wrapping in a succinct proof, and optimistic verification; `evm-verifier.md` sets them out.
+A search on 2026-09-15 found no published on-chain verifier for Flock or Ligerito to calibrate against.
 
 ## Batching and Ligerito
 
