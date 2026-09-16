@@ -6,8 +6,9 @@
 use std::sync::{Arc, OnceLock};
 
 use flock_prover::{
-    challenger::{Challenger, FsChallenger},
+    challenger::Challenger,
     field::F128,
+    merkle::HashKind,
     lincheck::{
         LincheckCircuit, LincheckClaim, LincheckError, LincheckGrinding, LincheckProof, QuirkyPoint,
         SkipPoint, pack_z_lincheck_from_packed,
@@ -31,6 +32,8 @@ use pofseed_flock_lift_statement::S;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use zkboo::prover::proof::Response;
+
+use crate::transcript::KeccakChallenger;
 
 /// The Ligerito profile every chunk is proved under: `Fast` (rate 1/2) unless
 /// `POFSEED_LIGERITO_PROFILE` selects `slim` (rate 1/4, about half the proof for about twice the
@@ -93,7 +96,13 @@ fn r1cs_for(program: &Program, nu: usize) -> BlockR1cs {
     };
 }
 
-fn pcs_params(m: usize) -> PcsParams {
+/// The digest of the Flock statement a chunk of `2^nu` blocks is bound to.
+pub fn statement_digest(program: &Program, nu: usize) -> [u8; 32] {
+    return r1cs_for(program, nu).statement_digest();
+}
+
+/// The PCS parameters a chunk committing `2^m` bits is proved and verified under.
+pub fn pcs_params(m: usize) -> PcsParams {
     let profile = profile();
     return PcsParams {
         m,
@@ -101,7 +110,7 @@ fn pcs_params(m: usize) -> PcsParams {
         log_batch_size: embedded_initial_k_or_default(m, profile),
         profile,
         num_lanes: None,
-        merkle_hash: Default::default(),
+        merkle_hash: HashKind::Sha256,
     };
 }
 
@@ -272,7 +281,7 @@ pub fn prove_chunk(
         eprintln!("[pofseed] row-major witness and stripe {:.2} s", t.elapsed().as_secs_f64());
     }
     let rows = padded_publics(publics, nu);
-    let mut challenger = FsChallenger::new(domain);
+    let mut challenger = KeccakChallenger::new(domain);
     observe_publics(&mut challenger, &rows);
     let t = std::time::Instant::now();
     let core: ProveCore = prove_fast_core(&r1cs, &params, z, a, b, stripe, program.as_ref() as &dyn LincheckCircuit, &mut challenger);
@@ -491,7 +500,7 @@ pub fn verify_chunk(
     let rows = padded_publics(publics, nu);
     #[cfg(feature = "count")]
     let before = count::Counts::now();
-    let mut challenger = FsChallenger::new(domain);
+    let mut challenger = KeccakChallenger::new(domain);
     observe_publics(&mut challenger, &rows);
     let (ab, c) = verify_core_circuit_form(&r1cs, chunk, program.as_ref(), &params, &mut challenger)
         .map_err(ChunkRmError::Core)?;

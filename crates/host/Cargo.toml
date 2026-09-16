@@ -53,3 +53,7 @@ path = "src/bin/block_stats.rs"
 [[bin]]
 name = "verify-only"
 path = "src/bin/verify_only.rs"
+
+[[bin]]
+name = "pcs-config"
+path = "src/bin/pcs_config.rs"

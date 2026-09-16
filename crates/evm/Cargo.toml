@@ -1,0 +1,23 @@
+[package]
+name = "pofseed-flock-lift-evm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Flock lifter's Ethereum verifier: calldata encoding, and an in-process EVM that runs the contract and meters it."
+publish = false
+
+[dependencies]
+flock-prover = { workspace = true }
+pofseed-flock-lift = { path = "../lift" }
+pofseed-flock-lift-block = { path = "../block" }
+pofseed-flock-lift-statement = { path = "../statement" }
+revm = { version = "43", features = ["dev"] }
+serde_json = { version = "1" }
+hex = { version = "0.4" }
+sha2 = { version = "0.10" }
+pofseed-flock-lift-host = { path = "../host" }
+bincode = { version = "1.3" }
+
+[[bin]]
+name = "evm-constants"
+path = "src/bin/evm_constants.rs"

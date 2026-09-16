@@ -14,6 +14,7 @@ count = ["flock-prover/mul-count", "flock-prover/hash-count", "pofseed-flock-lif
 flock-prover = { workspace = true }
 rayon = { version = "1.10" }
 serde = { version = "1.0.228", features = ["derive"] }
+tiny-keccak = { version = "2.0", features = ["keccak"] }
 zkboo = { version = "1.2", features = ["u32", "u64"] }
 zkboo-circuit-hash = { version = "1.2" }
 pofseed-flock-lift-block = { path = "../block" }
