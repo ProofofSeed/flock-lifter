@@ -1,0 +1,44 @@
+# acceptance both, 2026-09-16, M4 Max, one process, quiet machine; chunk proofs on the Keccak-256 hash-chain transcript and SHA-256 Merkle trees the EVM verifier replays.
+
+block built in 0.64 s (k_log 28)
+── reject matrix (n=8) ──
+  control (n=8, two chunks, matching expectation): accepted ✓
+  R1 tampered proof: refused (FiatShamir) ✓
+  R2 wrong binding: refused (FiatShamir) ✓
+  R3 wrong fingerprint: refused by check_journal (FingerprintMismatch) ✓
+  R4 too few responses: refused by check_journal (TooFewResponses) ✓
+  R5 empty proof: refused by check_journal (TooFewResponses) ✓
+  R6 wrong statement: refused by check_journal (StatementMismatch) ✓
+  R7 malformed response: refused by the prover (Witness(5, AndMsgShape)) ✓
+  R8 wrong proof format: refused by check_journal (ProofFormatMismatch) ✓
+  F1 tampered published word: refused (Chunk(1, Core(Zerocheck(InvalidGrindingNonce { which: "initial" })))) ✓
+  F2 tampered unopened digest: refused (FiatShamir) ✓
+  F3 swapped chunks: refused (Chunk(0, Core(Zerocheck(InvalidGrindingNonce { which: "initial" })))) ✓
+  F4 another statement: refused (Chunk(0, Core(Zerocheck(InvalidGrindingNonce { which: "initial" })))) ✓
+  F5 truncated lift: refused (Shape) ✓
+reject matrix: PASS
+
+── full-scale positive run (n=219) ──
+  zkboo proof of 219 responses in 0.07 s
+  lifted in 12.62 s (2 chunks)
+  lifted proof: 1233478 B
+  verified in 0.05 s
+  journal passes the relying-party gate: 219 responses ✓
+       33.67 real       220.24 user        29.47 sys
+         72105738240  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            14865861  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+              382100  involuntary context switches
+       4372353431824  instructions retired
+        912471022445  cycles elapsed
+         71874022496  peak memory footprint
