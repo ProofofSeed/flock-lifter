@@ -1,6 +1,7 @@
 # Routes to a deployable verifier: initial investigation
 
 Status: exploratory, 2026-09-16.
+Afterwards the same day, routes 1 and 2 were built together, which took verification to 1.27 billion gas (`committed-matrix.md`). Route 3 is not pursued, because wrapping in a pairing SNARK gives up what the Flock lifter is for. Route 4 is being prototyped on its own branch.
 `evm-verifier.md` measured a direct EVM verifier for the 219-response lift at 158.3 billion gas and named four routes that could change that by orders of magnitude.
 This note investigates each one far enough to cost it: one route is built and measured, one uses measured primitive costs, and two are estimated from what is already measured.
 Every figure is marked as measured, modelled or estimated.
@@ -38,12 +39,12 @@ Three things then vary from bit to bit:
 
 ### A uniform compile
 
-`replay::compile_uniform` (built on this branch) lays out every gate the same way at every bit:
+`replay::compile_uniform` (since renamed `compile_regular` and made the default, `Program::new`) lays out every gate the same way at every bit:
 - no product is skipped: a constant operand becomes a masked reference to the constant column;
 - the outputs of AND and carry gates are always materialised;
 - linear gates materialise at all their bits or at none.
 
-`Program::uniform` builds a block from it with no other change, because the witness generator, the prover and the structured discharge are generic in the rows.
+`Program::uniform` (now `Program::new`) builds a block from it with no other change, because the witness generator, the prover and the structured discharge are generic in the rows.
 
 Measured (`fixtures/uniform-layout-2026-09-16.summary.log`):
 

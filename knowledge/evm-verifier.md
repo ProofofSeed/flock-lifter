@@ -1,6 +1,6 @@
 # An Ethereum verifier for the Flock lift
 
-Status: record, 2026-09-16.
+Status: record, 2026-09-16. Superseded the same day for the matrix discharge: with the regular layout and the committed matrix, the verification below costs 1.27 billion gas, at least 76 transactions (`committed-matrix.md`). This record keeps the row-walking verifier's figures and the reasoning that led there.
 The Flock lift can be verified by EVM contracts, and the verification of the 219-response hardened-child lift is metered phase by phase.
 It costs **158.3 billion gas**, at least **9,438 transactions** at the 2^24-gas cap.
 That is a quarter of the first working version's figure, and still about **564,000×** what the SP1 lifter's Groth16 verification costs on L1 (280,590 gas).

@@ -1,7 +1,7 @@
-# acceptance both, 2026-09-16, M4 Max, one process, quiet machine apart from a sibling session working on EVM contracts; regular block layout, explicit rows discharged by the committed-matrix proof (F6-F8 are its forgery cases).
+# acceptance both, 2026-09-16, M4 Max; regular layout with the committed-matrix proof at its final encoding. A sibling session was running single-threaded EVM simulations, so the prove time is not a clean figure.
 
-block built in 0.60 s (k_log 28)
-entry list committed in 1.14 s (2^22 entries)
+block built in 0.68 s (k_log 28)
+entry list committed in 1.30 s (2^22 entries)
 ── reject matrix (n=8) ──
   control (n=8, two chunks, matching expectation): accepted ✓
   R1 tampered proof: refused (FiatShamir) ✓
@@ -24,16 +24,16 @@ reject matrix: PASS
 
 ── full-scale positive run (n=219) ──
   zkboo proof of 219 responses in 0.07 s
-  lifted in 13.51 s (2 chunks)
+  lifted in 15.04 s (2 chunks)
   lifted proof: 1675231 B
   verified in 0.02 s
   journal passes the relying-party gate: 219 responses ✓
-       38.94 real       257.46 user        38.21 sys
-         72180203520  maximum resident set size
+       42.99 real       256.48 user        42.38 sys
+         72195342336  maximum resident set size
                    0  average shared memory size
                    0  average unshared data size
                    0  average unshared stack size
-            15851174  page reclaims
+            15851231  page reclaims
                    0  page faults
                    0  swaps
                    0  block input operations
@@ -42,7 +42,7 @@ reject matrix: PASS
                    0  messages received
                    0  signals received
                    0  voluntary context switches
-              594865  involuntary context switches
-       4863849575580  instructions retired
-       1075443722830  cycles elapsed
-         71946767600  peak memory footprint
+             1299437  involuntary context switches
+       4884639400041  instructions retired
+       1086951905330  cycles elapsed
+         71959547144  peak memory footprint
