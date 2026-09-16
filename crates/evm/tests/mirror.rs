@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use pofseed_flock_lift::lift::{MAX_CHUNK, Statement, domain, prove, verify};
+use pofseed_flock_lift::lift::{LiftKey, MAX_CHUNK, Statement, domain, prove, verify};
 use pofseed_flock_lift_block::program::Program;
 use pofseed_flock_lift_evm::{calldata::encode_chunk, mirror::verify_chunk};
 use pofseed_flock_lift_host::{HARDENED_OFFSET, bip32_vector_1, vector_1_proof};
@@ -25,8 +25,8 @@ fn mirror_accepts_a_genuine_chunk_and_refuses_tampering() {
         binding: BINDING.to_vec(),
     };
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code, HARDENED_OFFSET)));
-    let lifted = prove(&program, &statement, &proof, MAX_CHUNK).expect("lift");
-    verify(&program, &statement, &lifted).expect("lifter verifies");
+    let lifted = prove(&LiftKey::new(program.clone()), &statement, &proof, MAX_CHUNK).expect("lift");
+    verify(&LiftKey::new(program.clone()).verifying(), &statement, &lifted).expect("lifter verifies");
     let dom = domain(&statement.digest(n, MAX_CHUNK as u32), 0);
     let data = encode_chunk(&lifted.chunks[0], n);
     eprintln!("chunk calldata: {} bytes", data.len());

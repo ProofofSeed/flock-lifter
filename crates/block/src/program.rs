@@ -110,8 +110,19 @@ impl StatementShape {
 }
 
 impl Program {
-    /// Builds the block of `circuit`.
+    /// Builds the block of `circuit`, laid out regularly: every gate word bit-aligned, every bit
+    /// laid out alike.
     pub fn new<C: Circuit>(circuit: &C) -> Self {
+        return Self::build(circuit, replay::compile_regular_fitting);
+    }
+
+    /// Builds the block of `circuit` with the compact layout, which skips constant products and
+    /// allocates columns in evaluation order.
+    pub fn compact<C: Circuit>(circuit: &C) -> Self {
+        return Self::build(circuit, replay::compile);
+    }
+
+    fn build<C: Circuit>(circuit: &C, compile: fn(&C, &Geometry) -> Result<Replay, usize>) -> Self {
         let shape = StatementShape::of(circuit);
         let mut k_log = SUB_LOG + 1;
         let mut head_bits = 0;
@@ -120,7 +131,7 @@ impl Program {
                 k_log += 1;
                 continue;
             };
-            match replay::compile(circuit, &geometry) {
+            match compile(circuit, &geometry) {
                 Ok(replay) => break (geometry, replay),
                 Err(needed) => head_bits = needed,
             }
@@ -413,6 +424,27 @@ impl Program {
     ) -> Vec<F128> {
         #[cfg(feature = "count")]
         let entry = flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv();
+        let mut out = self.comb_structured(alpha, beta, skip_weights, x_inner_rest, r_inner_rest);
+        let explicit = self.comb_explicit(alpha, skip_weights, x_inner_rest, r_inner_rest);
+        out.iter_mut().zip(explicit).for_each(|(o, e)| *o += e);
+        #[cfg(feature = "count")]
+        eprintln!(
+            "[count] structured comb_partial: F128 muls {}",
+            flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv() - entry
+        );
+        return out;
+    }
+
+    /// The part of [`Self::comb_partial`] that the Keccak-f sub-blocks and the constant-wire pin
+    /// contribute.
+    pub fn comb_structured(
+        &self,
+        alpha: F128,
+        beta: F128,
+        skip_weights: &[F128],
+        x_inner_rest: &[F128],
+        r_inner_rest: &[F128],
+    ) -> Vec<F128> {
         let n_skip = skip_weights.len();
         let k_skip = n_skip.trailing_zeros() as usize;
         assert!(n_skip == 1 << k_skip && k_skip <= 6 && k_skip < SUB_LOG);
@@ -420,8 +452,6 @@ impl Program {
         assert_eq!(r_inner_rest.len(), x_inner_rest.len());
         let mask = n_skip - 1;
         let lo = SUB_LOG - k_skip;
-        let eq_row_rest = build_eq_table(x_inner_rest);
-        let eq_col_rest = build_eq_table(r_inner_rest);
         let eq_row_lo = build_eq_table(&x_inner_rest[..lo]);
         let eq_row_hi = build_eq_table(&x_inner_rest[lo..]);
         let eq_col_hi = build_eq_table(&r_inner_rest[lo..]);
@@ -444,7 +474,49 @@ impl Program {
             }
             *o = weight * acc;
         }
-        out[CONST as usize & mask] += (weight_konst * konst_local + beta) * eq_col_rest[CONST as usize >> k_skip];
+        let eq_const = eq_col_lo[CONST as usize >> k_skip] * eq_col_hi[CONST as usize >> SUB_LOG];
+        out[CONST as usize & mask] += (weight_konst * konst_local + beta) * eq_const;
+        return out;
+    }
+
+    /// `Σ_s z[s]·comb_structured[s]`: the structured part of a matrix claim paired with the
+    /// collapsed witness `z`, computed from the Keccak-f fold's rotation-invariant form and closed
+    /// sums over the sub-block range.
+    pub fn structured_value(
+        &self,
+        alpha: F128,
+        beta: F128,
+        skip: &[F128],
+        z: &[F128],
+        x_inner_rest: &[F128],
+        r_inner_rest: &[F128],
+    ) -> F128 {
+        assert!(skip.len() == 64 && z.len() == 64, "the structured value assumes a 6-bit skip");
+        let lo = SUB_LOG - 6;
+        let row = build_eq_table(&x_inner_rest[..lo]);
+        let col = build_eq_table(&r_inner_rest[..lo]);
+        let (value, konst) = keccak::fold_shared_paired(alpha, skip, &row, z, &col);
+        let (x_hi, r_hi) = (&x_inner_rest[lo..], &r_inner_rest[lo..]);
+        let (first, subs) = (self.geometry.head_subs(), self.geometry.keccak_subs());
+        let both: Vec<(F128, F128)> = x_hi
+            .iter()
+            .zip(r_hi)
+            .map(|(&a, &b)| ((F128::ONE + a) * (F128::ONE + b), a * b))
+            .collect();
+        let rows: Vec<(F128, F128)> = x_hi.iter().map(|&a| (F128::ONE + a, a)).collect();
+        let weight = product_range_sum(&both, first, first + subs);
+        let weight_konst = product_range_sum(&rows, first, first + subs);
+        let eq_const = col[0] * r_hi.iter().fold(F128::ONE, |acc, &b| acc * (F128::ONE + b));
+        return weight * value + z[CONST as usize & 63] * eq_const * (weight_konst * konst + beta);
+    }
+
+    /// The part of [`Self::comb_partial`] that the explicit rows contribute.
+    pub fn comb_explicit(&self, alpha: F128, skip_weights: &[F128], x_inner_rest: &[F128], r_inner_rest: &[F128]) -> Vec<F128> {
+        let n_skip = skip_weights.len();
+        let k_skip = n_skip.trailing_zeros() as usize;
+        let mask = n_skip - 1;
+        let eq_row_rest = build_eq_table(x_inner_rest);
+        let eq_col_rest = build_eq_table(r_inner_rest);
         // The A and B sides are accumulated apart so that α multiplies once at the end rather
         // than once per row, and a row whose B side is the bare constant wire — every row but a
         // replay product — contributes its weight to one running scalar instead of a product.
@@ -499,15 +571,7 @@ impl Program {
                     x
                 },
             );
-        for ((o, a), b) in out.iter_mut().zip(side_a).zip(side_b) {
-            *o += alpha * a + b;
-        }
-        #[cfg(feature = "count")]
-        eprintln!(
-            "[count] structured comb_partial: F128 muls {}",
-            flock_prover::field::gf2_128::op_count::snapshot().muls_excluding_inv() - entry
-        );
-        return out;
+        return side_a.into_iter().zip(side_b).map(|(a, b)| alpha * a + b).collect();
     }
 
     /// The published words of a block's witness.
@@ -519,6 +583,37 @@ impl Program {
             .map(|c| F128::new(z[2 * c], z[2 * c + 1]))
             .collect();
     }
+}
+
+/// `Σ_{a ≤ j < b} Π_i g_i(bit i of j)` for `g_i(0), g_i(1)` given as pairs, in time linear in the
+/// number of bits.
+pub fn product_range_sum(g: &[(F128, F128)], a: usize, b: usize) -> F128 {
+    assert!(a <= b && b <= 1 << g.len());
+    return prefix_product_sum(g, b) + prefix_product_sum(g, a);
+}
+
+/// `Σ_{j < n} Π_i g_i(bit i of j)`.
+fn prefix_product_sum(g: &[(F128, F128)], n: usize) -> F128 {
+    let k = g.len();
+    if n == 1 << k {
+        return g.iter().fold(F128::ONE, |acc, &(p, q)| acc * (p + q));
+    }
+    let mut full = vec![F128::ONE; k + 1];
+    for i in 0..k {
+        full[i + 1] = full[i] * (g[i].0 + g[i].1);
+    }
+    let mut acc = F128::ZERO;
+    let mut high = F128::ONE;
+    for i in (0..k).rev() {
+        let bit = (n >> i) & 1;
+        if bit == 1 {
+            acc += high * g[i].0 * full[i];
+            high *= g[i].1;
+        } else {
+            high *= g[i].0;
+        }
+    }
+    return acc;
 }
 
 impl LincheckCircuit for Program {

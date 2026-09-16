@@ -1,0 +1,22 @@
+Validation by deletion of the committed-matrix proof, 2026-09-16
+
+Toy block (regular layout), one claim whose value is off by one; the matrix verifier run against:
+- an honest proof of the wrong value ("main");
+- a forged proof whose last prefix-table count is adjusted so the main sumcheck closes ("count");
+- a forged proof that also adjusts one address bit so the count sumcheck closes ("opening").
+The forging prover is `matrix::prove_forged` (feature `forgery`); the same forgeries are asserted in
+`crates/lift/tests/matrix.rs` (`toy_forged_proofs_are_refused_by_the_check_they_target`).
+
+== intact
+DELETION main: Err(Main)
+DELETION count: Err(Count)
+DELETION opening: Err(Opening)
+== main check deleted (the comparison of the main sumcheck's final claim with the counts)
+DELETION main: Ok(())
+== count check deleted (the comparison of the count sumcheck's final claim with the address bits)
+DELETION count: Ok(())
+== opening deleted (the Ligerito opening of the committed entry list)
+DELETION opening: Ok(())
+
+So each of the three checks is what refuses a forgery that passes the checks before it. Every edit
+was reverted from a saved copy; the tree at commit time is the unmodified one.

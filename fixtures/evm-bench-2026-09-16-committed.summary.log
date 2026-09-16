@@ -1,0 +1,85 @@
+# evm-bench 219, regular block layout with the committed-matrix discharge, Fast profile, 2026-09-16, M4 Max.
+# revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted; the lift was proved in this process (a sibling session was running light EVM work).
+# Each phase is one call: the lift contract, the Keccak sub-blocks structured part (keccakPart), then the matrix contract; no call is split into 2^24-gas transactions, so the transaction count is a lower bound.
+# intrinsic is 21,000 plus standard calldata pricing (4 per zero byte, 16 per nonzero).
+
+block built in 0.60 s
+lift proved in 13.89 s
+responses 219, chunks 2, lift calldata 1215008 bytes
+FlockLift: initcode 94606 bytes, deployment 20350272 gas
+lift contract ran in 0.59 s
+chunk 1:
+  published words                      1.52 M
+  zerocheck                            1.44 M
+  lincheck                             0.92 M
+  published-word claim                13.81 M
+  ring switches                        6.35 M
+  Ligerito level 0 opening            47.07 M
+  Ligerito level 1 opening             5.01 M
+  Ligerito level 2 opening             3.14 M
+  Ligerito level 3 opening             2.40 M
+  Ligerito level 4 opening             1.99 M
+  Ligerito level 5 opening             1.75 M
+  Ligerito final opening               1.59 M
+  ring-switch residual               186.76 M
+  out-of-domain residual               4.69 M
+  consistency residual               125.63 M
+  final check                          0.00 M
+chunk 2:
+  published words                      2.02 M
+  zerocheck                            1.49 M
+  lincheck                             0.96 M
+  published-word claim                10.38 M
+  ring switches                        6.69 M
+  Ligerito level 0 opening            47.22 M
+  Ligerito level 1 opening             5.06 M
+  Ligerito level 2 opening             3.17 M
+  Ligerito level 3 opening             2.42 M
+  Ligerito level 4 opening             2.01 M
+  Ligerito level 5 opening             1.77 M
+  Ligerito final opening               1.61 M
+  ring-switch residual               189.04 M
+  out-of-domain residual               4.72 M
+  consistency residual               126.27 M
+  final check                          0.00 M
+  Fiat-Shamir gate                     2.05 M
+lift contract: 830.43 M total = 811.17 M execution + 19.26 M intrinsic (calldata)
+FlockMatrix: deployment 19007892 gas; ran in 0.22 s
+discharge, 2 claims:
+  Keccak-f sub-blocks               1037.24 M
+  matrix claims                        1.71 M
+  matrix main sumcheck                40.58 M
+  matrix count claim                  26.09 M
+  matrix count sumcheck                0.94 M
+  matrix address bits                  0.96 M
+  ring switches                        2.17 M
+  Ligerito level 0 opening            13.78 M
+  Ligerito level 1 opening             4.78 M
+  Ligerito level 2 opening             3.00 M
+  Ligerito level 3 opening             2.30 M
+  Ligerito final opening               1.88 M
+  ring-switch residual                62.90 M
+  out-of-domain residual               5.69 M
+  consistency residual               119.25 M
+  final check                          0.00 M
+matrix contract: 292.05 M total = 286.03 M execution + 6.03 M intrinsic (calldata 437664 bytes)
+verification in all: 2159.82 M gas, 2134.43 M of it execution
+at least 129 transactions under the 16777216-gas cap
+       17.97 real       153.05 user        21.68 sys
+         74734698496  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             7050881  page reclaims
+                 111  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  15  signals received
+                  51  voluntary context switches
+              399269  involuntary context switches
+       3093002022615  instructions retired
+        634184289686  cycles elapsed
+         74499855304  peak memory footprint

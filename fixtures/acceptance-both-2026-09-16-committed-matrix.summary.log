@@ -1,0 +1,48 @@
+# acceptance both, 2026-09-16, M4 Max; regular layout with the committed-matrix proof at its final encoding. A sibling session was running single-threaded EVM simulations, so the prove time is not a clean figure.
+
+block built in 0.68 s (k_log 28)
+entry list committed in 1.30 s (2^22 entries)
+── reject matrix (n=8) ──
+  control (n=8, two chunks, matching expectation): accepted ✓
+  R1 tampered proof: refused (FiatShamir) ✓
+  R2 wrong binding: refused (FiatShamir) ✓
+  R3 wrong fingerprint: refused by check_journal (FingerprintMismatch) ✓
+  R4 too few responses: refused by check_journal (TooFewResponses) ✓
+  R5 empty proof: refused by check_journal (TooFewResponses) ✓
+  R6 wrong statement: refused by check_journal (StatementMismatch) ✓
+  R7 malformed response: refused by the prover (Witness(5, AndMsgShape)) ✓
+  R8 wrong proof format: refused by check_journal (ProofFormatMismatch) ✓
+  F1 tampered published word: refused (Chunk(1, Core(Zerocheck(InvalidGrindingNonce { which: "initial" })))) ✓
+  F2 tampered unopened digest: refused (FiatShamir) ✓
+  F3 swapped chunks: refused (Chunk(0, Core(Zerocheck(InvalidGrindingNonce { which: "initial" })))) ✓
+  F4 another statement: refused (Chunk(0, Core(Zerocheck(InvalidGrindingNonce { which: "initial" })))) ✓
+  F5 truncated lift: refused (Shape) ✓
+  F6 tampered matrix proof: refused (Matrix(Main)) ✓
+  F7 missing matrix proof: refused (Shape) ✓
+  F8 another lift's matrix proof: refused (Matrix(Grinding)) ✓
+reject matrix: PASS
+
+── full-scale positive run (n=219) ──
+  zkboo proof of 219 responses in 0.07 s
+  lifted in 15.04 s (2 chunks)
+  lifted proof: 1675231 B
+  verified in 0.02 s
+  journal passes the relying-party gate: 219 responses ✓
+       42.99 real       256.48 user        42.38 sys
+         72195342336  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            15851231  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+             1299437  involuntary context switches
+       4884639400041  instructions retired
+       1086951905330  cycles elapsed
+         71959547144  peak memory footprint

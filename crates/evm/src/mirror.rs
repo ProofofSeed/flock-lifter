@@ -27,9 +27,11 @@ use flock_prover::{
 };
 use pofseed_flock_lift::{
     chunk_rm::{pcs_params, statement_digest},
+    matrix::{self, ExplicitClaim},
     transcript::KeccakChallenger,
 };
 use pofseed_flock_lift_block::{
+    committed::LOOKUP_BITS,
     layout::{IO_BASE_WORD, IO_WORDS},
     program::Program,
 };
@@ -718,7 +720,11 @@ fn opening(m: usize, rd: &mut Reader, tr: &mut KeccakChallenger, cap0: &[[u8; 32
         let sum = dot(&tensor_algebra_transpose(&s), &eq);
         outs.push((sum, eq));
     }
-    let gammas = pow_vec(tr, rd.nonce()?, 6, claims.len())?;
+    let gammas = if claims.len() == 1 {
+        tr.sample_f128_vec(1)
+    } else {
+        pow_vec(tr, rd.nonce()?, 6, claims.len())?
+    };
     let target = outs.iter().zip(&gammas).fold(F128::ZERO, |acc, ((sum, _), &g)| acc + g * *sum);
     let residual_fn = |ris: &[F256], yr_log: usize| -> Vec<F256> {
         let p = ris.len();
@@ -767,4 +773,65 @@ pub fn verify_chunk(program: &Program, publics: &[Vec<F128>], domain: &[u8], dat
     let io = io_claim(&mut tr, &rows, nu);
     opening(m, &mut rd, &mut tr, &cap0, &[ab, c, io])?;
     return Ok(matrix);
+}
+
+fn read_n(rd: &mut Reader, n: usize) -> Result<Vec<F128>> {
+    return (0..n).map(|_| rd.f128()).collect();
+}
+
+/// Verifies a matrix proof over `claims` against the committed entry list whose cap is `cap`,
+/// reading the calldata encoding.
+pub fn verify_matrix(log_len: usize, cap: &[[u8; 32]], claims: &[ExplicitClaim], domain: &[u8], data: &[u8]) -> Result<()> {
+    let m = log_len + 6;
+    let mut rd = Reader::new(data);
+    let config = pcs_params(m).ligerito_verifier_config().expect("registered configuration");
+    let cap0 = read_cap(&mut rd, &config.stratified[0])?;
+    if cap0 != cap {
+        return Err(Reject("entry commitment"));
+    }
+    let mut tr = KeccakChallenger::new(domain);
+    matrix::observe_claims(&mut tr, claims);
+    let mu = pow_f128(&mut tr, rd.nonce()?, matrix::MU_BITS)?;
+    let weights = matrix::powers(mu, claims.len());
+    let mut claim = claims.iter().zip(&weights).fold(F128::ZERO, |a, (c, &w)| a + c.value * w);
+    let mut rho = Vec::with_capacity(log_len);
+    for _ in 0..log_len {
+        let msg = read_n(&mut rd, matrix::MAIN_DEGREE)?;
+        tr.observe_f128_slice(&msg);
+        let r = pow_f128(&mut tr, rd.nonce()?, matrix::MAIN_BITS)?;
+        claim = matrix::horner(&matrix::expand(&msg, claim), r);
+        rho.push(r);
+    }
+    let total: usize = (0..matrix::LOOKUPS).map(matrix::addresses).sum();
+    let counts = read_n(&mut rd, total)?;
+    let tables: Vec<_> = claims.iter().map(ExplicitClaim::tables).collect();
+    if matrix::main_expected(&tables, &weights, &counts) != claim {
+        return Err(Reject("matrix main sumcheck"));
+    }
+    tr.observe_f128_slice(&counts);
+    let gamma = pow_f128(&mut tr, rd.nonce()?, matrix::LOOKUP_POINT_BITS)?;
+    let points: Vec<Vec<F128>> = LOOKUP_BITS.iter().map(|&b| tr.sample_f128_vec(b)).collect();
+    let gammas = matrix::powers(gamma, matrix::LOOKUPS);
+    let mut claim = matrix::count_claim(&counts, &gammas, &points);
+    let mut sigma = Vec::with_capacity(log_len);
+    for _ in 0..log_len {
+        let msg = read_n(&mut rd, matrix::COUNT_DEGREE)?;
+        tr.observe_f128_slice(&msg);
+        let r = pow_f128(&mut tr, rd.nonce()?, matrix::COUNT_BITS)?;
+        claim = matrix::horner(&matrix::expand(&msg, claim), r);
+        sigma.push(r);
+    }
+    let bits = read_n(&mut rd, matrix::ADDRESS_BITS)?;
+    let eq = rho.iter().zip(&sigma).fold(F128::ONE, |a, (&x, &y)| a * (F128::ONE + x + y));
+    if eq * matrix::count_sum(&gammas, &points, &bits) != claim {
+        return Err(Reject("matrix count sumcheck"));
+    }
+    tr.observe_f128_slice(&bits);
+    let zeta = pow_f128(&mut tr, rd.nonce()?, matrix::ZETA_BITS)?;
+    let value = dot(&lagrange_weights_naive(K_SKIP, zeta), &bits);
+    opening(m, &mut rd, &mut tr, &cap0, &[Claim { z: zeta, x: sigma, value }])?;
+    if rd.remaining() != 0 {
+        return Err(Reject("trailing calldata"));
+    }
+    return Ok(());
 }

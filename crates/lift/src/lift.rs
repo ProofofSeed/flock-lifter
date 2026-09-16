@@ -24,7 +24,11 @@ use zkboo::{
 };
 use zkboo_circuit_hash::hash_circuit;
 
-use crate::chunk_rm::{ChunkProofRm, ChunkRmError, prove_chunk, verify_chunk};
+use crate::{
+    chunk_rm::{ChunkProofRm, ChunkRmError, prove_chunk, verify_chunk_deferred},
+    matrix::{self, MatrixCommitment, MatrixError, MatrixKey, MatrixProof},
+    transcript::KeccakChallenger,
+};
 
 /// Largest number of responses one chunk proves: 128 blocks of `2^28` bits commit at `m = 35`,
 /// the largest size Ligerito has a configuration for.
@@ -32,6 +36,39 @@ pub const MAX_CHUNK: usize = 128;
 
 /// Version of the lift, bound into every chunk's transcript domain.
 pub const LIFT_VERSION: &[u8] = b"pofseed-flock-lift-v1";
+
+/// What proving a statement's lifts needs: its block and the commitment to the block's entries.
+pub struct LiftKey {
+    /// The block.
+    pub program: Arc<Program>,
+    /// The committed entry list.
+    pub matrix: MatrixKey,
+}
+
+impl LiftKey {
+    /// Builds the key of `program`, committing to its entries.
+    pub fn new(program: Arc<Program>) -> Self {
+        let matrix = MatrixKey::new(pofseed_flock_lift_block::committed::entries(&program));
+        return Self { program, matrix };
+    }
+
+    /// What verifying needs.
+    pub fn verifying(&self) -> VerifyingKey {
+        return VerifyingKey {
+            program: self.program.clone(),
+            matrix: self.matrix.verifying(),
+        };
+    }
+}
+
+/// What verifying a statement's lifts needs: its block and the pinned entry commitment.
+#[derive(Clone)]
+pub struct VerifyingKey {
+    /// The block.
+    pub program: Arc<Program>,
+    /// The commitment to the block's entries.
+    pub matrix: MatrixCommitment,
+}
 
 /// A lifted ZKBoo proof.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -44,6 +81,8 @@ pub struct LiftedProof {
     pub words: Vec<Vec<F128>>,
     /// The unopened view digest of every response.
     pub unopened: Vec<[u8; 32]>,
+    /// The proof that discharges every chunk's explicit rows; absent from an empty lift.
+    pub matrix: Option<MatrixProof>,
 }
 
 /// The public statement a lift is proved and verified against.
@@ -74,6 +113,8 @@ pub enum LiftError {
     Challenge(usize),
     /// The challenges are not the ones the Fiat-Shamir transcript derives.
     FiatShamir,
+    /// The matrix proof was refused.
+    Matrix(MatrixError),
 }
 
 impl Statement {
@@ -104,14 +145,23 @@ pub fn domain(digest: &[u8; 32], chunk_index: usize) -> Vec<u8> {
     return d;
 }
 
+/// The transcript domain of the matrix proof of a lift whose statement digest is `digest`.
+pub fn matrix_domain(digest: &[u8; 32]) -> Vec<u8> {
+    let mut d = LIFT_VERSION.to_vec();
+    d.extend_from_slice(digest);
+    d.extend_from_slice(b"committed-matrix");
+    return d;
+}
+
 /// Lifts a ZKBoo proof of `statement`, proving at most `chunk` responses per Flock proof.
 pub fn prove(
-    program: &Arc<Program>,
+    key: &LiftKey,
     statement: &Statement,
     proof: &[Response<S, S>],
     chunk: usize,
 ) -> Result<LiftedProof, LiftError> {
     assert!((1..=MAX_CHUNK).contains(&chunk), "chunk size must be in 1..={MAX_CHUNK}");
+    let program = &key.program;
     let circuit = statement.circuit();
     for (i, response) in proof.iter().enumerate() {
         program.check_response(response).map_err(|e| LiftError::Witness(i, e))?;
@@ -124,16 +174,24 @@ pub fn prove(
     let unopened = proof.iter().map(|r| *r.commitment_digest_unopened()).collect();
     let digest = statement.digest(proof.len(), chunk as u32);
     let mut chunks = Vec::new();
+    let mut claims = Vec::new();
     for (i, (responses, publics)) in proof.chunks(chunk).zip(words.chunks(chunk)).enumerate() {
         let c = prove_chunk(program, responses, publics, &domain(&digest, i))
             .map_err(|e| LiftError::Witness(i * chunk, e))?;
+        claims.push(verify_chunk_deferred(program, publics, &c, &domain(&digest, i)).map_err(|e| LiftError::Chunk(i, e))?);
         chunks.push(c);
     }
+    let matrix = if claims.is_empty() {
+        None
+    } else {
+        Some(matrix::prove(&key.matrix, &claims, &mut KeccakChallenger::new(&matrix_domain(&digest))))
+    };
     return Ok(LiftedProof {
         chunk: chunk as u32,
         chunks,
         words,
         unopened,
+        matrix,
     });
 }
 
@@ -169,15 +227,25 @@ fn f128_bits(words: &[F128]) -> Vec<bool> {
 }
 
 /// Verifies a lifted proof of `statement`, returning the journal it attests.
-pub fn verify(program: &Arc<Program>, statement: &Statement, lifted: &LiftedProof) -> Result<LiftJournal, LiftError> {
+pub fn verify(key: &VerifyingKey, statement: &Statement, lifted: &LiftedProof) -> Result<LiftJournal, LiftError> {
+    let program = &key.program;
     let n = lifted.words.len();
     let chunk = lifted.chunk as usize;
     if lifted.unopened.len() != n || chunk == 0 || chunk > MAX_CHUNK || lifted.chunks.len() != n.div_ceil(chunk) {
         return Err(LiftError::Shape);
     }
     let digest = statement.digest(n, lifted.chunk);
+    let mut claims = Vec::with_capacity(lifted.chunks.len());
     for (i, (c, publics)) in lifted.chunks.iter().zip(lifted.words.chunks(chunk)).enumerate() {
-        verify_chunk(program, publics, c, &domain(&digest, i)).map_err(|e| LiftError::Chunk(i, e))?;
+        claims.push(verify_chunk_deferred(program, publics, c, &domain(&digest, i)).map_err(|e| LiftError::Chunk(i, e))?);
+    }
+    match (&lifted.matrix, claims.is_empty()) {
+        (None, true) => {}
+        (Some(proof), false) => {
+            matrix::verify(&key.matrix, &claims, proof, &mut KeccakChallenger::new(&matrix_domain(&digest)))
+                .map_err(LiftError::Matrix)?;
+        }
+        _ => return Err(LiftError::Shape),
     }
     let ow = program.geometry().out_words();
     let y = &statement.expected_output;

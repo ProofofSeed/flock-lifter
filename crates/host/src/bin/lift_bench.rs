@@ -7,7 +7,7 @@
 
 use std::{env, sync::Arc, time::Instant};
 
-use pofseed_flock_lift::lift::{MAX_CHUNK, Statement, prove, verify};
+use pofseed_flock_lift::lift::{LiftKey, MAX_CHUNK, Statement, prove, verify};
 use pofseed_flock_lift_block::program::Program;
 use pofseed_flock_lift_host::{HARDENED_OFFSET, bip32_vector_1, vector_1_proof};
 use pofseed_flock_lift_statement::{
@@ -34,12 +34,17 @@ fn main() {
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code.clone(), HARDENED_OFFSET)));
     let block_s = t.elapsed().as_secs_f64();
     let t = Instant::now();
-    let lifted = prove(&program, &statement, &proof, chunk).expect("lift");
+    let key = LiftKey::new(program);
+    let vk = key.verifying();
+    let key_s = t.elapsed().as_secs_f64();
+    let t = Instant::now();
+    let lifted = prove(&key, &statement, &proof, chunk).expect("lift");
     let prove_s = t.elapsed().as_secs_f64();
     let bytes = bincode::serialize(&lifted).expect("serialise").len();
     let chunk_bytes: usize = lifted.chunks.iter().map(|c| bincode::serialize(c).unwrap().len()).sum();
+    let matrix_bytes = bincode::serialize(&lifted.matrix).unwrap().len();
     let t = Instant::now();
-    let journal = verify(&program, &statement, &lifted).expect("verify");
+    let journal = verify(&vk, &statement, &lifted).expect("verify");
     let verify_s = t.elapsed().as_secs_f64();
     let expectation = JournalExpectation {
         fingerprint: hash_circuit::<_, H>(&statement.circuit()),
@@ -53,7 +58,8 @@ fn main() {
     check_journal(&journal, &expectation).expect("relying-party gate");
     println!(
         "result: responses={n} chunks={} threads={threads} zkboo_s={zkboo_s:.2} block_s={block_s:.2} \
-         prove_s={prove_s:.2} verify_s={verify_s:.2} lifted_bytes={bytes} chunk_proof_bytes={chunk_bytes} gate=pass",
+         key_s={key_s:.2} prove_s={prove_s:.2} verify_s={verify_s:.2} lifted_bytes={bytes} \
+         chunk_proof_bytes={chunk_bytes} matrix_proof_bytes={matrix_bytes} gate=pass",
         lifted.chunks.len()
     );
 }

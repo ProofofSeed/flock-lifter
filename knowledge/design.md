@@ -38,6 +38,11 @@ The global Fiat-Shamir gate runs natively in the verifier over those public word
 For the hardened child the block has `k_log = 28`.
 It is tiled by 4,096 aligned sub-blocks of `2^16` bits: 3,988 hold one Keccak-f each, laid out as the retired Flock Keccak encoder did (input state, output state and the 24 χ outputs, with the intermediate states implicit), and the first 108 form the head, which holds the constant wire, the published words, the free inputs (seeds, the party-2 input share, `M_i`, the challenge bits) and the replay's products and materialised linear wires.
 
+The replay's products and materialised wires are laid out regularly (`committed-matrix.md`).
+Every product is committed, with a constant operand kept as a masked reference to the constant wire, and outputs are materialised at every bit of a gate or at none.
+Each column kind of each gate limb has its own 64-bit word, so the rows of one gate differ only by a cyclic shift of their operands.
+This costs 42% more replay rows, still inside the same `2^28` block and at no measurable proving time, and it is what lets the explicit rows be committed as three million entries instead of ninety million.
+
 Challenge-dependence stays inside a fixed matrix:
 
 - the challenge is one-hot `(h₀, h₁, h₂)`, published and checked natively;
@@ -56,6 +61,10 @@ The verifier does not: nothing in its replay reads the vector until the sumcheck
 Because the sub-blocks are aligned, both `eq` tables factorise across a sub-block boundary, so the shared rows contribute one local fold times a sum of `eq` products over sub-block indices, and the explicit rows cost one multiplication per row and one per column slot each row touches.
 `Program::comb_partial` evaluates that and `verify_lincheck_structured` uses it in place of Flock's `verify_with_grinding`, which would otherwise materialise two `2^28`-entry vectors and bind one of them 22 times.
 It is eleven and a half times less arithmetic and eleven times less memory; `matrix-discharge.md` records the construction, the measurements and what is left.
+
+The verifier has since stopped walking the explicit rows at all.
+It evaluates the shared Keccak-f rows in rotation-invariant form: one kernel per lane, paired with a 64-entry table.
+It hands each chunk's explicit-row part to one proof per lift, which shows those parts are the table-weighted sums of the statement's committed entry list (`committed-matrix.md`).
 
 ## Which Flock path proves the table
 
@@ -83,7 +92,8 @@ It then checks, in order:
 1. the lifted proof's parts agree in length, and its chunk count matches its response count and chunk size;
 2. every chunk's Flock proof, under a transcript domain that binds the statement digest (circuit fingerprint, statement fields, response count, chunk size) and the chunk's position, against the words the chunk's blocks publish;
 3. that every published challenge word is one-hot;
-4. the global Fiat-Shamir gate, natively: the challenge transcript over the binding and, per response in absolute party order, the two published view digests with their output shares and the unopened digest with the third share `y ⊕ o⁰ ⊕ o¹`, must derive exactly the published challenges.
+4. the matrix proof, against the statement's pinned entry commitment, for the explicit-row part of every chunk's matrix claim;
+5. the global Fiat-Shamir gate, natively: the challenge transcript over the binding and, per response in absolute party order, the two published view digests with their output shares and the unopened digest with the third share `y ⊕ o⁰ ⊕ o¹`, must derive exactly the published challenges.
 
 A chunk proof attests, under Flock's assumptions, knowledge of rows satisfying the block's relation whose published words are the ones given.
 A row satisfies the relation exactly when some seeds, AND messages and party-2 input share replay the circuit, under the published challenge and with Keccak-256 PRG tapes and view commitments, to the published digests and output shares.
@@ -92,6 +102,7 @@ The journal is then built from the verifier's own values and put through the sam
 
 The acceptance run (`acceptance rejects`) names the refuser of every case, and the checks that nothing else backs were validated by deletion (`fixtures/deletion-validation-2026-09-14.summary.log`, `fixtures/deletion-validation-2026-09-15.summary.log`).
 With the Fiat-Shamir comparison removed, a proof with one AND-message bit flipped lifts and verifies; with the published-word claim removed from the opening, a chunk proved over published words its witness does not carry verifies; and with the lincheck's final comparison removed, a chunk whose matrix evaluation is deliberately wrong verifies.
+Each of the matrix proof's three checks was validated the same way against a forging prover (`fixtures/deletion-validation-2026-09-16-committed-matrix.summary.log`).
 The other refusals — a tampered published word, a swapped chunk, another statement — are enforced by the transcript binding before either check is reached.
 
 That the compiled block means what the replay means is established by test, not by proof: `crates/block/tests/block.rs` checks every published word against ZKBoo's own replay for all three challenges, on a circuit that exercises every gate kind and on the hardened child at full size, checks the structured lincheck fold against the witness it folds, and checks the structured matrix discharge against the dense fold it replaces.
@@ -111,15 +122,15 @@ Its responses carry about 23.5 million AND-message bits, so its block would need
 The verifier no longer builds that vector, and its structured discharge would want about 8.6 GB at `k_log = 34`; the **prover** still builds it, because its sumcheck binds the folded vector round by round.
 So what blocks the elephant is the prover's fold, not the verifier's, and the compiler's inability to handle inputs allocated after the first AND gate.
 
-An on-chain verifier exists and is measured, and it is not deployable (`evm-verifier.md`).
-Verifying the 219-response lift in EVM contracts costs about 158 billion gas, at least 9,438 transactions at the 2^24-gas cap.
-99% of that is the matrix discharge, which pays for the block's 53.5 million column references, per claim, however it is written.
-The lift contract without the discharge is 680–830 M gas, two thirds of it the opening's last-level residuals.
-That matches the estimate recorded here on 2026-09-15 of 100–400 M gas per chunk for the opening alone.
+An on-chain verifier exists and is measured (`evm-verifier.md`, `committed-matrix.md`).
+With the regular layout and the committed matrix, verifying the 219-response lift in EVM contracts costs 1.27 billion gas, at least 76 transactions at the 2^24-gas cap.
+The row-walking discharge it replaced cost 158 billion.
+Most of what remains is Ligerito's final-level verification, three openings of a few hundred million gas each, which matches the estimate recorded here on 2026-09-15 of 100–400 M gas per chunk for the opening alone.
+That is still far from a single transaction, and the calls are neither split into transactions nor bound to each other on chain.
 
 To serve the contract, the lifter's transcript is a Keccak-256 hash chain and its Merkle trees are SHA-256, both of which the EVM has natively.
 The published words stay linear in the response count (52.6 kB at 219) unless the Fiat-Shamir gate moves into the circuit.
-The routes that would change the order of magnitude are a committed matrix, a shift-regular block layout, wrapping in a succinct proof, and optimistic verification; `evm-verifier.md` sets them out.
+`verifier-routes.md` costs the four routes considered: a committed matrix and a shift-regular layout, both now built; wrapping in a succinct proof, which is not pursued because it would give up what this lifter is for; and optimistic verification, which is being investigated separately.
 A search on 2026-09-15 found no published on-chain verifier for Flock or Ligerito to calibrate against.
 
 ## Batching and Ligerito

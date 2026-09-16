@@ -4,14 +4,18 @@
 //! every chunk and the Fiat-Shamir gate, then the matrix discharge, each phase in its own
 //! transaction-sized call, in an in-process EVM with no gas cap.
 //!
+//! The matrix claims are discharged through the committed entry list by default, or, with
+//! `POFSEED_EVM_DISCHARGE=stream`, by the row stream the contract walks.
+//!
 //! Usage: `evm-bench <responses> [lift-cache-file] [bytes-per-segment]`.
 
 use std::{env, fs, sync::Arc, time::Instant};
 
-use pofseed_flock_lift::lift::{MAX_CHUNK, Statement, prove, verify};
+use pofseed_flock_lift::lift::{LiftKey, MAX_CHUNK, Statement, prove, verify};
 use pofseed_flock_lift_block::program::Program;
 use pofseed_flock_lift_evm::{
-    calldata::encode_lift,
+    calldata::{encode_lift, encode_matrix},
+    committed,
     discharge::{Stream, deploy, run},
     evm::{Evm, Outcome, artifact, encode},
 };
@@ -34,6 +38,12 @@ fn label(id: u64) -> String {
         11 => "Ligerito level 0 opening".into(),
         12..=19 => format!("Ligerito level {} opening", id - 11),
         20 => "Ligerito final opening".into(),
+        301 => "claims and structured parts".into(),
+        302 => "matrix main sumcheck".into(),
+        303 => "matrix count claim".into(),
+        304 => "matrix count sumcheck".into(),
+        305 => "matrix address bits".into(),
+        306 => "final check".into(),
         21 => "ring-switch residual".into(),
         22 => "out-of-domain residual".into(),
         23 => "consistency residual".into(),
@@ -77,11 +87,12 @@ fn main() {
     let t = Instant::now();
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code.clone(), HARDENED_OFFSET)));
     println!("block built in {:.2} s", t.elapsed().as_secs_f64());
+    let key = LiftKey::new(program.clone());
     let lifted = match cache.as_deref().and_then(|p| fs::read(p).ok()) {
         Some(bytes) => bincode::deserialize(&bytes).expect("cached lift"),
         None => {
             let t = Instant::now();
-            let lifted = prove(&program, &statement, &proof, MAX_CHUNK).expect("lift");
+            let lifted = prove(&key, &statement, &proof, MAX_CHUNK).expect("lift");
             println!("lift proved in {:.2} s", t.elapsed().as_secs_f64());
             if let Some(p) = cache.as_deref() {
                 fs::write(p, bincode::serialize(&lifted).expect("serialise")).expect("write cache");
@@ -89,7 +100,7 @@ fn main() {
             lifted
         }
     };
-    verify(&program, &statement, &lifted).expect("the native verifier accepts");
+    verify(&key.verifying(), &statement, &lifted).expect("the native verifier accepts");
     let data = encode_lift(&lifted);
     println!("responses {n}, chunks {}, lift calldata {} bytes", lifted.chunks.len(), data.len());
 
@@ -127,10 +138,37 @@ fn main() {
         mgas(out.execution()),
         mgas(out.intrinsic)
     );
+    let (lift_gas, lift_exec) = (out.gas, out.execution());
     let claims: Vec<U256> = (0..U256::from_be_slice(&out.output[32..64]).to::<usize>())
         .map(|i| U256::from_be_slice(&out.output[64 + 32 * i..96 + 32 * i]))
         .collect();
 
+    if std::env::var("POFSEED_EVM_DISCHARGE").as_deref() != Ok("stream") {
+        let digest = statement.digest(n, lifted.chunk);
+        let vk = key.verifying();
+        let (matrix_at, matrix_deploy) = committed::deploy_matrix(&mut evm, &program, &vk.matrix, slim);
+        let data = encode_matrix(lifted.matrix.as_ref().expect("a matrix proof"), &vk.matrix);
+        let t = Instant::now();
+        let out = committed::verify(&mut evm, matrix_at, &claims, &digest, &data);
+        assert!(out.success, "the matrix contract refused: {}", hex::encode(&out.output));
+        println!("FlockMatrix: deployment {matrix_deploy} gas; ran in {:.2} s", t.elapsed().as_secs_f64());
+        println!("discharge, {} claims:", claims.len() / 112);
+        for (id, gas) in phases(&out) {
+            println!("  {:<28} {:>14}", label(id), mgas(gas));
+        }
+        println!(
+            "matrix contract: {} total = {} execution + {} intrinsic (calldata {} bytes)",
+            mgas(out.gas),
+            mgas(out.execution()),
+            mgas(out.intrinsic),
+            data.len()
+        );
+        let total_exec = lift_exec + out.execution();
+        let total = lift_gas + out.gas;
+        println!("verification in all: {} gas, {} of it execution", mgas(total), mgas(total_exec));
+        println!("at least {} transactions under the {}-gas cap", total.div_ceil(TX_CAP), TX_CAP);
+        return;
+    }
     let t = Instant::now();
     let stream = Stream::new(&program, segment_bytes);
     let discharge = deploy(&mut evm, &program, &stream);

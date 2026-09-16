@@ -46,6 +46,9 @@ pub struct Replay {
     pub products: usize,
     /// Materialised linear forms.
     pub materialised: usize,
+    /// The origin of every column from the replay base on: gate, column kind within the gate,
+    /// and bit; `u32::MAX` marks a column no gate uses.
+    pub origins: Vec<(u32, u8, u16)>,
 }
 
 fn width_index<W: Word>() -> usize {
@@ -76,6 +79,12 @@ struct Compiler<'g> {
     m_words: [usize; 3],
     products: usize,
     materialised: usize,
+    gate: u32,
+    origin: (u8, u16),
+    origins: Vec<(u32, u8, u16)>,
+    regular: bool,
+    base: u32,
+    words: std::collections::HashMap<(u32, u8, u16), u32>,
 }
 
 impl<'g> Compiler<'g> {
@@ -93,16 +102,48 @@ impl<'g> Compiler<'g> {
             m_words: [0; 3],
             products: 0,
             materialised: 0,
+            gate: 0,
+            origin: (0, 0),
+            origins: Vec::new(),
+            regular: false,
+            base: geometry.replay_base(),
+            words: std::collections::HashMap::new(),
         };
     }
 
     fn fresh_col(&mut self) -> u32 {
+        let (kind, bit) = self.origin;
+        if self.regular {
+            let key = (self.gate, kind, bit >> 6);
+            let words = self.words.len() as u32;
+            let word = *self.words.entry(key).or_insert(words);
+            let col = self.base + (word << 6) + (bit & 63) as u32;
+            let at = (col - self.base) as usize;
+            if self.origins.len() <= at {
+                self.origins.resize(at + 1, (u32::MAX, 0, 0));
+            }
+            assert_eq!(self.origins[at].0, u32::MAX, "a regular column is allocated twice");
+            self.origins[at] = (self.gate, kind, bit);
+            self.next_col = self.next_col.max(self.base + ((self.words.len() as u32) << 6));
+            return col;
+        }
         let col = self.next_col;
         self.next_col += 1;
+        self.origins.push((self.gate, kind, bit));
         return col;
     }
 
     fn product(&mut self, l: &Form, r: &Form) -> Form {
+        if self.regular {
+            let col = self.fresh_col();
+            self.rows.push(Row {
+                col,
+                a: l.clone(),
+                b: r.clone(),
+            });
+            self.products += 1;
+            return Form::col(col);
+        }
         if l.is_zero() || r.is_zero() {
             return Form::zero();
         }
@@ -123,9 +164,14 @@ impl<'g> Compiler<'g> {
     }
 
     fn cap(&mut self, f: Form) -> Form {
-        if f.len() <= MAX_FORM_LEN {
+        if self.regular || f.len() <= MAX_FORM_LEN {
             return f;
         }
+        return self.materialise(f);
+    }
+
+    /// Materialises `f` into a fresh column.
+    fn materialise(&mut self, f: Form) -> Form {
         let col = self.fresh_col();
         self.rows.push(Row {
             col,
@@ -134,6 +180,16 @@ impl<'g> Compiler<'g> {
         });
         self.materialised += 1;
         return Form::col(col);
+    }
+
+    /// Starts a gate that may allocate columns.
+    fn begin(&mut self) {
+        self.gate += 1;
+    }
+
+    /// Tags the columns allocated next with their kind within the gate and their bit.
+    fn at(&mut self, kind: usize, bit: usize) {
+        self.origin = (kind as u8, bit as u16);
     }
 
     fn read<W: Word, const N: usize>(&self, idx: WordIdx<W, N>) -> [Vec<Form>; 2] {
@@ -180,10 +236,13 @@ impl<'g> Compiler<'g> {
         let mask = composite_bits(mask);
         let sel = [Form::col(h_col(0)), Form::col(h_col(2))];
         let mut res: [Vec<Form>; 2] = Default::default();
+        self.begin();
         for s in 0..2 {
-            for (b, f) in v[s].iter().enumerate() {
-                let g = if mask[b] { f.xor(&sel[s]) } else { f.clone() };
-                let g = self.cap(g);
+            let forms: Vec<Form> = v[s].iter().enumerate().map(|(b, f)| if mask[b] { f.xor(&sel[s]) } else { f.clone() }).collect();
+            let all = forms.iter().any(|g| g.len() > MAX_FORM_LEN);
+            for (b, g) in forms.into_iter().enumerate() {
+                self.at(s, b);
+                let g = if self.regular { if all { self.materialise(g) } else { g } } else { self.cap(g) };
                 res[s].push(g);
             }
         }
@@ -236,6 +295,7 @@ impl<'g> Backend for Compiler<'g> {
             end_col: self.next_col,
             products: self.products,
             materialised: self.materialised,
+            origins: self.origins,
         };
     }
 
@@ -251,9 +311,11 @@ impl<'g> Backend for Compiler<'g> {
             Form::from_cols(vec![h_col(0), h_col(1)]),
             Form::from_cols(vec![h_col(0), h_col(2)]),
         ];
+        self.begin();
         for b in 0..width {
             let x = Form::col(self.geometry.x_col(x_base + b));
             for s in 0..2 {
+                self.at(s, b);
                 let tape = Form::col(self.geometry.input_tape_col(s, self.input_tape_bits + b));
                 let diff = tape.xor(&x);
                 let p = self.product(&selectors[s], &diff);
@@ -344,10 +406,13 @@ impl<'g> Backend for Compiler<'g> {
         let l = self.read(inl);
         let r = self.read(inr);
         let mut res: [Vec<Form>; 2] = Default::default();
+        self.begin();
         for s in 0..2 {
-            for b in 0..l[s].len() {
-                let f = l[s][b].xor(&r[s][b]);
-                let f = self.cap(f);
+            let forms: Vec<Form> = (0..l[s].len()).map(|b| l[s][b].xor(&r[s][b])).collect();
+            let all = forms.iter().any(|f| f.len() > MAX_FORM_LEN);
+            for (b, f) in forms.into_iter().enumerate() {
+                self.at(s, b);
+                let f = if self.regular { if all { self.materialise(f) } else { f } } else { self.cap(f) };
                 res[s].push(f);
             }
         }
@@ -360,16 +425,24 @@ impl<'g> Backend for Compiler<'g> {
         let width = W::WIDTH * N;
         let m_base = self.m_offset::<W>();
         let mut res: [Vec<Form>; 2] = Default::default();
+        self.begin();
         for b in 0..width {
+            self.at(0, b);
             let p00 = self.product(&l[0][b], &r[0][b]);
+            self.at(1, b);
             let p01 = self.product(&l[0][b], &r[1][b]);
+            self.at(2, b);
             let p10 = self.product(&l[1][b], &r[0][b]);
+            self.at(3, b);
             let p11 = self.product(&l[1][b], &r[1][b]);
             let tapes = self.gate_tape(0, b).xor(&self.gate_tape(1, b));
             let o0 = p00.xor(&p01).xor(&p10).xor(&tapes);
-            let o0 = self.cap(o0);
+            self.at(4, b);
+            let o0 = if self.regular { self.materialise(o0) } else { self.cap(o0) };
             let m = Form::col(self.geometry.m_col(m_base + b));
-            let o1 = self.cap(p11.xor(&m));
+            self.at(5, b);
+            let o1 = p11.xor(&m);
+            let o1 = if self.regular { self.materialise(o1) } else { self.cap(o1) };
             self.streams[0].push(o0.clone());
             self.streams[1].push(o1.clone());
             res[0].push(o0);
@@ -438,21 +511,30 @@ impl<'g> Backend for Compiler<'g> {
         let m_base = self.m_offset::<W>();
         let mut cs = [Form::constant(carry_in), Form::constant(carry_in)];
         let mut res: [Vec<Form>; 2] = Default::default();
+        self.begin();
         for b in 0..width {
             res[0].push(cs[0].clone());
             res[1].push(cs[1].clone());
             if b + 1 == width {
                 break;
             }
+            self.at(0, b);
             let x01 = self.product(&cs[0], &ps[1][b]);
+            self.at(1, b);
             let x10 = self.product(&cs[1], &ps[0][b]);
+            self.at(2, b);
             let x00 = self.product(&cs[0], &ps[0][b]);
+            self.at(3, b);
             let x11 = self.product(&cs[1], &ps[1][b]);
             let tapes = self.gate_tape(0, b).xor(&self.gate_tape(1, b));
             let n0 = x00.xor(&x01).xor(&x10).xor(&tapes).xor(&gs[0][b]);
             let m = Form::col(self.geometry.m_col(m_base + b));
             let n1 = x11.xor(&m).xor(&gs[1][b]);
-            cs = [self.cap(n0), self.cap(n1)];
+            self.at(4, b);
+            let c0 = if self.regular { self.materialise(n0) } else { self.cap(n0) };
+            self.at(5, b);
+            let c1 = if self.regular { self.materialise(n1) } else { self.cap(n1) };
+            cs = [c0, c1];
         }
         self.streams[0].extend_from_slice(&res[0]);
         self.streams[1].extend_from_slice(&res[1]);
@@ -460,6 +542,34 @@ impl<'g> Backend for Compiler<'g> {
         self.m_words[width_index::<W>()] += N;
         self.write(out, res);
     }
+}
+
+/// Compiles the replay of `circuit` with every gate laid out the same way at every bit: no
+/// product is skipped for a constant operand, a gate's forms are materialised at all its bits or
+/// at none, and every column kind of every gate limb has its own 64-bit word, bit `b` at column
+/// `b` of the word. The result need not fit the geometry's head.
+pub fn compile_regular<C: Circuit>(circuit: &C, geometry: &Geometry) -> Replay {
+    let mut compiler = Compiler::new(geometry);
+    compiler.regular = true;
+    compiler.base = geometry.replay_base().next_multiple_of(64);
+    compiler.next_col = compiler.base;
+    let frontend = compiler.into_frontend();
+    circuit.exec(&frontend);
+    return frontend.finalize();
+}
+
+/// Compiles the uniform replay of `circuit` against `geometry`, or returns the head bits it needs
+/// if the head is too small.
+pub fn compile_regular_fitting<C: Circuit>(circuit: &C, geometry: &Geometry) -> Result<Replay, usize> {
+    let replay = compile_regular(circuit, geometry);
+    let shape = geometry.shape();
+    assert_eq!(replay.streams[0].len(), shape.stream_bits(), "stream length disagrees with the shape");
+    assert_eq!(replay.outputs[0].len(), shape.output_bits(), "output length disagrees with the shape");
+    let needed = replay.end_col as usize;
+    if needed > geometry.head_bits() {
+        return Err(needed);
+    }
+    return Ok(replay);
 }
 
 /// Compiles the replay of `circuit` against `geometry`, or returns the head bits it needs if the

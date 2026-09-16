@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use flock_prover::field::F128;
-use pofseed_flock_lift::lift::{MAX_CHUNK, Statement, domain, prove};
+use pofseed_flock_lift::lift::{LiftKey, MAX_CHUNK, Statement, domain, prove};
 use pofseed_flock_lift_block::program::Program;
 use pofseed_flock_lift_evm::{
     calldata::{Writer, encode_chunk},
@@ -54,7 +54,7 @@ fn contract_matches_the_mirror_on_an_eight_response_chunk() {
         binding: BINDING.to_vec(),
     };
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code, HARDENED_OFFSET)));
-    let lifted = prove(&program, &statement, &proof, MAX_CHUNK).expect("lift");
+    let lifted = prove(&LiftKey::new(program.clone()), &statement, &proof, MAX_CHUNK).expect("lift");
     let dom = domain(&statement.digest(n, MAX_CHUNK as u32), 0);
     let data = encode_chunk(&lifted.chunks[0], n);
     let mc = verify_chunk(&program, &lifted.words, &dom, &data).expect("mirror verifies");
@@ -123,7 +123,7 @@ fn lift_contract_verifies_a_lift_and_its_gate_refuses_forgeries() {
         binding: BINDING.to_vec(),
     };
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code, HARDENED_OFFSET)));
-    let lifted = prove(&program, &statement, &proof, 4).expect("lift");
+    let lifted = prove(&LiftKey::new(program.clone()), &statement, &proof, 4).expect("lift");
     let mut evm = Evm::new();
     let lift = deploy_lift(&mut evm, &statement, n);
     let call = |binding: &[u8], data: &[u8]| {

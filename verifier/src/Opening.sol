@@ -108,8 +108,12 @@ library Opening {
             p += 128 * 16 + 8;
         }
         Meter.mark(10);
-        sw.gammas = Transcript.powSampleVec(tr, Calldata.nonce(p), 6, n);
-        p += 8;
+        if (n == 1) {
+            sw.gammas = Transcript.sampleVec(tr, 1);
+        } else {
+            sw.gammas = Transcript.powSampleVec(tr, Calldata.nonce(p), 6, n);
+            p += 8;
+        }
         uint256 target;
         for (uint256 c = 0; c < n; ++c) {
             target ^= GF2.mul(sw.gammas[c], sums[c]);

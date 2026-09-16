@@ -3,6 +3,7 @@
 //! The response block of the Flock lifter: the verification of one ZKBoo response as one row of
 //! a Boolean R1CS table, with its witness generator and its structured lincheck.
 
+pub mod committed;
 pub mod form;
 pub mod keccak;
 pub mod layout;

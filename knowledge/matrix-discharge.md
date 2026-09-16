@@ -79,6 +79,11 @@ That is the cheapest lever left, and it costs the prover nothing.
 
 ## The holographic tier, costed and declined
 
+Update, 2026-09-16: for an on-chain verifier the balance is different, and a committed entry list is now built (`committed-matrix.md`).
+It is not Flock's `matrix_fold`: the list is committed once per statement, and a per-lift proof shows the explicit rows' share of every claim against it.
+The costing below still holds for the native verifier alone.
+
+
 Going further means making the verifier's work independent of the matrix altogether.
 That was costed on 2026-09-15 and **not built**; the costing is the reason, and it should be revisited the moment a recursion layer exists.
 

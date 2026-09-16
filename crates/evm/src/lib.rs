@@ -4,6 +4,7 @@
 //! of the contract's verification, and an in-process EVM that runs the contract and meters it.
 
 pub mod calldata;
+pub mod committed;
 pub mod discharge;
 pub mod evm;
 pub mod mirror;

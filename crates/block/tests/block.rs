@@ -33,8 +33,8 @@ impl Rng {
     }
 }
 
-fn check<C: Circuit + Sync>(circuit: &C, witness_circuit: &C, responses: usize, fold_checks: usize) {
-    let program = Program::new(circuit);
+fn check<C: Circuit + Sync>(build: fn(&C) -> Program, circuit: &C, witness_circuit: &C, responses: usize, fold_checks: usize) {
+    let program = build(circuit);
     let g = program.geometry();
     println!(
         "k_log {}, head {} bits, {} Keccak-f, {} products, {} materialised, {} explicit rows, nnz {:?}",
@@ -113,8 +113,8 @@ fn dense_comb_partial(
     return comb;
 }
 
-fn check_discharge<C: Circuit>(circuit: &C, k_skip: usize, rounds: usize) {
-    let program = Program::new(circuit);
+fn check_discharge<C: Circuit>(build: fn(&C) -> Program, circuit: &C, k_skip: usize, rounds: usize) {
+    let program = build(circuit);
     let mut rng = Rng(0xf0e1_d2c3_b4a5_9687);
     for _ in 0..rounds {
         let alpha = rng.f128();
@@ -125,18 +125,42 @@ fn check_discharge<C: Circuit>(circuit: &C, k_skip: usize, rounds: usize) {
         let r: Vec<F128> = (0..rest).map(|_| rng.f128()).collect();
         let structured = program.comb_partial(alpha, beta, &skip, &x, &r);
         assert_eq!(structured, dense_comb_partial(&program, alpha, beta, &skip, &x, &r));
+        if k_skip == 6 {
+            let z: Vec<F128> = (0..64).map(|_| rng.f128()).collect();
+            let pair = |c: Vec<F128>| c.iter().zip(&z).fold(F128::ZERO, |acc, (&a, &b)| acc + a * b);
+            let expected = pair(program.comb_structured(alpha, beta, &skip, &x, &r));
+            assert_eq!(program.structured_value(alpha, beta, &skip, &z, &x, &r), expected, "paired structured part");
+        }
         assert!(structured.iter().any(|&v| v != F128::ZERO), "the discharge is not trivially zero");
     }
 }
 
 #[test]
+fn toy_compact_block_agrees_with_native_replay() {
+    check(Program::compact, &Toy, &Toy, 24, 3);
+}
+
+#[test]
 fn toy_block_agrees_with_native_replay() {
-    check(&Toy, &Toy, 24, 3);
+    check(Program::new, &Toy, &Toy, 24, 3);
+}
+
+#[test]
+fn toy_compact_structured_discharge_matches_the_dense_fold() {
+    check_discharge(Program::compact, &Toy, 6, 4);
 }
 
 #[test]
 fn toy_structured_discharge_matches_the_dense_fold() {
-    check_discharge(&Toy, 6, 4);
+    check_discharge(Program::new, &Toy, 6, 4);
+}
+
+#[test]
+#[ignore]
+fn hardened_child_compact_structured_discharge_matches_the_dense_fold() {
+    let hex = |s: &str| (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect::<Vec<u8>>();
+    let chain_code = hex("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
+    check_discharge(Program::compact, &HardenedChildCircuit::public_only(chain_code, 0x8000_0000), 6, 1);
 }
 
 #[test]
@@ -144,7 +168,19 @@ fn toy_structured_discharge_matches_the_dense_fold() {
 fn hardened_child_structured_discharge_matches_the_dense_fold() {
     let hex = |s: &str| (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect::<Vec<u8>>();
     let chain_code = hex("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
-    check_discharge(&HardenedChildCircuit::public_only(chain_code, 0x8000_0000), 6, 1);
+    check_discharge(Program::new, &HardenedChildCircuit::public_only(chain_code, 0x8000_0000), 6, 1);
+}
+
+#[test]
+#[ignore]
+fn hardened_child_compact_block_agrees_with_native_replay() {
+    let hex = |s: &str| (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect::<Vec<u8>>();
+    let parent_priv = hex("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35");
+    let chain_code = hex("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
+    let index = 0x8000_0000;
+    let witness = HardenedChildCircuit::with_witness(chain_code.clone(), parent_priv, index);
+    let public = HardenedChildCircuit::public_only(chain_code, index);
+    check(Program::compact, &public, &witness, 24, 1);
 }
 
 #[test]
@@ -156,5 +192,5 @@ fn hardened_child_block_agrees_with_native_replay() {
     let index = 0x8000_0000;
     let witness = HardenedChildCircuit::with_witness(chain_code.clone(), parent_priv, index);
     let public = HardenedChildCircuit::public_only(chain_code, index);
-    check(&public, &witness, 24, 1);
+    check(Program::new, &public, &witness, 24, 1);
 }

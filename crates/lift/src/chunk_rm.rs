@@ -33,7 +33,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use zkboo::prover::proof::Response;
 
-use crate::transcript::KeccakChallenger;
+use crate::{matrix::ExplicitClaim, transcript::KeccakChallenger};
 
 /// The Ligerito profile every chunk is proved under: `Fast` (rate 1/2) unless
 /// `POFSEED_LIGERITO_PROFILE` selects `slim` (rate 1/4, about half the proof for about twice the
@@ -342,6 +342,7 @@ pub fn prove_chunk(
 /// order, the same grinding schedule and the same shape refusals.
 fn verify_lincheck_structured<Ch: Challenger>(
     program: &Program,
+    defer: bool,
     k_log: usize,
     k_skip: usize,
     x_ab: &QuirkyPoint,
@@ -350,7 +351,7 @@ fn verify_lincheck_structured<Ch: Challenger>(
     proof: &LincheckProof,
     grinding: LincheckGrinding,
     challenger: &mut Ch,
-) -> Result<LincheckClaim, LincheckError> {
+) -> Result<(LincheckClaim, ExplicitClaim), LincheckError> {
     if k_skip > k_log {
         return Err(LincheckError::KSkipExceedsKLog { k_skip, k_log });
     }
@@ -420,9 +421,19 @@ fn verify_lincheck_structured<Ch: Challenger>(
     challenger.observe_f128_slice(&proof.z_partial);
     let mut r_inner_rest = r_rounds;
     r_inner_rest.reverse();
-    let comb = program.comb_partial(alpha, beta, &x_ab.z_skip.weights(k_skip), &x_ab.x_inner_rest, &r_inner_rest);
-    let final_sum = comb.iter().zip(&proof.z_partial).fold(F128::ZERO, |acc, (&c, &z)| acc + c * z);
-    if running != final_sum {
+    let r_inner_rest = r_inner_rest;
+    let skip = x_ab.z_skip.weights(k_skip);
+    let pair = |comb: Vec<F128>| comb.iter().zip(&proof.z_partial).fold(F128::ZERO, |acc, (&c, &z)| acc + c * z);
+    let structured = program.structured_value(alpha, beta, &skip, &proof.z_partial, &x_ab.x_inner_rest, &r_inner_rest);
+    let explicit = ExplicitClaim {
+        alpha,
+        skip,
+        z: proof.z_partial.clone(),
+        x: x_ab.x_inner_rest.clone(),
+        r: r_inner_rest.clone(),
+        value: running + structured,
+    };
+    if !defer && explicit.value != pair(program.comb_explicit(alpha, &explicit.skip, &explicit.x, &explicit.r)) {
         return Err(LincheckError::ConsistencyFailed {
             which: "sumcheck-final",
         });
@@ -438,11 +449,14 @@ fn verify_lincheck_structured<Ch: Challenger>(
     };
     let lambda = r_inner_skip.weights(k_skip);
     let w = lambda.iter().zip(&proof.z_partial).fold(F128::ZERO, |acc, (&l, &z)| acc + l * z);
-    return Ok(LincheckClaim {
-        r_inner_skip,
-        r_inner_rest,
-        w,
-    });
+    return Ok((
+        LincheckClaim {
+            r_inner_skip,
+            r_inner_rest: explicit.r.clone(),
+            w,
+        },
+        explicit,
+    ));
 }
 
 /// Replays the statement binding, zerocheck and lincheck of a chunk proof and rebuilds its two
@@ -456,15 +470,17 @@ fn verify_core_circuit_form<Ch: Challenger>(
     r1cs: &BlockR1cs,
     chunk: &ChunkProofRm,
     program: &Program,
+    defer: bool,
     params: &PcsParams,
     challenger: &mut Ch,
-) -> Result<(ZClaim, ZClaim), FlockVerifyError> {
+) -> Result<(ZClaim, ZClaim, ExplicitClaim), FlockVerifyError> {
     bind_statement(challenger, r1cs, &chunk.commitment);
     let zc = verify_zerocheck_with_grinding(r1cs.m, &chunk.zerocheck, params.zerocheck_grinding(), challenger)
         .map_err(FlockVerifyError::Zerocheck)?;
     let x_ab = r1cs.x_ab_from_multilinear_values(SkipPoint::Phi8(zc.z), &zc.mlv_challenges);
-    let lc = verify_lincheck_structured(
+    let (lc, explicit) = verify_lincheck_structured(
         program,
+        defer,
         r1cs.k_log,
         r1cs.k_skip,
         &x_ab,
@@ -483,16 +499,38 @@ fn verify_core_circuit_form<Ch: Challenger>(
         point: r1cs.c_claim_point(SkipPoint::Phi8(zc.z), &zc.r_rest),
         value: zc.c_eval,
     };
-    return Ok((ab, c));
+    return Ok((ab, c, explicit));
 }
 
-/// Verifies a row-major chunk proof against the published words of its blocks.
+/// Verifies a row-major chunk proof against the published words of its blocks, discharging its
+/// matrix claim in full.
 pub fn verify_chunk(
     program: &Arc<Program>,
     publics: &[Vec<F128>],
     chunk: &ChunkProofRm,
     domain: &[u8],
 ) -> Result<(), ChunkRmError> {
+    return verify_chunk_with(program, publics, chunk, domain, false).map(|_| ());
+}
+
+/// Verifies a row-major chunk proof against the published words of its blocks except for the
+/// explicit rows' part of its matrix claim, which it returns for a matrix proof to discharge.
+pub fn verify_chunk_deferred(
+    program: &Arc<Program>,
+    publics: &[Vec<F128>],
+    chunk: &ChunkProofRm,
+    domain: &[u8],
+) -> Result<ExplicitClaim, ChunkRmError> {
+    return verify_chunk_with(program, publics, chunk, domain, true);
+}
+
+fn verify_chunk_with(
+    program: &Arc<Program>,
+    publics: &[Vec<F128>],
+    chunk: &ChunkProofRm,
+    domain: &[u8],
+    defer: bool,
+) -> Result<ExplicitClaim, ChunkRmError> {
     let n_io = program.geometry().io_word_cols().len();
     if publics.is_empty() || publics.iter().any(|p| p.len() != n_io) {
         return Err(ChunkRmError::PublicLength);
@@ -506,7 +544,7 @@ pub fn verify_chunk(
     let before = count::Counts::now();
     let mut challenger = KeccakChallenger::new(domain);
     observe_publics(&mut challenger, &rows);
-    let (ab, c) = verify_core_circuit_form(&r1cs, chunk, program.as_ref(), &params, &mut challenger)
+    let (ab, c, explicit) = verify_core_circuit_form(&r1cs, chunk, program.as_ref(), defer, &params, &mut challenger)
         .map_err(ChunkRmError::Core)?;
     #[cfg(feature = "count")]
     let core = count::Counts::now();
@@ -518,5 +556,5 @@ pub fn verify_chunk(
         count::Counts::now().report_since(&core, "opening (published-word claim, ring switch, Ligerito)");
         core.report_since(&before, "core (statement binding, zerocheck, lincheck with its matrix fold)");
     }
-    return Ok(());
+    return Ok(explicit);
 }

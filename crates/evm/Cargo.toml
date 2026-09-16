@@ -31,3 +31,11 @@ path = "src/bin/row_shapes.rs"
 [[bin]]
 name = "evm-bench"
 path = "src/bin/evm_bench.rs"
+
+[[bin]]
+name = "run-classes"
+path = "src/bin/run_classes.rs"
+
+[[bin]]
+name = "layout-probe"
+path = "src/bin/layout_probe.rs"
