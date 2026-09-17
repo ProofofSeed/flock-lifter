@@ -138,10 +138,10 @@ For the single calls the transaction count is a lower bound. The last rows are t
 | regular layout, committed matrix, `Slim` |                680.22 |                   379.96 |       1,060.18 |                             64 |
 | residuals in assembly, `Fast`            |                432.16 |                   326.14 |         758.30 |                             46 |
 | residuals in assembly, `Slim`            |                343.40 |                   304.43 |         647.83 |                             39 |
-| staged, `Fast`                           |                464.84 |                   424.32 |         889.16 |                            106 |
-| staged, `Slim`                           |                383.51 |                   397.69 |         781.19 |                            100 |
+| staged, `Fast`                           |                464.72 |                   424.24 |         888.96 |                            106 |
+| staged, `Slim`                           |                383.35 |                   397.64 |         780.99 |                            100 |
 
 The row-walking discharge did not depend on the profile, and was 99% of the total.
 The committed discharge's figures are `fixtures/evm-bench-2026-09-16-committed-final.summary.log` (`Fast`) and `fixtures/evm-bench-2026-09-17-committed-slim.summary.log` (`Slim`), and those with Ligerito's final-level residuals in assembly are `fixtures/evm-bench-2026-09-17-residuals-{fast,slim}.summary.log`; `committed-matrix.md` breaks them down.
-The staged rows are `fixtures/evm-bench-2026-09-17-staged-{fast,slim}.summary.log`, where the single calls, re-measured beside them, cost 759.08 and 648.93 M; `staged-verification.md` breaks them down.
+The staged rows are `fixtures/evm-bench-2026-09-17-staged-{fast,slim}.summary.log`, where the single calls, re-measured beside them, cost 758.95 and 648.79 M; `staged-verification.md` breaks them down.
 Under `Slim` the committed path is 16% cheaper: the lift contract's level-0 openings and consistency residuals shrink with the narrower rows, and so does the matrix contract's own opening (375.30 M execution against 429.49 M); the structured parts and the matrix sumchecks do not depend on the profile.

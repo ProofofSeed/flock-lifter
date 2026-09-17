@@ -2,7 +2,7 @@
 
 Status: built and measured, 2026-09-17.
 The direct route now runs on Ethereum as it is. Every transaction fits the 2^24-gas cap (EIP-7825), and every deployed contract fits the 24,576-byte code-size limit (EIP-170).
-Verifying the 219-response hardened-child lift takes **889.16 M gas in 106 transactions** under the `Fast` profile, and 781.19 M in 100 under `Slim`, against a one-off deployment of 30.72 M.
+Verifying the 219-response hardened-child lift takes **888.96 M gas in 106 transactions** under the `Fast` profile, and 780.99 M in 100 under `Slim`, against a one-off deployment of 30.74 M.
 The matrix proof can only be checked against claims that a verified lift recorded.
 
 The single-call contracts (`FlockLift`, `FlockMatrix`, `committed-matrix.md`) are kept in two roles. They are the reference the staged verifier is checked against, and the program the optimistic route disputes (`optimistic-verification.md`). They are never deployed to run: at 53 KB each they are still over the limit.
@@ -62,12 +62,12 @@ The opening, residual and check stages are shared by the lift's chunks and the m
 | contract            | runtime (B) | deployment (M gas) |
 | ------------------- | ----------: | -----------------: |
 | subspace table      |      12,289 |               2.64 |
-| `LiftStages`        |      22,805 |               4.98 |
+| `LiftStages`        |      22,893 |               5.00 |
 | `LiftTailStages`    |      15,368 |               3.38 |
-| `OpeningStages`     |      22,586 |               4.94 |
+| `OpeningStages`     |      22,674 |               4.96 |
 | `RingSwitchStages`  |      14,768 |               3.25 |
-| `ConsistencyStages` |      13,547 |               2.98 |
-| `MatrixStages`      |      21,273 |               4.65 |
+| `ConsistencyStages` |      13,427 |               2.96 |
+| `MatrixStages`      |      21,318 |               4.66 |
 | `StructuredStages`  |      12,171 |               2.68 |
 | `FlockSessions`     |       3,189 |               1.22 |
 
@@ -83,10 +83,10 @@ What made them fit:
 
 | session     | transactions, `Fast` | gas, `Fast` | transactions, `Slim` | gas, `Slim` |
 | ----------- | -------------------: | ----------: | -------------------: | ----------: |
-| lift        |                   63 |      464.84 |                   59 |      383.51 |
-| matrix      |                   43 |      424.32 |                   41 |      397.69 |
-| **in all**  |              **106** |  **889.16** |              **100** |  **781.19** |
-| single call |        (46 at least) |      759.08 |        (39 at least) |      648.93 |
+| lift        |                   63 |      464.72 |                   59 |      383.35 |
+| matrix      |                   43 |      424.24 |                   41 |      397.64 |
+| **in all**  |              **106** |  **888.96** |              **100** |  **780.99** |
+| single call |        (46 at least) |      758.95 |        (39 at least) |      648.79 |
 
 Largest transaction: 16.57 M against a cap of 16.78 M.
 

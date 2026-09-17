@@ -1,0 +1,78 @@
+# dispute-sim 219 <cache> 16 193268517,459295,63775575: the proofs uploaded (valid, tampered lift, tampered matrix proof), an unchallenged assertion confirmed after the window, and 16 disputed assertions played to the end at arity 16, three of them forced to resolve the heaviest steps; under /usr/bin/time -l.
+# Bond 1 ether, window 7 days, 1 day per move: assumptions of the prototype, not measurements.
+# 2026-09-17 (after the residual rewrite, the resumable fold and the split calldata copies), M4 Max, revm 43.0.2 under Osaka rules with the verifier calls uncapped and every protocol transaction sent with a 2^24 gas limit; the disputed program is the direct route's single calls (FlockLift.verify then FlockMatrix.verify) on the 219-response hardened-child lift, regular layout, committed matrix, Fast profile, read from a cached lift.
+
+valid trace: 237058466 steps ([134146190, 102912276] per call), counted in 1.4 s
+tampered lift: rejects after 26663976 steps; tampered matrix proof: after 203601112
+round 1: 16 live games, truth passes 2.8 s
+round 2: 14 live games, truth passes 2.3 s
+round 3: 14 live games, truth passes 2.4 s
+round 4: 14 live games, truth passes 2.4 s
+round 5: 14 live games, truth passes 2.3 s
+round 6: 14 live games, truth passes 2.4 s
+round 7: 14 live games, truth passes 2.2 s
+deploy store: 175047 gas
+deploy lift code chunk 0: 5254760 gas
+deploy lift code chunk 1: 5199656 gas
+deploy lift code chunk 2: 1194899 gas
+deploy matrix code chunk 0: 5255540 gas
+deploy matrix code chunk 1: 5197472 gas
+deploy matrix code chunk 2: 1315090 gas
+deploy one-step contract: 4284122 gas
+deploy jump table 0: 7311516 gas
+deploy jump table 1: 7529049 gas
+deploy dispute contract: 2007491 gas
+valid trace [134146190, 102912276] steps per call, 237058466 in all; tampered lift rejects after 26663976, tampered matrix proof after 203601112
+truth passes per round (s): [2.8, 2.3, 2.4, 2.4, 2.3, 2.4, 2.2]; resolution inputs 2.0 s
+games (arity 16):
+  ok   lie from the first step                                         7 dissections, challenger wins, final interval [0, 1]
+  ok   lie inside the lift call                                        7 dissections, challenger wins, final interval [67073094, 67073095]
+  ok   lie at the lift call's return                                   7 dissections, challenger wins, final interval [134146189, 134146190]
+  ok   lie inside the matrix call                                      7 dissections, challenger wins, final interval [185602327, 185602328]
+  ok   lie at the last state                                           7 dissections, challenger wins, final interval [237058464, 237058465]
+  ok   claim one step too few                                          7 dissections, challenger wins, final interval [237058464, 237058465]
+  ok   invalid lift, consistent until the failing check                7 dissections, challenger wins, final interval [26663975, 26663976]
+  ok   invalid lift, short claimed trace                               7 dissections, challenger wins, final interval [26663975, 26663976]
+  ok   invalid matrix proof, consistent until the failing check        7 dissections, challenger wins, final interval [203601111, 203601112]
+  ok   honest asserter, challenger always picks the last interval      7 dissections, asserter wins, final interval [237058465, 237058466]
+  ok   honest asserter, challenger picks at random                     7 dissections, asserter wins, final interval [63215589, 63215590]
+  ok   honest asserter, challenger stops moving                        1 dissections, asserter wins, final interval [0, 237058466]
+  ok   lying asserter stops moving                                     0 dissections, challenger wins, final interval [0, 237058466]
+  ok   lie right after step 193268517, resolved there                  7 dissections, challenger wins, final interval [193268517, 193268518]
+  ok   lie right after step 459295, resolved there                     7 dissections, challenger wins, final interval [459295, 459296]
+  ok   lie right after step 63775575, resolved there                   7 dissections, challenger wins, final interval [63775575, 63775576]
+heaviest resolve: 6960415 gas (lie right after step 193268517, resolved there, 4739 words proved)
+transactions (count, min, max gas):
+  assertLift              17     280032     297132
+  beginUpload              4      71137      88237
+  challenge               16     207213     224313
+  challenge (late)         1      26176      26176
+  choose                  98      51704      87405
+  confirm                  1      84011      84011
+  confirm (disputed)      16      30473      64123
+  confirm (early)          1      26178      26178
+  dissect                 99      88022      99038
+  finishUpload             4      72786      82506
+  resolve                 14     145995    6960415
+  timeout                  2      51224     108090
+  timeout (early)          1      27965      27965
+  upload chunk            14    6646670   10473410
+simulation took 23.5 s
+       23.84 real        28.00 user         0.71 sys
+          1920860160  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              162880  page reclaims
+                 111  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  15  signals received
+                  51  voluntary context switches
+               36524  involuntary context switches
+        609254145815  instructions retired
+        121790032413  cycles elapsed
+          1654147136  peak memory footprint

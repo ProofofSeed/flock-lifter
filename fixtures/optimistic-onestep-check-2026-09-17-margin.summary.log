@@ -1,0 +1,108 @@
+# onestep-check 219 300 1:59122327,0:459295,0:63775575,1:3951417,1:46337641: the one-step contract against revm on the first step at every program counter of both calls, 300 random steps per call, both call-ending steps and the steps with the largest witnesses; hashes before and after must match.
+# 2026-09-17 (after the residual rewrite, the resumable fold and the split calldata copies), M4 Max, revm 43.0.2 under Osaka rules with the verifier calls uncapped and every protocol transaction sent with a 2^24 gas limit; the disputed program is the direct route's single calls (FlockLift.verify then FlockMatrix.verify) on the 219-response hardened-child lift, regular layout, committed matrix, Fast profile, read from a cached lift.
+
+plain run 0.6 s, gas [432284027, 326667494]
+steps per call: [134146190, 102912276]
+deploy store: 175047 gas
+deploy lift code chunk 0: 5254760 gas
+deploy lift code chunk 1: 5199656 gas
+deploy lift code chunk 2: 1194899 gas
+deploy matrix code chunk 0: 5255540 gas
+deploy matrix code chunk 1: 5197472 gas
+deploy matrix code chunk 2: 1315090 gas
+deploy one-step contract: 4284134 gas
+deploy jump table 0: 7311516 gas
+deploy jump table 1: 7529049 gas
+call 0: 134146190 steps, 25154 captured in 72.3 s
+call 1: 102912276 steps, 25278 captured in 160.1 s
+checked 50432 steps in 1.4 s: 0 mismatches
+heaviest step: 6788318 gas (call 1, step 59122327, op 0x20, 4739 words proved)
+per opcode (steps checked, most gas):
+  0x01: 4619 steps, max 109002 gas
+  0x02: 617 steps, max 104842 gas
+  0x03: 251 steps, max 105258 gas
+  0x04: 5 steps, max 92024 gas
+  0x06: 6 steps, max 76102 gas
+  0x10: 718 steps, max 103262 gas
+  0x11: 122 steps, max 101902 gas
+  0x12: 4 steps, max 59749 gas
+  0x13: 1 steps, max 57109 gas
+  0x14: 62 steps, max 97667 gas
+  0x15: 521 steps, max 104120 gas
+  0x16: 378 steps, max 108570 gas
+  0x17: 80 steps, max 105172 gas
+  0x18: 1166 steps, max 110226 gas
+  0x19: 35 steps, max 99840 gas
+  0x1a: 138 steps, max 104238 gas
+  0x1b: 1192 steps, max 110791 gas
+  0x1c: 332 steps, max 110055 gas
+  0x20: 14 steps, max 6788318 gas
+  0x34: 2 steps, max 53050 gas
+  0x35: 34 steps, max 141756 gas
+  0x36: 83 steps, max 94545 gas
+  0x37: 97 steps, max 2564853 gas
+  0x39: 10 steps, max 610073 gas
+  0x50: 2870 steps, max 109050 gas
+  0x51: 2709 steps, max 147618 gas
+  0x52: 1690 steps, max 146447 gas
+  0x56: 1925 steps, max 109148 gas
+  0x57: 1097 steps, max 107770 gas
+  0x5a: 6 steps, max 93654 gas
+  0x5b: 2987 steps, max 104277 gas
+  0x5e: 7 steps, max 149020 gas
+  0x5f: 1052 steps, max 107647 gas
+  0x60: 5855 steps, max 111233 gas
+  0x61: 5686 steps, max 109188 gas
+  0x62: 31 steps, max 100306 gas
+  0x63: 16 steps, max 100811 gas
+  0x64: 2 steps, max 66894 gas
+  0x66: 3 steps, max 72328 gas
+  0x68: 3 steps, max 70070 gas
+  0x69: 1 steps, max 66243 gas
+  0x6b: 8 steps, max 97425 gas
+  0x6c: 1 steps, max 67653 gas
+  0x6d: 8 steps, max 97425 gas
+  0x6e: 10 steps, max 97425 gas
+  0x6f: 23 steps, max 97521 gas
+  0x70: 10 steps, max 75476 gas
+  0x71: 3 steps, max 75570 gas
+  0x72: 1 steps, max 61721 gas
+  0x74: 3 steps, max 65905 gas
+  0x77: 1 steps, max 62542 gas
+  0x7b: 1 steps, max 83687 gas
+  0x7d: 1 steps, max 83687 gas
+  0x7e: 1 steps, max 83687 gas
+  0x7f: 17 steps, max 83855 gas
+  0x80: 1063 steps, max 109091 gas
+  0x81: 2895 steps, max 109260 gas
+  0x82: 1523 steps, max 107054 gas
+  0x83: 1094 steps, max 110270 gas
+  0x84: 629 steps, max 105962 gas
+  0x85: 512 steps, max 109862 gas
+  0x86: 414 steps, max 106264 gas
+  0x87: 1348 steps, max 104801 gas
+  0x88: 310 steps, max 104499 gas
+  0x89: 194 steps, max 105139 gas
+  0x8a: 162 steps, max 102871 gas
+  0x8b: 88 steps, max 104047 gas
+  0x8c: 86 steps, max 103395 gas
+  0x8d: 59 steps, max 101262 gas
+  0x8e: 15 steps, max 98150 gas
+  0x8f: 20 steps, max 98381 gas
+  0x90: 1956 steps, max 109662 gas
+  0x91: 928 steps, max 109674 gas
+  0x92: 225 steps, max 105365 gas
+  0x93: 112 steps, max 105365 gas
+  0x94: 106 steps, max 100536 gas
+  0x95: 68 steps, max 103117 gas
+  0x96: 30 steps, max 101110 gas
+  0x97: 22 steps, max 101110 gas
+  0x98: 14 steps, max 95275 gas
+  0x99: 12 steps, max 103489 gas
+  0x9a: 13 steps, max 103489 gas
+  0x9b: 7 steps, max 91671 gas
+  0x9c: 3 steps, max 85402 gas
+  0x9d: 1 steps, max 74000 gas
+  0xa2: 2 steps, max 61478 gas
+  0xf3: 2 steps, max 738978 gas
+  0xfa: 4 steps, max 218213 gas
