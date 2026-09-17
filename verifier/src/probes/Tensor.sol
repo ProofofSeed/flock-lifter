@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 pragma solidity ^0.8.30;
 
-import {GF2} from "./GF2.sol";
-import {Tables} from "./Tables.sol";
+import {GF2} from "../GF2.sol";
+import {Tables} from "../Tables.sol";
 
 /// The ring-switching basis evaluation of Flock (`eval_rs_eq_prefix_f256` and
 /// `eval_rs_eq_finish_from_prefix_binary_q_f256`), over the tensor algebra

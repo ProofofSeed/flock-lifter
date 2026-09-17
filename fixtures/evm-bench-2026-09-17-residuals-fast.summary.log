@@ -1,0 +1,63 @@
+# evm-bench 219, regular block layout, committed-matrix discharge, Fast profile, 2026-09-17, M4 Max.
+# Ligerito's final-level residuals are evaluated by verifier/src/Residual.sol (assembly); everything else as in evm-bench-2026-09-16-committed-final.summary.log.
+# revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted; the lift was read from a cache proved earlier the same day by this binary. Gas is deterministic.
+# Two calls: the lift contract, then the matrix contract; neither is split into 2^24-gas transactions, so the transaction count is a lower bound.
+# intrinsic is 21,000 plus standard calldata pricing (4 per zero byte, 16 per nonzero).
+
+responses 219, chunks 2, lift calldata 1215008 bytes
+FlockLift: initcode 103168 bytes, deployment 22203304 gas
+chunk 1:
+  published words                      1.52 M
+  zerocheck                            1.44 M
+  lincheck                             0.92 M
+  published-word claim                13.81 M
+  ring switches                        6.35 M
+  Ligerito level 0 opening            47.07 M
+  Ligerito level 1 opening             5.01 M
+  Ligerito level 2 opening             3.14 M
+  Ligerito level 3 opening             2.40 M
+  Ligerito level 4 opening             1.99 M
+  Ligerito level 5 opening             1.76 M
+  Ligerito final opening               1.59 M
+  ring-switch residual                51.17 M
+  out-of-domain residual               4.58 M
+  consistency residual                64.50 M
+  final check                          0.00 M
+chunk 2:
+  published words                      1.43 M
+  zerocheck                            1.43 M
+  lincheck                             0.91 M
+  published-word claim                10.22 M
+  ring switches                        6.27 M
+  Ligerito level 0 opening            47.10 M
+  Ligerito level 1 opening             5.03 M
+  Ligerito level 2 opening             3.15 M
+  Ligerito level 3 opening             2.41 M
+  Ligerito level 4 opening             2.00 M
+  Ligerito level 5 opening             1.76 M
+  Ligerito final opening               1.60 M
+  ring-switch residual                51.65 M
+  out-of-domain residual               4.58 M
+  consistency residual                64.58 M
+  final check                          0.00 M
+  Fiat-Shamir gate                     1.44 M
+lift contract: 432.16 M total = 412.89 M execution + 19.26 M intrinsic (calldata)
+discharge, 2 claims:
+  claims and structured parts        139.68 M
+  matrix main sumcheck                42.21 M
+  matrix count claim                  26.32 M
+  matrix count sumcheck                0.94 M
+  matrix address bits                  1.00 M
+  ring switches                        2.32 M
+  Ligerito level 0 opening            13.94 M
+  Ligerito level 1 opening             4.84 M
+  Ligerito level 2 opening             3.04 M
+  Ligerito level 3 opening             2.33 M
+  Ligerito final opening               1.90 M
+  ring-switch residual                23.73 M
+  out-of-domain residual               5.60 M
+  consistency residual                52.30 M
+  final check                          0.00 M
+matrix contract: 326.14 M total = 320.16 M execution + 5.99 M intrinsic (calldata 437664 bytes)
+verification in all: 758.30 M gas, 733.05 M of it execution
+at least 46 transactions under the 16777216-gas cap

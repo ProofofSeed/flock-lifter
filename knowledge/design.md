@@ -123,7 +123,7 @@ The verifier no longer builds that vector, and its structured discharge would wa
 So what blocks the elephant is the prover's fold, not the verifier's, and the compiler's inability to handle inputs allocated after the first AND gate.
 
 An on-chain verifier exists and is measured (`evm-verifier.md`, `committed-matrix.md`).
-With the regular layout and the committed matrix, verifying the 219-response lift in EVM contracts costs 1.27 billion gas, at least 76 transactions at the 2^24-gas cap.
+With the regular layout and the committed matrix, verifying the 219-response lift in EVM contracts costs 1.27 billion gas, at least 76 transactions at the 2^24-gas cap, and 758 million, at least 46, with Ligerito's final-level residuals evaluated in assembly.
 The row-walking discharge it replaced cost 158 billion.
 Most of what remains is Ligerito's final-level verification, three openings of a few hundred million gas each, which matches the estimate recorded here on 2026-09-15 of 100–400 M gas per chunk for the opening alone.
 That is still far from a single transaction, and the calls are neither split into transactions nor bound to each other on chain.
