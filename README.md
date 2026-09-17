@@ -41,7 +41,7 @@ cargo test --release -p pofseed-flock-lift-evm     # contracts against the Rust 
 ```
 
 Set `POFSEED_TIMING=1` for the lifter's own phase timings; Flock's `PCS_TRACE`, `FLOCK_ZC_TIMING` and `LINCHECK_TRACE` break down the rest.
-`POFSEED_LIGERITO_PROFILE=slim` proves at rate 1/4 instead of 1/2: a third off the proof for about a sixth more proving work.
+`POFSEED_LIGERITO_PROFILE=slim` proves at rate 1/4 instead of 1/2: measured on a 128-response chunk, 35.4% off the chunk proof for 20% more proving time (`knowledge/performance-table.md`).
 
 ## Structure
 
@@ -51,4 +51,5 @@ Set `POFSEED_TIMING=1` for the lifter's own phase timings; Flock's `PCS_TRACE`, 
 - `crates/host/` — proof generation, the acceptance run and the probes.
 - `crates/evm/` — the EVM side: calldata encoding of a lift and its matrix proof, a Rust mirror of the contract verifiers, the row stream, and an in-process EVM harness with the gas benchmark and the layout probes.
 - `verifier/` — the Solidity verifier (Foundry): `FlockLift` verifies every chunk and the Fiat-Shamir gate, and `FlockMatrix` discharges the resulting matrix claims, computing their Keccak part (`Structured`) and checking the matrix proof against the pinned entry commitment; `FlockDischarge` is the row-walking discharge it replaced.
+- `TODO.md` — the open work on the on-chain verifier, in order.
 - `knowledge/` — design record and measurements; `design.md` explains the block and why the lift proves it through the row-major path, `matrix-discharge.md` how the verifier checks the lincheck's last equation without a vector over the block's columns, `evm-verifier.md` what verifying a lift on Ethereum first cost, `verifier-routes.md` the routes costed to cheapen it, and `committed-matrix.md` the regular layout and committed matrix that were built.

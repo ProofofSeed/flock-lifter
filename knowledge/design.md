@@ -76,7 +76,7 @@ Its block-first phase costs `(ring-switch claims) × 128 Frobenius powers × 2^(
 With fewer live rows than capacity it falls off the rectangular fast path altogether and was killed at 124 GB on four responses.
 
 The **single-table row-major path** (`crates/lift/src/chunk_rm.rs`) commits the rows contiguously and opens the zerocheck's and lincheck's two claims with an ordinary ring-switch and Ligerito batch opening.
-On the same eight responses it proves in 3.18 s against 54 s, in 21.5 GB against 32 GB, and the opening itself is 0.09 s.
+On the same eight responses it proves in 3.18 s against 54 s, and the opening itself is 0.09 s (`fixtures/chunk-8-row-major-2026-09-14.summary.log`, `fixtures/chunk-8-union-2026-09-14.summary.log`); a later side-by-side run peaked at 21.5 GB against 32.4 GB (`fixtures/chunk-8-union-vs-row-major-2026-09-17.summary.log`).
 It has no circuit layer, so the published words are bound by a third claim appended to the same batched opening: the words are absorbed into the transcript before the commitment, and the claim evaluates the committed witness on the published-word subcube (word-columns 16 to 31 of every row, which is why they sit there) at a point sampled after it, with a value the verifier computes from the words.
 Padding rows repeat the last live block, because this path's constant-wire pin must hold in every row.
 

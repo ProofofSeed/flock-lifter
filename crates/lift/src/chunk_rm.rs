@@ -36,8 +36,7 @@ use zkboo::prover::proof::Response;
 use crate::{matrix::ExplicitClaim, transcript::KeccakChallenger};
 
 /// The Ligerito profile every chunk is proved under: `Fast` (rate 1/2) unless
-/// `POFSEED_LIGERITO_PROFILE` selects `slim` (rate 1/4, about half the proof for about twice the
-/// encoding work) or `secure` (the unique-decoding regime).
+/// `POFSEED_LIGERITO_PROFILE` selects `slim` (rate 1/4) or `secure` (the unique-decoding regime).
 ///
 /// Prover and verifier read it independently, and a disagreement is refused rather than
 /// misverified: the profile is part of the committed parameters, which the opening compares.
