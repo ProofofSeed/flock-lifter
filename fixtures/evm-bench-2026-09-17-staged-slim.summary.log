@@ -1,0 +1,109 @@
+# evm-bench 219, regular block layout, committed-matrix discharge, Slim (POFSEED_LIGERITO_PROFILE=slim) profile, 2026-09-17, M4 Max.
+# First the single-call contracts (FlockLift, FlockMatrix) in revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted, as a reference;
+# then the staged verifier (verifier/src/staged) in a second EVM under Osaka rules with the transaction gas cap (EIP-7825, 2^24) and the code-size limit (EIP-170) in force.
+# Each staged transaction's item range was the largest that fits the cap, found by simulating it; every gas figure below is a committed transaction's, calldata included (21,000 plus 4 per zero byte, 16 per nonzero).
+# The staged lift's recorded claim hash was checked equal to the single-call lift contract's output, and the matrix session ended with the lift accepted.
+# The lift was read from a cache proved earlier the same day by this binary. Gas is deterministic; the wall-clock lines are not measurements.
+
+responses 219, chunks 2, lift calldata 807072 bytes
+FlockLift: initcode 53633 bytes, deployment 11517412 gas
+chunk 1:
+  published words                      1.52 M
+  zerocheck                            1.46 M
+  lincheck                             0.92 M
+  published-word claim                13.81 M
+  ring switches                        6.38 M
+  Ligerito level 0 opening            23.59 M
+  Ligerito level 1 opening             3.88 M
+  Ligerito level 2 opening             2.78 M
+  Ligerito level 3 opening             2.17 M
+  Ligerito level 4 opening             1.90 M
+  Ligerito level 5 opening             1.71 M
+  Ligerito final opening               1.55 M
+  ring-switch residual                51.16 M
+  out-of-domain residual               4.58 M
+  consistency residual                49.09 M
+  final check                          0.00 M
+chunk 2:
+  published words                      1.43 M
+  zerocheck                            1.45 M
+  lincheck                             0.91 M
+  published-word claim                10.22 M
+  ring switches                        6.29 M
+  Ligerito level 0 opening            23.56 M
+  Ligerito level 1 opening             3.86 M
+  Ligerito level 2 opening             2.77 M
+  Ligerito level 3 opening             2.17 M
+  Ligerito level 4 opening             1.89 M
+  Ligerito level 5 opening             1.71 M
+  Ligerito final opening               1.54 M
+  ring-switch residual                51.32 M
+  out-of-domain residual               4.58 M
+  consistency residual                49.11 M
+  final check                          0.00 M
+  Fiat-Shamir gate                     1.44 M
+lift contract: 343.61 M total = 330.86 M execution + 12.75 M intrinsic (calldata)
+discharge, 2 claims:
+  claims and structured parts        141.97 M
+  matrix main sumcheck                41.59 M
+  matrix count claim                  26.23 M
+  matrix count sumcheck                0.94 M
+  matrix address bits                  0.98 M
+  ring switches                        2.29 M
+  Ligerito level 0 opening             7.12 M
+  Ligerito level 1 opening             3.73 M
+  Ligerito level 2 opening             2.68 M
+  Ligerito level 3 opening             2.10 M
+  Ligerito final opening               1.80 M
+  ring-switch residual                23.12 M
+  out-of-domain residual               5.60 M
+  consistency residual                40.49 M
+  final check                          0.00 M
+matrix contract: 305.32 M total = 300.66 M execution + 4.66 M intrinsic (calldata 354560 bytes)
+verification in all: 648.93 M gas, 631.52 M of it execution
+at least 39 transactions under the 16777216-gas cap
+staged verifier, under the 16777216-gas cap and the 24,576-byte code limit:
+  subspace table                12289 bytes, deployment 2.64 M
+  LiftStages                    22805 bytes, deployment 4.98 M
+  LiftTailStages                15368 bytes, deployment 3.38 M
+  OpeningStages                 22586 bytes, deployment 4.94 M
+  RingSwitchStages              14768 bytes, deployment 3.25 M
+  ConsistencyStages             13547 bytes, deployment 2.98 M
+  MatrixStages                  21273 bytes, deployment 4.65 M
+  StructuredStages              12171 bytes, deployment 2.68 M
+  FlockSessions                  3189 bytes, deployment 1.22 M
+  deployment in all 30.72 M
+lift session:
+  session start                   1 txs         0.14 M (0.02 M calldata), largest 0.14 M
+  published words                 1 txs         2.19 M (0.89 M calldata), largest 2.19 M
+  chunk PIOP                      2 txs         9.46 M (1.10 M calldata), largest 4.75 M
+  published-word claim            2 txs        25.60 M (1.10 M calldata), largest 14.61 M
+  ring switches                   2 txs        15.44 M (0.62 M calldata), largest 7.76 M
+  Ligerito rows                  16 txs        79.50 M (16.51 M calldata), largest 16.52 M
+  Ligerito level                 12 txs        13.50 M (3.83 M calldata), largest 1.19 M
+  Ligerito final message          2 txs         1.80 M (0.70 M calldata), largest 0.94 M
+  out-of-domain residual          2 txs        10.72 M (0.66 M calldata), largest 5.40 M
+  ring-switch residual            8 txs       113.76 M (3.05 M calldata), largest 16.08 M
+  consistency residual            8 txs       107.17 M (2.85 M calldata), largest 16.53 M
+  chunk final check               2 txs         1.60 M (0.67 M calldata), largest 0.85 M
+  Fiat-Shamir gate                1 txs         2.61 M (0.96 M calldata), largest 2.61 M
+  59 transactions, 383.51 M in all, largest 16.53 M
+matrix session:
+  session start                   1 txs         1.53 M (0.09 M calldata), largest 1.53 M
+  matrix cap                      1 txs         0.50 M (0.21 M calldata), largest 0.50 M
+  structured parts               12 txs       192.60 M (6.36 M calldata), largest 16.50 M
+  matrix main sumcheck            1 txs         1.22 M (0.26 M calldata), largest 1.22 M
+  matrix main check               4 txs        64.50 M (6.29 M calldata), largest 16.37 M
+  matrix counts                   1 txs         7.70 M (1.57 M calldata), largest 7.70 M
+  matrix prefix counts            2 txs        23.27 M (1.56 M calldata), largest 16.55 M
+  matrix count sumcheck           1 txs         2.50 M (0.34 M calldata), largest 2.50 M
+  ring switches                   1 txs         3.16 M (0.17 M calldata), largest 3.16 M
+  Ligerito rows                   5 txs        22.66 M (4.10 M calldata), largest 8.93 M
+  Ligerito level                  4 txs         3.71 M (0.91 M calldata), largest 0.96 M
+  Ligerito final message          1 txs         0.64 M (0.24 M calldata), largest 0.64 M
+  out-of-domain residual          1 txs         6.13 M (0.22 M calldata), largest 6.13 M
+  ring-switch residual            2 txs        24.04 M (0.51 M calldata), largest 16.31 M
+  consistency residual            3 txs        43.00 M (0.72 M calldata), largest 16.20 M
+  matrix final check              1 txs         0.52 M (0.22 M calldata), largest 0.52 M
+  41 transactions, 397.69 M in all, largest 16.55 M
+staged verification in all: 781.19 M in 100 transactions, every one under the cap (3.3 s)

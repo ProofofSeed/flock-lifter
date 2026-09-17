@@ -5,7 +5,9 @@
 //! transaction-sized call, in an in-process EVM with no gas cap.
 //!
 //! The matrix claims are discharged through the committed entry list by default, or, with
-//! `POFSEED_EVM_DISCHARGE=stream`, by the row stream the contract walks.
+//! `POFSEED_EVM_DISCHARGE=stream`, by the row stream the contract walks. The committed route is then
+//! run again as the staged verifier, in transactions under mainnet's gas cap from contracts under
+//! its code-size limit, unless `POFSEED_EVM_STAGED=0`.
 //!
 //! Usage: `evm-bench <responses> [lift-cache-file] [bytes-per-segment]`.
 
@@ -18,6 +20,7 @@ use pofseed_flock_lift_evm::{
     committed,
     discharge::{Stream, deploy, run},
     evm::{Evm, Outcome, artifact, encode},
+    staged,
 };
 use pofseed_flock_lift_host::{HARDENED_OFFSET, bip32_vector_1, vector_1_proof};
 use pofseed_flock_lift_statement::{H, HardenedChildCircuit};
@@ -72,6 +75,112 @@ fn mgas(g: u64) -> String {
     return format!("{:.2} M", g as f64 / 1e6);
 }
 
+struct Staged<'a> {
+    fingerprint: &'a [u8; 32],
+    chain_code: &'a [u8],
+    n: usize,
+    chunk: usize,
+    program: &'a Program,
+    key: &'a pofseed_flock_lift::matrix::MatrixCommitment,
+    slim: bool,
+    output: &'a [u8],
+    counts: U256,
+    lift: &'a [u8],
+    matrix: &'a [u8],
+    claims: &'a [U256],
+    digest: &'a [u8; 32],
+}
+
+fn report(label: &str, session: &staged::Session) -> (u64, usize) {
+    println!("{label} session:");
+    let mut stages: Vec<(u64, usize, u64, u64, u64)> = Vec::new();
+    for t in &session.txs {
+        match stages.last_mut() {
+            Some(s) if s.0 == t.stage => {
+                s.1 += 1;
+                s.2 += t.gas;
+                s.3 += t.intrinsic;
+                s.4 = s.4.max(t.gas);
+            }
+            _ => stages.push((t.stage, 1, t.gas, t.intrinsic, t.gas)),
+        }
+    }
+    let mut merged: Vec<(u64, usize, u64, u64, u64)> = Vec::new();
+    for s in stages {
+        match merged.iter_mut().find(|m| m.0 == s.0) {
+            Some(m) => {
+                m.1 += s.1;
+                m.2 += s.2;
+                m.3 += s.3;
+                m.4 = m.4.max(s.4);
+            }
+            None => merged.push(s),
+        }
+    }
+    for (stage, count, gas, intrinsic, max) in &merged {
+        let name = if *stage == 0 { "session start" } else { staged::stage_name(*stage) };
+        println!(
+            "  {:<28} {:>4} txs {:>14} ({} calldata), largest {}",
+            name,
+            count,
+            mgas(*gas),
+            mgas(*intrinsic),
+            mgas(*max)
+        );
+    }
+    if std::env::var("POFSEED_EVM_TXS").as_deref() == Ok("1") {
+        for t in &session.txs {
+            println!(
+                "    tx stage {:>2} items {:>4}..{:<4} {:>10} gas, {:>8} calldata gas, state {:>6} B, data {:>7} B",
+                t.stage, t.items.0, t.items.1, t.gas, t.intrinsic, t.state, t.data
+            );
+        }
+    }
+    let total: u64 = session.txs.iter().map(|t| t.gas).sum();
+    let largest = session.txs.iter().map(|t| t.gas).max().unwrap_or(0);
+    println!("  {} transactions, {} in all, largest {}", session.txs.len(), mgas(total), mgas(largest));
+    return (total, session.txs.len());
+}
+
+fn run_staged(s: &Staged) {
+    let t = Instant::now();
+    let mut evm = Evm::mainnet();
+    let dep = staged::deploy(
+        &mut evm,
+        s.fingerprint,
+        s.chain_code,
+        HARDENED_OFFSET,
+        s.n,
+        s.program,
+        s.key,
+        s.slim,
+    );
+    println!("staged verifier, under the {TX_CAP}-gas cap and the 24,576-byte code limit:");
+    let mut deployment = 0;
+    for (name, size, gas) in &dep.contracts {
+        println!("  {:<28} {:>6} bytes, deployment {}", name, size, mgas(*gas));
+        deployment += gas;
+    }
+    println!("  deployment in all {}", mgas(deployment));
+    let lift = staged::lift(&mut evm, dep.sessions, U256::from(1), s.output, s.counts, BINDING, s.lift, s.n, s.chunk)
+        .expect("the staged lift refused");
+    let (recorded, _) = staged::recorded(&mut evm, dep.sessions, s.digest);
+    let packed: Vec<u8> = s.claims.iter().flat_map(|c| c.to_be_bytes::<32>()).collect();
+    assert_eq!(recorded, U256::from_be_bytes(revm::primitives::keccak256(&packed).0), "recorded claims differ");
+    let matrix = staged::matrix(&mut evm, dep.sessions, U256::from(2), s.digest, s.claims, s.matrix)
+        .expect("the staged matrix verification refused");
+    let (_, accepted) = staged::recorded(&mut evm, dep.sessions, s.digest);
+    assert!(accepted, "the session contract did not accept the lift");
+    let (lg, lt) = report("lift", &lift);
+    let (mg, mt) = report("matrix", &matrix);
+    println!(
+        "staged verification in all: {} in {} transactions, every one under the cap ({:.1} s)",
+        mgas(lg + mg),
+        lt + mt,
+        t.elapsed().as_secs_f64()
+    );
+}
+
 fn main() {
     let n: usize = env::args().nth(1).map_or(219, |s| s.parse().expect("response count"));
     let cache = env::args().nth(2);
@@ -102,6 +211,7 @@ fn main() {
     };
     verify(&key.verifying(), &statement, &lifted).expect("the native verifier accepts");
     let data = encode_lift(&lifted);
+    let lift_data = data.clone();
     println!("responses {n}, chunks {}, lift calldata {} bytes", lifted.chunks.len(), data.len());
 
     let mut evm = Evm::new();
@@ -167,6 +277,25 @@ fn main() {
         let total = lift_gas + out.gas;
         println!("verification in all: {} gas, {} of it execution", mgas(total), mgas(total_exec));
         println!("at least {} transactions under the {}-gas cap", total.div_ceil(TX_CAP), TX_CAP);
+        if std::env::var("POFSEED_EVM_STAGED").as_deref() != Ok("0") {
+            let fingerprint = hash_circuit::<_, H>(&statement.circuit());
+            let bytes = y.as_bytes();
+            run_staged(&Staged {
+                fingerprint: &fingerprint,
+                chain_code: &chain_code,
+                n,
+                chunk: lifted.chunk as usize,
+                program: &program,
+                key: &vk.matrix,
+                slim,
+                output: &bytes,
+                counts,
+                lift: &lift_data,
+                matrix: &data,
+                claims: &claims,
+                digest: &digest,
+            });
+        }
         return;
     }
     let t = Instant::now();

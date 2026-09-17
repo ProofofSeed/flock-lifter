@@ -88,7 +88,7 @@ Altogether: **4.24×** on the whole verification, 1.37× on the lift contract (1
 
 ## What the measurement does not cover
 
-- **It is not split into transactions.** Each phase ran as one call with the cap lifted, so the transaction count is a lower bound. Three things stop a straightforward split:
+- **It is not split into transactions.** Each phase ran as one call with the cap lifted, so the transaction count is a lower bound. (The committed-matrix verifier has since been split: `staged-verification.md`.) Three things stop a straightforward split:
   - the discharge builds its per-claim tables in every `rows` call, and that setup alone is about 890 M gas per claim, far above the cap;
   - the lift contract is 830 M gas in one call;
   - nothing yet carries a verification's state across transactions.

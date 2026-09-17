@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-//! An in-process EVM, configured like Ethereum mainnet except that nothing caps gas or code
-//! size, so that a verification larger than a block can still run to completion and be metered.
+//! An in-process EVM, configured like Ethereum mainnet: either with nothing capping gas or code
+//! size, so that a verification larger than a block can still run to completion and be metered,
+//! or with mainnet's transaction gas cap (EIP-7825) and code-size limit (EIP-170) in force.
 
 use std::{path::PathBuf, process::Command, sync::OnceLock};
 
 use revm::{
-    Context, ExecuteCommitEvm, MainBuilder, MainContext,
+    Context, ExecuteCommitEvm, ExecuteEvm, MainBuilder, MainContext,
     context::{
         TxEnv,
         result::{ExecutionResult, Output},
@@ -19,8 +20,14 @@ use revm::{
 /// The caller every transaction is sent from.
 const CALLER: Address = Address::new([0x11; 20]);
 
-/// Gas limit given to every transaction.
+/// Gas limit given to every transaction when nothing caps it.
 const GAS: u64 = 1 << 62;
+
+/// Mainnet's transaction gas cap (EIP-7825).
+pub const TX_CAP: u64 = 1 << 24;
+
+/// Mainnet's contract code-size limit (EIP-170).
+pub const CODE_CAP: usize = 24_576;
 
 /// The verifier's Foundry project.
 pub fn project() -> PathBuf {
@@ -53,6 +60,17 @@ pub fn artifact(file: &str, name: &str) -> Vec<u8> {
             .expect("artifact json");
     let hex = json["bytecode"]["object"].as_str().expect("bytecode object");
     return hex::decode(hex.trim_start_matches("0x")).expect("bytecode hex");
+}
+
+/// The runtime bytecode length of contract `name` in source file `file`.
+pub fn runtime_len(file: &str, name: &str) -> usize {
+    build();
+    let path = project().join("out").join(file).join(format!("{name}.json"));
+    let json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())))
+            .expect("artifact json");
+    let hex = json["deployedBytecode"]["object"].as_str().expect("deployed bytecode object");
+    return (hex.trim_start_matches("0x").len()) / 2;
 }
 
 /// The outcome of one transaction.
@@ -92,6 +110,7 @@ pub fn intrinsic(data: &[u8]) -> u64 {
 pub struct Evm {
     evm: revm::MainnetEvm<revm::handler::MainnetContext<CacheDB<EmptyDB>>>,
     nonce: u64,
+    gas: u64,
 }
 
 impl Default for Evm {
@@ -101,8 +120,18 @@ impl Default for Evm {
 }
 
 impl Evm {
-    /// A fresh EVM under the latest mainnet rules.
+    /// A fresh EVM under the latest mainnet rules, with no cap on gas or code size.
     pub fn new() -> Self {
+        return Self::build(false);
+    }
+
+    /// A fresh EVM under the latest mainnet rules, the transaction gas cap and the code-size
+    /// limit included.
+    pub fn mainnet() -> Self {
+        return Self::build(true);
+    }
+
+    fn build(capped: bool) -> Self {
         let mut db = CacheDB::<EmptyDB>::default();
         db.insert_account_info(
             CALLER,
@@ -115,12 +144,14 @@ impl Evm {
             .with_db(db)
             .modify_cfg_chained(|cfg| {
                 cfg.spec = SpecId::OSAKA;
-                cfg.tx_gas_limit_cap = Some(u64::MAX);
-                cfg.limit_contract_code_size = Some(usize::MAX);
-                cfg.limit_contract_initcode_size = Some(usize::MAX);
+                if !capped {
+                    cfg.tx_gas_limit_cap = Some(u64::MAX);
+                    cfg.limit_contract_code_size = Some(usize::MAX);
+                    cfg.limit_contract_initcode_size = Some(usize::MAX);
+                    cfg.memory_limit = u64::MAX;
+                }
                 cfg.disable_block_gas_limit = true;
                 cfg.disable_base_fee = true;
-                cfg.memory_limit = u64::MAX;
             })
             .modify_block_chained(|block| {
                 block.gas_limit = GAS;
@@ -128,18 +159,39 @@ impl Evm {
         return Self {
             evm: ctx.build_mainnet(),
             nonce: 0,
+            gas: if capped { TX_CAP } else { GAS },
+        };
+    }
+
+    fn tx(&self, kind: TxKind, data: Vec<u8>) -> TxEnv {
+        return TxEnv::builder()
+            .caller(CALLER)
+            .kind(kind)
+            .data(Bytes::from(data))
+            .gas_limit(self.gas)
+            .gas_price(0)
+            .nonce(self.nonce)
+            .build_fill();
+    }
+
+    /// Runs a call to `to` with `data` without keeping its effects.
+    pub fn simulate(&mut self, to: Address, data: Vec<u8>) -> Outcome {
+        let intrinsic = intrinsic(&data);
+        let tx = self.tx(TxKind::Call(to), data);
+        return match self.evm.transact(tx) {
+            Ok(done) => outcome(done.result, intrinsic),
+            Err(e) => Outcome {
+                success: false,
+                gas: u64::MAX,
+                intrinsic,
+                output: format!("{e:?}").into_bytes(),
+                logs: Vec::new(),
+            },
         };
     }
 
     fn run(&mut self, kind: TxKind, data: Vec<u8>) -> ExecutionResult {
-        let tx = TxEnv::builder()
-            .caller(CALLER)
-            .kind(kind)
-            .data(Bytes::from(data))
-            .gas_limit(GAS)
-            .gas_price(0)
-            .nonce(self.nonce)
-            .build_fill();
+        let tx = self.tx(kind, data);
         self.nonce += 1;
         return self.evm.transact_commit(tx).expect("transaction is valid");
     }
@@ -159,36 +211,39 @@ impl Evm {
     /// Calls `to` with `data`.
     pub fn call(&mut self, to: Address, data: Vec<u8>) -> Outcome {
         let intrinsic = intrinsic(&data);
-        let result = self.run(TxKind::Call(to), data);
-        let logs = result
-            .logs()
-            .iter()
-            .map(|l| (l.topics().iter().map(|t| t.0).collect(), l.data.data.to_vec()))
-            .collect();
-        return match result {
-            ExecutionResult::Success { gas, output, .. } => Outcome {
-                success: true,
-                gas: gas.tx_gas_used(),
-                intrinsic,
-                output: output.data().to_vec(),
-                logs,
-            },
-            ExecutionResult::Revert { gas, output, .. } => Outcome {
-                success: false,
-                gas: gas.tx_gas_used(),
-                intrinsic,
-                output: output.to_vec(),
-                logs,
-            },
-            ExecutionResult::Halt { gas, reason, .. } => Outcome {
-                success: false,
-                gas: gas.tx_gas_used(),
-                intrinsic,
-                output: format!("{reason:?}").into_bytes(),
-                logs,
-            },
-        };
+        return outcome(self.run(TxKind::Call(to), data), intrinsic);
     }
+}
+
+fn outcome(result: ExecutionResult, intrinsic: u64) -> Outcome {
+    let logs = result
+        .logs()
+        .iter()
+        .map(|l| (l.topics().iter().map(|t| t.0).collect(), l.data.data.to_vec()))
+        .collect();
+    return match result {
+        ExecutionResult::Success { gas, output, .. } => Outcome {
+            success: true,
+            gas: gas.tx_gas_used(),
+            intrinsic,
+            output: output.data().to_vec(),
+            logs,
+        },
+        ExecutionResult::Revert { gas, output, .. } => Outcome {
+            success: false,
+            gas: gas.tx_gas_used(),
+            intrinsic,
+            output: output.to_vec(),
+            logs,
+        },
+        ExecutionResult::Halt { gas, reason, .. } => Outcome {
+            success: false,
+            gas: gas.tx_gas_used(),
+            intrinsic,
+            output: format!("{reason:?}").into_bytes(),
+            logs,
+        },
+    };
 }
 
 /// A minimal ABI encoder: the selector, then head words and a tail of dynamic data.
