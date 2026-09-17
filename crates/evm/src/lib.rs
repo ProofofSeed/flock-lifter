@@ -8,5 +8,6 @@ pub mod committed;
 pub mod discharge;
 pub mod evm;
 pub mod mirror;
+pub mod staged;
 pub mod stream;
 pub mod tables;
