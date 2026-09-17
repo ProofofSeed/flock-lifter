@@ -125,7 +125,7 @@ The two also differ in what is trusted: the SP1 guest is the ZKBoo verifier itse
 
 ## On chain
 
-From `evm-bench 219` on 2026-09-16, in an in-process EVM under Osaka rules with the gas cap and the size limits lifted (`fixtures/evm-bench-2026-09-16-*.summary.log`).
+From `evm-bench 219` on 2026-09-16 and 2026-09-17, in an in-process EVM under Osaka rules with the gas cap and the size limits lifted (`fixtures/evm-bench-2026-09-16-*.summary.log`).
 Gas includes calldata at standard pricing.
 The transaction count is a lower bound, because the verification is not yet split into transactions; `evm-verifier.md` records what is missing and why.
 
@@ -135,5 +135,7 @@ The transaction count is a lower bound, because the verification is not yet spli
 | optimised, `Fast` profile                |                830.28 |                  157,512 |        158,342 |                          9,438 |
 | optimised, `Slim` profile                |                680.28 |                  157,512 |        158,192 |                          9,429 |
 | regular layout, committed matrix, `Fast` |                830.43 |                   435.47 |       1,265.90 |                             76 |
+| regular layout, committed matrix, `Slim` |                680.22 |                   379.96 |       1,060.18 |                             64 |
 
-The row-walking discharge did not depend on the profile, and was 99% of the total; the committed discharge's figures are `fixtures/evm-bench-2026-09-16-committed-final.summary.log`, and `committed-matrix.md` breaks them down.
+The row-walking discharge did not depend on the profile, and was 99% of the total; the committed discharge's figures are `fixtures/evm-bench-2026-09-16-committed-final.summary.log` (`Fast`) and `fixtures/evm-bench-2026-09-17-committed-slim.summary.log` (`Slim`), and `committed-matrix.md` breaks them down.
+Under `Slim` the committed path is 16% cheaper: the lift contract's level-0 openings and consistency residuals shrink with the narrower rows, and so does the matrix contract's own opening (375.30 M execution against 429.49 M); the structured parts and the matrix sumchecks do not depend on the profile.

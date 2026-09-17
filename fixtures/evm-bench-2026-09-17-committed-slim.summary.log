@@ -1,0 +1,68 @@
+# evm-bench 219, regular block layout, committed-matrix discharge, Slim Ligerito profile (POFSEED_LIGERITO_PROFILE=slim, rate 1/4), 2026-09-17, M4 Max.
+# Contracts as in evm-bench-2026-09-16-committed-final.summary.log (main at dfe0d6c); the matrix contract was deployed with slim = true, so the entry list is opened under the m = 28 Slim schedule.
+# revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted. The lift was proved by this run into a fresh cache (quiet machine); /usr/bin/time's peak covers the whole process.
+# Two calls: the lift contract, then the matrix contract; neither is split into 2^24-gas transactions, so the transaction count is a lower bound.
+# intrinsic is 21,000 plus standard calldata pricing (4 per zero byte, 16 per nonzero).
+
+block built in 0.59 s
+lift proved in 16.18 s
+responses 219, chunks 2, lift calldata 807072 bytes
+FlockLift: initcode 94606 bytes, deployment 20350284 gas
+lift contract ran in 0.45 s
+chunk 1:
+  published words                      1.52 M
+  zerocheck                            1.44 M
+  lincheck                             0.92 M
+  published-word claim                13.81 M
+  ring switches                        6.35 M
+  Ligerito level 0 opening            23.59 M
+  Ligerito level 1 opening             3.88 M
+  Ligerito level 2 opening             2.78 M
+  Ligerito level 3 opening             2.17 M
+  Ligerito level 4 opening             1.90 M
+  Ligerito level 5 opening             1.71 M
+  Ligerito final opening               1.55 M
+  ring-switch residual               186.72 M
+  out-of-domain residual               4.69 M
+  consistency residual                79.32 M
+  final check                          0.00 M
+chunk 2:
+  published words                      2.01 M
+  zerocheck                            1.49 M
+  lincheck                             0.96 M
+  published-word claim                10.38 M
+  ring switches                        6.68 M
+  Ligerito level 0 opening            23.68 M
+  Ligerito level 1 opening             3.91 M
+  Ligerito level 2 opening             2.80 M
+  Ligerito level 3 opening             2.20 M
+  Ligerito level 4 opening             1.92 M
+  Ligerito level 5 opening             1.73 M
+  Ligerito final opening               1.57 M
+  ring-switch residual               188.95 M
+  out-of-domain residual               4.72 M
+  consistency residual                79.89 M
+  final check                          0.00 M
+  Fiat-Shamir gate                     2.04 M
+lift contract: 680.22 M total = 667.46 M execution + 12.75 M intrinsic (calldata)
+FlockMatrix: deployment 20322609 gas; ran in 0.25 s
+discharge, 2 claims:
+  claims and structured parts        139.66 M
+  matrix main sumcheck                42.21 M
+  matrix count claim                  26.32 M
+  matrix count sumcheck                0.94 M
+  matrix address bits                  1.00 M
+  ring switches                        2.32 M
+  Ligerito level 0 opening             7.16 M
+  Ligerito level 1 opening             3.74 M
+  Ligerito level 2 opening             2.69 M
+  Ligerito level 3 opening             2.11 M
+  Ligerito final opening               1.81 M
+  ring-switch residual                65.51 M
+  out-of-domain residual               5.73 M
+  consistency residual                74.07 M
+  final check                          0.00 M
+matrix contract: 379.96 M total = 375.30 M execution + 4.66 M intrinsic (calldata 354560 bytes)
+verification in all: 1060.18 M gas, 1042.76 M of it execution
+at least 64 transactions under the 16777216-gas cap
+peak memory footprint (whole process): 84298034984 B

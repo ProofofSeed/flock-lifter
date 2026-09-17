@@ -26,10 +26,11 @@ The direct route (`FlockLift` then `FlockMatrix`) costs 1,265.9 M gas, at least 
   - **The problem.** The runtime code of `FlockLift` is 94,320 bytes and that of `FlockMatrix` 94,197, against the 24,576-byte limit; the harness lifts the limit.
   - **What to do.** Most of the size is generated constants (`Constants.sol`: subspace table, φ₈ nodes, Ligerito schedules) and linked library code. Move the tables into separate data contracts read with `EXTCODECOPY`, and split the libraries into deployed contracts called with `DELEGATECALL`.
   - **Done when** every deployed contract is under the limit and the gas figures are re-measured with the limit enforced.
-- [ ] **Measure the `Slim` profile on the committed path.**
+- [x] **Measure the `Slim` profile on the committed path.**
   - **The gap.** `POFSEED_LIGERITO_PROFILE=slim` was measured only with the row-walking discharge (lift contract 680.28 M against 830.28 M under `Fast`). It has not been run with the regular layout and the matrix contract, whose own opening is also profile-dependent.
   - **What to do.** Prove a 219-response lift under `Slim` into its own cache, run `evm-bench`, and add the row to `knowledge/performance-table.md`.
   - **Done when** the fixture exists and the table carries both profiles for the committed path.
+  - **Done** (2026-09-17): 1,060.18 M gas against 1,265.90 M under `Fast`, at least 64 transactions (`fixtures/evm-bench-2026-09-17-committed-slim.summary.log`).
 
 ## Optimistic route
 
