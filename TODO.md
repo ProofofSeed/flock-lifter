@@ -2,7 +2,7 @@
 
 Open work on the on-chain verifier, in the order it is worth doing.
 Figures are for the 219-response hardened-child lift, from `fixtures/evm-bench-2026-09-16-committed-final.summary.log` unless stated; `knowledge/committed-matrix.md` has the context.
-The direct route now runs as a lift session and a matrix session, in 106 transactions under the 2^24-gas cap, for 889.2 M gas (`fixtures/evm-bench-2026-09-17-staged-fast.summary.log`); the same checks as two single calls with the cap lifted cost 759.1 M, and cost 1,265.9 M before the first item below.
+The direct route now runs as a lift session and a matrix session, in 106 transactions under the 2^24-gas cap, for 889.0 M gas (`fixtures/evm-bench-2026-09-17-staged-fast.summary.log`); the same checks as two single calls with the cap lifted cost 759.0 M, and cost 1,265.9 M before the first item below.
 
 ## Verifier optimisation
 
@@ -23,12 +23,12 @@ The direct route now runs as a lift session and a matrix session, in 106 transac
     - Have the lift contract commit its packed claims and statement digest in storage, so the matrix contract reads them instead of taking them as arguments.
   - **Done when** a whole verification runs as a measured sequence of capped transactions, and a matrix call on claims the lift contract did not produce is refused.
   - **Note.** The optimistic route (`knowledge/optimistic-verification.md`) already fits every transaction under the cap, but it does so by dispute, not by direct verification.
-  - **Done** (2026-09-17): `verifier/src/staged/`, `knowledge/staged-verification.md`. A lift session and a matrix session run in 106 transactions, every one under 2^24 gas, for 889.16 M under `Fast` (781.19 M in 100 under `Slim`; `fixtures/evm-bench-2026-09-17-staged-*.summary.log`). The lift session records its statement digest with the hash of its claims, and `startMatrix` refuses any other claims (`crates/evm/tests/staged.rs`, validated by deletion).
+  - **Done** (2026-09-17): `verifier/src/staged/`, `knowledge/staged-verification.md`. A lift session and a matrix session run in 106 transactions, every one under 2^24 gas, for 888.96 M under `Fast` (780.99 M in 100 under `Slim`; `fixtures/evm-bench-2026-09-17-staged-*.summary.log`). The lift session records its statement digest with the hash of its claims, and `startMatrix` refuses any other claims (`crates/evm/tests/staged.rs`, validated by deletion).
 - [x] **Bring the contracts under EIP-170.**
   - **The problem.** The runtime code of `FlockLift` is 94,320 bytes and that of `FlockMatrix` 94,197, against the 24,576-byte limit; the harness lifts the limit.
   - **What to do.** Most of the size is generated constants (`Constants.sol`: subspace table, φ₈ nodes, Ligerito schedules) and linked library code. Move the tables into separate data contracts read with `EXTCODECOPY`, and split the libraries into deployed contracts called with `DELEGATECALL`.
   - **Done when** every deployed contract is under the limit and the gas figures are re-measured with the limit enforced.
-  - **Done** (2026-09-17): the staged verifier's nine contracts are 3,189 to 22,805 bytes. The Ligerito schedules became a byte table, the subspace table a data contract read with `EXTCODECOPY`, and the stages are split across contracts. The figures above were measured in an EVM enforcing both the size limit and the gas cap. The single-call contracts, now 53 KB, are kept as the reference and as the optimistic route's program, and are not deployed to run.
+  - **Done** (2026-09-17): the staged verifier's nine contracts are 3,189 to 22,893 bytes. The Ligerito schedules became a byte table, the subspace table a data contract read with `EXTCODECOPY`, and the stages are split across contracts. The figures above were measured in an EVM enforcing both the size limit and the gas cap. The single-call contracts, now 53 KB, are kept as the reference and as the optimistic route's program, and are not deployed to run.
 - [x] **Measure the `Slim` profile on the committed path.**
   - **The gap.** `POFSEED_LIGERITO_PROFILE=slim` was measured only with the row-walking discharge (lift contract 680.28 M against 830.28 M under `Fast`). It has not been run with the regular layout and the matrix contract, whose own opening is also profile-dependent.
   - **What to do.** Prove a 219-response lift under `Slim` into its own cache, run `evm-bench`, and add the row to `knowledge/performance-table.md`.
@@ -37,8 +37,9 @@ The direct route now runs as a lift session and a matrix session, in 106 transac
 
 ## Optimistic route
 
-- [ ] **Widen the heaviest dispute step's margin.**
+- [x] **Widen the heaviest dispute step's margin.**
   - **The problem.** The heaviest step of the dispute game is `FlockMatrix` copying the 4,738-word matrix proof in one `CALLDATACOPY`. Resolved in a game it costs 14.84 M gas, 1.94 M under the transaction cap (`knowledge/optimistic-verification.md`).
   - **Why it matters.** A verifier that copied more calldata at once could not be disputed at all.
   - **What to do.** Split large copies across machine steps, or have the verifier read the proof in pieces.
   - **Done when** the heaviest resolved step has a comfortable margin, re-measured with the dispute simulator.
+  - **Done** (2026-09-17): the transcript copies calldata in pieces of at most 16,384 bytes, and the residual and fold buffers are no longer zero-filled. On the current contracts the trace is 237,058,466 steps, and the heaviest step resolved in a game is the transcript's 4,739-word `KECCAK256` of the matrix counts, at 6,960,415 gas: 41% of the cap, 9.82 M to spare (`fixtures/optimistic-dispute-sim-2026-09-17-margin.summary.log`). All 16 games end with the truthful side winning, and the one-step contract agrees with revm on 50,432 real steps.

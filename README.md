@@ -4,7 +4,7 @@ A succinct lifter for ZKBoo proofs of seed built on [Flock](https://github.com/s
 It lifts the same statement under the same crypto suite as the companion SP1 lifter in `../sp1-lifter`, and ends in the same journal and relying-party gate, so the two can be compared on equal terms.
 On Ethereum, a lift can be accepted in two ways, both built and measured on a 219-response lift:
 - **Direct verification** runs the EVM verifier on chain: a lift session, then a matrix session bound to the claims it recorded, with the block's explicit rows discharged by a proof against an entry list committed once per statement. Every transaction fits mainnet's gas cap and every contract its code-size limit; at 219 responses it takes 889 million gas in 106 transactions under the `Fast` profile (781 million in 100 under `Slim`). The same checks as two single calls, with the limits lifted, cost 759 million.
-- **Optimistic verification** accepts the lift unless someone disputes it. An asserter uploads the proofs and posts a bond, and a dispute is settled by bisecting the direct verifier's own execution down to one EVM step, which a contract re-executes. It costs 64 million gas when unchallenged. Within a dispute, no transaction costs more than 14.9 million gas, so every transaction fits under the 2^24 gas cap.
+- **Optimistic verification** accepts the lift unless someone disputes it. An asserter uploads the proofs and posts a bond, and a dispute is settled by bisecting the direct verifier's own execution down to one EVM step, which a contract re-executes. It costs 64 million gas when unchallenged. Within a dispute, no transaction costs more than 7 million gas, well under the 2^24 gas cap.
 
 ## Usage
 
@@ -50,7 +50,7 @@ Optimistic verification, over the same two calls:
 cargo build --release -p pofseed-flock-lift-optimistic
 ./target/release/dispute-sim 219 /tmp/lift-219.bin 16   # upload, assert, confirm, and 13 disputes played to the end;
                                                         # a fourth argument lists steps to resolve in games of their own
-./target/release/dispute-costs 219 /tmp/lift-219.bin 393389144   # per-move gas by arity, the unchallenged path
+./target/release/dispute-costs 219 /tmp/lift-219.bin 237058466   # per-move gas by arity, the unchallenged path
 ./target/release/onestep-check 219 /tmp/lift-219.bin    # the one-step contract against revm on the real trace
 ./target/release/trace-stats 219 /tmp/lift-219.bin      # the trace's length and its largest steps
 ./target/release/onestep-fuzz 3000                      # ...and on random programs

@@ -1,10 +1,10 @@
 # Optimistic verification of a Flock lift
 
-Status: prototype, 2026-09-17. It is an addition to direct verification, which it leaves unchanged.
+Status: prototype, 2026-09-17, re-measured the same day on the current contracts. It is an addition to direct verification, which it leaves unchanged.
 
 A lift can be accepted on Ethereum in two ways, and both are built:
 
-- **Direct verification** (`evm-verifier.md`, `committed-matrix.md`). Anyone calls `FlockLift.verify` on the lift, which returns the chunks' matrix claims. Then `FlockMatrix.verify` is called on those claims, the lift's statement digest and the matrix proof. At 219 responses this was 1,265.9 M gas, at least 76 transactions' worth, when the figures below were measured. It has since been made to run in 106 transactions under the cap, for 889 M gas (`staged-verification.md`).
+- **Direct verification** (`evm-verifier.md`, `committed-matrix.md`). Anyone calls `FlockLift.verify` on the lift, which returns the chunks' matrix claims. Then `FlockMatrix.verify` is called on those claims, the lift's statement digest and the matrix proof. At 219 responses the two calls cost 759.0 M gas with the cap lifted. The staged route runs the same checks in 106 transactions under the cap, for 889.0 M gas (`staged-verification.md`).
 - **Optimistic verification** (this record). An asserter uploads the lift and its matrix proof, asserts that those same two calls accept, and posts a bond. Anyone may challenge within a window. A disagreement is narrowed to one EVM step of the two calls, and `OneStep` re-executes that step. Every transaction fits the 2^24 gas cap.
 
 The two routes check the same thing: the optimistic machine runs the direct route's deployed bytecode, unmodified. What differs is who pays for the checking, and when.
@@ -16,7 +16,7 @@ The machine is the EVM running the statement's `FlockLift` and `FlockMatrix` run
 1. `FlockLift.verify(output, counts, binding, lift)`;
 2. `FlockMatrix.verify(claims, digest, matrixProof)`, where `claims` is the first call's output.
 
-Here `digest` is the statement digest that `FlockLift` computes internally. The direct route's harness passes it as an argument. The machine instead computes it on chain, in `OneStep.statementDigest`, from:
+Here `digest` is the statement digest that `FlockLift` computes internally. The single-call harness passes it as an argument, and the staged route takes it from the lift session's record. The machine computes it on chain, in `OneStep.statementDigest`, from:
 - the statement the lift contract pins;
 - the output and binding;
 - the chunk size and response count, taken from the first word of the uploaded lift.
@@ -29,7 +29,7 @@ The machine departs from the EVM in four ways. Each can only turn an accepting r
 - memory is capped at 2^22 words (134 MB);
 - any opcode outside the implemented set rejects, as do reverts and every exceptional halt.
 
-On the valid 219-response lift the trace has no unsupported opcode and no call outside SHA-256, and peak memory is 2.6 MB.
+On the valid 219-response lift the trace has no unsupported opcode and no call outside SHA-256, and peak memory is 1.9 MB.
 
 **What a state commits to.**
 - the call and the program counter;
@@ -48,7 +48,7 @@ Accepting and rejecting states are terminal and absorb further steps, so a trace
 
 ## What is fixed per statement
 
-`OneStep` holds the runtime bytecode of the statement's two contracts in data-holding contracts, 24 KB each. Both exceed EIP-170's limit for an executable contract, but neither has to run. At construction `OneStep` reads what they pin from the deployed contracts:
+`OneStep` holds the runtime bytecode of the statement's two contracts in data-holding contracts, 24 KB each. Both exceed EIP-170's limit for an executable contract (about 53 KB each), but neither has to run. At construction `OneStep` reads what they pin from the deployed contracts:
 - from `FlockLift`: the circuit fingerprint, chain code and index;
 - from `FlockMatrix`: the entry-commitment cap hash, the profile, the first Keccak sub-block and the sub-block count.
 
@@ -69,22 +69,22 @@ It exposes all of them, with `codeHash(which)` for the held bytecode. The cap ha
 
 ## Firm numbers
 
-Measured on 2026-09-17 in revm under Osaka rules, on the 219-response hardened-child lift, Fast profile (`fixtures/optimistic-*-2026-09-17.summary.log`). Every protocol transaction was sent with a 2^24 gas limit and succeeded, EIP-7623's calldata floor included.
+Measured on 2026-09-17 in revm under Osaka rules, on the 219-response hardened-child lift, Fast profile, with the contracts as they stand after the residual rewrite, the resumable fold and the split calldata copies (`fixtures/optimistic-*-2026-09-17-margin.summary.log`; the fuzz campaign, which does not depend on them, is `fixtures/optimistic-fuzz-2026-09-17.summary.log`). Every protocol transaction was sent with a 2^24 gas limit and succeeded, EIP-7623's calldata floor included.
 
 ### Once per statement
 
 | transaction                     |            gas |
 | ------------------------------- | -------------: |
 | code store contract             |        175,047 |
-| lift bytecode, 4 chunks         |     20,550,950 |
-| matrix bytecode, 4 chunks       |     20,524,106 |
-| one-step contract               |      4,329,650 |
-| lift jump table, built on chain |     12,473,233 |
-| matrix jump table               |     12,616,888 |
+| lift bytecode, 3 chunks         |     11,649,315 |
+| matrix bytecode, 3 chunks       |     11,768,102 |
+| one-step contract               |      4,284,122 |
+| lift jump table, built on chain |      7,311,516 |
+| matrix jump table               |      7,529,049 |
 | dispute contract                |      2,007,491 |
-| **in all, 13 transactions**     | **72,677,365** |
+| **in all, 11 transactions**     | **44,724,642** |
 
-The largest single transaction, the matrix program's jump table, uses 75% of the cap.
+The largest single transaction, the matrix program's jump table, uses 45% of the cap.
 
 ### Per lift, unchallenged
 
@@ -99,70 +99,71 @@ The largest single transaction, the matrix program's jump table, uses 75% of the
 - **Uploads.** The uploads are 99.4% of the cost, almost all of it EIP-7623's calldata floor.
 - **Assertion and confirmation** alone cost 381,143 gas.
 - **Blobs.** The 1,652,672 proof bytes would fit 14 blobs at 31 bytes per field element. Their cost is the blob fee market's, which is not modelled here. A disputed blob word would be opened with at most two KZG point evaluations, 50,000 gas each, measured at 73,688 gas for a whole transaction making one.
-- **Against direct verification.** Direct verification is 1,265.9 M gas, so the unchallenged path costs about a twentieth of it, in transactions that already fit the cap.
+- **Against direct verification.** Staged direct verification is 889.0 M gas in 106 transactions, so the unchallenged path costs about a fourteenth of it, in 13 transactions.
 
 ### Per dispute
 
-The valid trace is **393,389,144 steps**: 257,299,998 in the lift call and 136,089,146 in the matrix call. A lift whose middle byte is flipped is rejected after 26,649,160 steps. A matrix proof whose middle byte is flipped is rejected after 325,100,523 steps, inside the matrix call.
+The valid trace is **237,058,466 steps**: 134,146,190 in the lift call and 102,912,276 in the matrix call. A lift whose middle byte is flipped is rejected after 26,663,976 steps. A matrix proof whose middle byte is flipped is rejected after 203,601,112 steps, inside the matrix call.
 
 | arity | dissections | dissect gas | choose gas | both sides, all |
 | ----: | ----------: | ----------: | ---------: | --------------: |
-|     2 |          29 |      85,220 |     66,002 |       4,385,438 |
-|     4 |          15 |      86,792 |     73,502 |       2,404,410 |
-|    16 |           8 |      96,202 |     84,569 |       1,446,168 |
+|     2 |          28 |      85,220 |     66,002 |       4,234,216 |
+|     4 |          14 |      86,792 |     73,502 |       2,244,116 |
+|    16 |           7 |      96,202 |     84,569 |       1,265,397 |
 |    64 |           5 |     133,890 |    128,882 |       1,313,860 |
 |   256 |           4 |     347,710 |    348,060 |       2,783,080 |
 |  1024 |           3 |   1,327,780 |  1,328,130 |       7,967,730 |
 
-The simulation used arity 16 (`fixtures/optimistic-dispute-sim-2026-09-17.summary.log`):
+The simulation used arity 16 (`fixtures/optimistic-dispute-sim-2026-09-17-margin.summary.log`):
 
-| transaction (arity 16) | min gas |    max gas |
-| ---------------------- | ------: | ---------: |
-| `challenge`            | 207,213 |    224,313 |
-| `dissect` (15 hashes)  |  88,010 |     99,038 |
-| `choose`               |  51,608 |     87,393 |
-| `resolve`              | 148,217 | 14,839,663 |
-| `timeout`              |  51,224 |    108,090 |
+| transaction (arity 16) | min gas |   max gas |
+| ---------------------- | ------: | --------: |
+| `challenge`            | 207,213 |   224,313 |
+| `dissect` (15 hashes)  |  88,022 |    99,038 |
+| `choose`               |  51,704 |    87,405 |
+| `resolve`              | 145,995 | 6,960,415 |
+| `timeout`              |  51,224 |   108,090 |
 
-- **The heaviest step** is a `CALLDATACOPY` of 4,738 words of the matrix proof into memory, at step 57,473,795 of the matrix call. Its witness proves 9,476 words: 4,738 of calldata and 4,738 of memory.
-  - On its own it costs 14,505,287 gas as a transaction to `OneStep` (`fixtures/optimistic-onestep-check-2026-09-17.summary.log`).
-  - **Resolved inside a game it costs 14,839,663 gas, 88% of the cap, with 1.94 M to spare.**
-  - The next heaviest step checked is a `KECCAK256` of 4,739 words in the matrix call, at 6.79 M.
-  - The trace statistics bound the witness of every one of the 393 million steps, and none needs more words (`fixtures/optimistic-trace-2026-09-17.summary.log`).
+- **The heaviest step** is the `KECCAK256` that folds the matrix proof's 9,474 counts into the transcript, 4,739 words, at step 59,122,327 of the matrix call. Its witness proves those 4,739 memory words.
+  - On its own it costs 6,788,318 gas as a transaction to `OneStep` (`fixtures/optimistic-onestep-check-2026-09-17-margin.summary.log`).
+  - **Resolved inside a game it costs 6,960,415 gas, 41% of the cap, with 9.82 M to spare.**
+  - **Copies.** The verifier's transcript now copies calldata in pieces of at most 16,384 bytes. The copy that used to be heaviest, the same counts moved in one `CALLDATACOPY` (9,476 words proved, 14.84 M resolved), is gone, and no copy step checked costs more than 2.56 M.
+  - **Zero-filling.** The residual and fold buffers are no longer zero-filled on allocation, which would otherwise add copies of 5,000 to 9,000 words.
+  - The trace statistics bound the witness of every one of the 237 million steps, and none needs more words (`fixtures/optimistic-trace-2026-09-17-margin.summary.log`).
 - **Worst case per side**, at arity 16:
-  - **Asserter:** 8 dissections, 792,304 gas, plus a resolution of at most 14,839,663. **About 15.63 M gas.**
-  - **Challenger:** the challenge and 8 choices, 923,457 gas, plus a timeout of 108,090 when the asserter cannot resolve. **About 1.03 M gas**, and it never has to resolve a step itself.
-- **Duration.** A full dispute is 16 moves and a resolution, each within a move time: about 17 days at one day per move.
+  - **Asserter:** 7 dissections, 693,266 gas, plus a resolution of at most 6,960,415. **About 7.65 M gas.**
+  - **Challenger:** the challenge and 7 choices, 836,148 gas, plus a timeout of 108,090 when the asserter cannot resolve. **About 0.94 M gas**, and it never has to resolve a step itself.
+- **Duration.** A full dispute is 14 moves and a resolution, each within a move time: about 15 days at one day per move.
 
 ### Off-chain work
 
-- **Replay.** Replaying both calls under revm with the step hook takes 2–3 s at about 200 million steps per second, and counting the trace took 2.4 s.
-- **Rounds.** A round's truth pass for all 16 games took 2.3–4.7 s, and building the final steps' witnesses 2.9 s.
-- **Whole simulation.** The 16-game simulation, with its 211 moves and 14 resolutions, ran in 36.6 s at 1.9 GB peak memory, including building the block and the entry-list key.
+- **Replay.** Replaying both calls under revm with the step hook takes about 1.1 s at about 210 million steps per second, and counting the trace took 1.4 s.
+- **Rounds.** A round's truth pass for all 16 games took 2.2–2.8 s, and building the final steps' witnesses 2.0 s.
+- **Whole simulation.** The 16-game simulation, with its 197 moves and 14 resolutions, ran in 23.5 s at 1.9 GB peak memory, including building the block and the entry-list key.
 - **No re-proving.** An asserter or a watcher needs the lift, the statement and revm, not the prover.
 
 ### Before the port
 
 The first prototype, on 2026-09-16 (`fixtures/optimistic-*-2026-09-16.summary.log`), disputed the previous direct route: the lift contract, then `FlockDischarge`'s Keccak part, its whole row stream, and its final check.
 
-| figure                     | four-call route, 2026-09-16 | two-call route, 2026-09-17 |
-| -------------------------- | --------------------------: | -------------------------: |
-| trace                      |              49,070,979,080 |                393,389,144 |
-| dissections at arity 16    |                           9 |                          8 |
-| heaviest resolution        |                    3.98 M * |                    14.84 M |
-| worst dispute, asserter    |                    4.87 M * |                    15.63 M |
-| worst dispute, challenger  |                    1.12 M * |                     1.03 M |
-| unchallenged path          |             48.7 M in 9 txs |           63.7 M in 13 txs |
-| deployment                 |            44.7 M in 10 txs |           72.7 M in 13 txs |
-| a whole dispute, off chain |                about 50 min |                 about 40 s |
+| figure                     | four-call route, 2026-09-16 | two-call route, 2026-09-17 | current contracts |
+| -------------------------- | --------------------------: | -------------------------: | ----------------: |
+| trace                      |              49,070,979,080 |                393,389,144 |       237,058,466 |
+| dissections at arity 16    |                           9 |                          8 |                 7 |
+| heaviest resolution        |                    3.98 M * |                    14.84 M |            6.96 M |
+| worst dispute, asserter    |                    4.87 M * |                    15.63 M |            7.65 M |
+| worst dispute, challenger  |                    1.12 M * |                     1.03 M |            0.94 M |
+| unchallenged path          |             48.7 M in 9 txs |           63.7 M in 13 txs |  63.7 M in 13 txs |
+| deployment                 |            44.7 M in 10 txs |           72.7 M in 13 txs |  44.7 M in 11 txs |
+| a whole dispute, off chain |                about 50 min |                 about 40 s |        about 25 s |
 
 The figures marked \* were derived from a measured step plus a measured bookkeeping overhead, while the new figures were resolved inside a game.
 
-The new route is 125 times shorter and needs only a matrix proof upload instead of a pinned row stream. Its price is a heavier worst step: the matrix contract copies more of its calldata at once.
+The two-call route was 125 times shorter and needed only a matrix proof upload instead of a pinned row stream, at the price of a heavier worst step, as the matrix contract copied more of its calldata at once. The current contracts (`fixtures/optimistic-*-2026-09-17.summary.log` held the middle column's figures) shorten the trace by 40% with the residual rewrite, and halve the worst step by copying calldata in pieces.
 
 ## Evidence that it works
 
-- **The one-step contract agrees with revm on the real trace.** `onestep-check` covered 42,635 steps of the 219-response verification, with zero mismatches:
+- **The one-step contract agrees with revm on the real trace.** `onestep-check` covered 50,432 steps of the 219-response verification on the current contracts (42,635 on the previous ones), with zero mismatches:
   - the first step at every program counter of both calls;
   - 300 random steps per call;
   - both call-ending steps, including the one that builds the matrix call from the claims and the on-chain digest;
@@ -191,14 +192,14 @@ These are parameters of the prototype, not measurements:
 | ---------------- | ---------: | --------------------------------------------- |
 | bond, each side  |    1 ether | must cover a side's worst-case dispute gas    |
 | challenge window |     7 days | acceptance latency against watchers' reaction |
-| time per move    |      1 day | a dispute can last about 17 days              |
+| time per move    |      1 day | a dispute can last about 15 days              |
 | dissection arity |         16 | gas per move against the number of moves      |
 
 What the protocol assumes of the world:
 
 - **An honest watcher** checks every assertion and challenges a false one within the window.
 - **Liveness and inclusion.** Both sides get transactions included within each move time. A censor able to delay one side's transactions for a move time wins that side's game.
-- **Data availability.** The uploads' calldata is retrievable from chain history for as long as a dispute can last. Nodes that prune history (EIP-4444) do not provide it, so a watcher needs an archive or its own copy. A blob-based upload would bound the window by blob retention, about 18 days, which is only just above the dispute length.
+- **Data availability.** The uploads' calldata is retrievable from chain history for as long as a dispute can last. Nodes that prune history (EIP-4444) do not provide it, so a watcher needs an archive or its own copy. A blob-based upload would bound the window by blob retention, about 18 days, only a few days above the dispute length.
 - **The statement's contracts are the audited ones.** A relying party compares `OneStep.codeHash(0)` and `codeHash(1)` with the audited `FlockLift` and `FlockMatrix`, and checks the pinned values `OneStep` exposes.
 - **Revm is the reference.** The machine is defined by `OneStep`. Revm generates the traces, and the two are shown to agree by the checks above, not by proof.
 
@@ -211,19 +212,16 @@ What the protocol assumes of the world:
   - **Digest.** It is derived on chain as the lift contract derives it, so an asserter cannot pair a lift with a matrix proof made under another lift's transcript domain.
   - **The matrix call's calldata** is built at the lift call's return from the returned claims.
   - **Witnesses.** A step's witness is checked against the pre-state's roots, and unused proofs revert the step.
-- **Heavy steps.** The valid lift's heaviest step resolves at 14.84 M gas, so an honest asserter can always resolve under the cap, but with only 1.94 M to spare. A malicious proof could steer the verifier into a step too large to prove. That only hurts the side that must resolve it, and the burden is the asserter's, so a false assertion cannot hide behind such a step. An honest asserter asserts only valid proofs, whose traces have the shape measured here.
+- **Heavy steps.** The valid lift's heaviest step resolves at 6.96 M gas, so an honest asserter can always resolve under the cap, with 9.82 M to spare. A malicious proof could steer the verifier into a step too large to prove. That only hurts the side that must resolve it, and the burden is the asserter's, so a false assertion cannot hide behind such a step. An honest asserter asserts only valid proofs, whose traces have the shape measured here.
 - **Griefing.**
-  - **Cost of a groundless challenge.** A challenger who disputes a true assertion loses its bond. Each such game still costs the asserter up to about 15.6 M gas, which the bond must cover.
+  - **Cost of a groundless challenge.** A challenger who disputes a true assertion loses its bond. Each such game still costs the asserter up to about 7.7 M gas, which the bond must cover.
   - **Off-chain effort.** One truth pass per round serves all open games at once, so many challengers cost the asserter little computation.
   - **Prize race.** The first winning challenger takes the asserter's bond. That is an incentive question, not a soundness one.
 - **Departures from the EVM.** Each departure can only reject. The only way one could turn a rejection into acceptance is if the verifier's control flow depended on gas, and it does not.
 
 ## What remains before deployment
 
-- **The heaviest step's margin.**
-  - **The problem.** 14.84 M of a 16.78 M cap is thin. A future verifier that copies a larger part of its calldata at once would not resolve at all.
-  - **Fixes on the machine's side.** A `CALLDATACOPY` split into several machine steps, or cheaper range proofs.
-  - **Fixes on the verifier's side.** Reading the matrix proof in smaller pieces.
+- **The heaviest step's margin.** Done: the worst resolution is 6.96 M of the 16.78 M cap. The largest remaining witness is the transcript's fold of the matrix counts, which only a change to the transcript itself (hashing its pending bytes in pieces, prover included) would shrink.
 - **Timing and economics.**
   - Chess clocks instead of per-move deadlines.
   - Bond sizing against gas prices.
@@ -232,4 +230,4 @@ What the protocol assumes of the world:
 - **Data availability.** Either a blob-based upload with a data-availability sub-game, or an explicit history-retention assumption.
 - **Assurance of the one-step contract.** An audit, and more than differential testing.
 - **Integration.** A statement registry, the relying party's checks, and the ERC-4337 account that consumes `accepted`.
-- **Latency.** Acceptance takes at least the window, and a dispute can extend it by about as long again. Whether that suits an emergency migration is a decision for the project. Direct verification has no such delay, and splitting it into transactions is the open item on that route.
+- **Latency.** Acceptance takes at least the window, and a dispute can extend it by about as long again. Whether that suits an emergency migration is a decision for the project. Direct verification has no such delay, and now runs in 106 transactions under the cap (`staged-verification.md`).
