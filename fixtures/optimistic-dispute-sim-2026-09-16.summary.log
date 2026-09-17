@@ -1,0 +1,60 @@
+# dispute-sim 219 <cache> 16: the proof uploaded twice (valid and tampered), an unchallenged assertion confirmed after the window, and 13 disputed assertions played to the end at arity 16, under /usr/bin/time -l.
+# Bond 1 ether, window 7 days, 1 day per move: assumptions of the prototype, not measurements.
+# 2026-09-16, M4 Max, revm 43.0.2 under Osaka rules with the verifier calls uncapped and every protocol transaction sent with a 2^24 gas limit; 219-response hardened-child lift from the cached Fast-profile proof.
+
+valid trace: 49070979080 steps ([257254596, 323757884, 48473269630, 16696970] per call), counted in 319.3 s
+tampered trace: rejects after 26649123 steps
+round 1: 13 live games, truth passes 316.1 s
+round 2: 11 live games, truth passes 320.3 s
+round 3: 11 live games, truth passes 324.2 s
+round 4: 11 live games, truth passes 303.5 s
+round 5: 11 live games, truth passes 289.7 s
+round 6: 11 live games, truth passes 288.0 s
+round 7: 11 live games, truth passes 287.0 s
+round 8: 10 live games, truth passes 286.3 s
+round 9: 10 live games, truth passes 285.4 s
+deploy store: 175047 gas
+deploy lift code chunk 0: 5241380 gas
+deploy lift code chunk 1: 5244884 gas
+deploy lift code chunk 2: 5243888 gas
+deploy lift code chunk 3: 3300794 gas
+deploy discharge code chunk 0: 4929147 gas
+deploy one-step contract: 4291630 gas
+deploy jump table 0: 11521871 gas
+deploy jump table 1: 2818643 gas
+deploy dispute contract: 1958431 gas
+valid trace [257254596, 323757884, 48473269630, 16696970] steps per call, 49070979080 in all; tampered trace rejects after 26649123
+truth passes per round (s): [316.1, 320.3, 324.2, 303.5, 289.7, 288.0, 287.0, 286.3, 285.4]; resolution inputs 284.6 s
+games (arity 16):
+  ok   lie from the first step                                         9 dissections, challenger wins, final interval [0, 1]
+  ok   lie at the lift contract's return                               9 dissections, challenger wins, final interval [257254595, 257254596]
+  ok   lie inside the Keccak part                                      9 dissections, challenger wins, final interval [365173889, 365173890]
+  ok   lie in the middle of the stream                                 9 dissections, challenger wins, final interval [24817647294, 24817647295]
+  ok   lie inside the final check                                      9 dissections, challenger wins, final interval [49062630594, 49062630595]
+  ok   lie at the last state                                           9 dissections, challenger wins, final interval [49070979078, 49070979079]
+  ok   claim one step too few                                          9 dissections, challenger wins, final interval [49070979078, 49070979079]
+  ok   invalid proof, consistent until the failing check               9 dissections, challenger wins, final interval [26649122, 26649123]
+  ok   invalid proof, short claimed trace                              7 dissections, challenger wins, final interval [26649122, 26649123]
+  ok   honest asserter, challenger always picks the last interval      9 dissections, asserter wins, final interval [49070979079, 49070979080]
+  ok   honest asserter, challenger picks at random                     9 dissections, asserter wins, final interval [13085594424, 13085594425]
+  ok   honest asserter, challenger stops moving                        1 dissections, asserter wins, final interval [0, 49070979080]
+  ok   lying asserter stops moving                                     0 dissections, challenger wins, final interval [0, 49070979080]
+heaviest resolve: 793661 gas (lie at the lift contract's return, 227 words proved)
+transactions (count, min, max gas):
+  assertLift              14     242501     259601
+  beginUpload              2      71137      88237
+  challenge               13     207191     224291
+  challenge (late)         1      26154      26154
+  choose                  97      51704      87381
+  confirm                  1      83989      83989
+  confirm (disputed)      13      30451      64101
+  confirm (early)          1      26156      26156
+  dissect                 98      88022      99038
+  finishUpload             2      82494      82506
+  resolve                 11     142010     793661
+  timeout                  2      51224     108090
+  timeout (early)          1      27965      27965
+  upload chunk            10    6645530   10474880
+simulation took 3306.3 s
+     3306.61 real      3334.36 user         9.12 sys
+          2827501568  maximum resident set size

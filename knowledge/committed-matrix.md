@@ -120,7 +120,7 @@ Measured inside the matrix opening, the ring-switch residual is 31 M of prefix-t
 
 ## What is still open
 
-- **Transaction splitting.** Neither call is split into transactions, nor are the calls bound to each other on chain (the matrix contract takes the lift contract's claims and statement digest as arguments).
+- **Transaction splitting.** Neither call is split into transactions, nor are the calls bound to each other on chain (the matrix contract takes the lift contract's claims and statement digest as arguments). `optimistic-verification.md` describes the alternative built beside this route: it disputes these two calls instead of running them, with every transaction under the cap and the digest derived on chain.
 - **Code size.** Both contracts exceed EIP-170.
 - **Slim profile.** The `Slim` profile has not been measured on this path.
 - **Larger lifts.** The claim-batching grinding covers at most four chunks.

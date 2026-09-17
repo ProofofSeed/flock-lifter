@@ -2,7 +2,9 @@
 
 A succinct lifter for ZKBoo proofs of seed built on [Flock](https://github.com/succinctlabs/flock), Succinct's hash-based SNARK for batched Boolean computations: the verification of each ZKBoo response — its two-party view replay, the Keccak-256 PRG tapes and view commitments behind it — is compiled into one row of a Boolean R1CS table and proved with Flock's zerocheck, lincheck and Ligerito commitment, and the global Fiat-Shamir gate that ties the responses together runs natively over the words each row publishes.
 It lifts the same statement under the same crypto suite as the companion SP1 lifter in `../sp1-lifter`, and ends in the same journal and relying-party gate, so the two can be compared on equal terms.
-A lift can also be verified by EVM contracts, which are measured and not yet deployable: 1.27 billion gas for a 219-response lift, with the block's explicit rows discharged by a proof against an entry list committed once per statement.
+On Ethereum, a lift can be accepted in two ways, both built and measured on a 219-response lift:
+- **Direct verification** runs the EVM verifier contracts, `FlockLift` then `FlockMatrix`, for 1.27 billion gas, with the block's explicit rows discharged by a proof against an entry list committed once per statement. It is not yet split into transactions.
+- **Optimistic verification** accepts the lift unless someone disputes it. An asserter uploads the proofs and posts a bond, and a dispute is settled by bisecting the direct verifier's own execution down to one EVM step, which a contract re-executes. It costs 64 million gas when unchallenged. Within a dispute, no transaction costs more than 14.9 million gas, so every transaction fits under the 2^24 gas cap.
 
 ## Usage
 
@@ -28,7 +30,8 @@ cargo run --release -p pofseed-flock-lift-host --features count --bin verifier-c
 ./target/release/verify-only check 219 /tmp/lift.bin   # verifier without the prover around it
 ```
 
-The EVM verifier needs Foundry (`forge`, looked up at `~/.foundry/bin/forge`); the harness builds `verifier/` itself.
+Both on-chain routes need Foundry (`forge`, looked up at `~/.foundry/bin/forge`); the harnesses build `verifier/` themselves.
+Direct verification:
 
 ```sh
 cargo build --release -p pofseed-flock-lift-evm
@@ -38,6 +41,19 @@ POFSEED_EVM_DISCHARGE=stream ./target/release/evm-bench 219 /tmp/lift-219.bin   
 ./target/release/row-shapes                        # how regular the block's rows are
 ./target/release/layout-probe                      # how far they collapse into classes, by layout
 cargo test --release -p pofseed-flock-lift-evm     # contracts against the Rust mirror and the native discharge
+```
+
+Optimistic verification, over the same two calls:
+
+```sh
+cargo build --release -p pofseed-flock-lift-optimistic
+./target/release/dispute-sim 219 /tmp/lift-219.bin 16   # upload, assert, confirm, and 13 disputes played to the end;
+                                                        # a fourth argument lists steps to resolve in games of their own
+./target/release/dispute-costs 219 /tmp/lift-219.bin 393389144   # per-move gas by arity, the unchallenged path
+./target/release/onestep-check 219 /tmp/lift-219.bin    # the one-step contract against revm on the real trace
+./target/release/trace-stats 219 /tmp/lift-219.bin      # the trace's length and its largest steps
+./target/release/onestep-fuzz 3000                      # ...and on random programs
+cargo test --release -p pofseed-flock-lift-optimistic   # disputes on stand-in contracts, forged witnesses, a fuzz campaign
 ```
 
 Set `POFSEED_TIMING=1` for the lifter's own phase timings; Flock's `PCS_TRACE`, `FLOCK_ZC_TIMING` and `LINCHECK_TRACE` break down the rest.
@@ -50,6 +66,7 @@ Set `POFSEED_TIMING=1` for the lifter's own phase timings; Flock's `PCS_TRACE`, 
 - `crates/lift/` — Flock proofs over batches of response blocks (`chunk_rm`, the row-major path the lift uses; `chunk`, the union circuit path it replaced), the proof that discharges their explicit rows against the committed entry list (`matrix`), and the whole-proof lift with its native Fiat-Shamir gate (`lift`).
 - `crates/host/` — proof generation, the acceptance run and the probes.
 - `crates/evm/` — the EVM side: calldata encoding of a lift and its matrix proof, a Rust mirror of the contract verifiers, the row stream, and an in-process EVM harness with the gas benchmark and the layout probes.
-- `verifier/` — the Solidity verifier (Foundry): `FlockLift` verifies every chunk and the Fiat-Shamir gate, and `FlockMatrix` discharges the resulting matrix claims, computing their Keccak part (`Structured`) and checking the matrix proof against the pinned entry commitment; `FlockDischarge` is the row-walking discharge it replaced.
+- `crates/optimistic/` — optimistic verification: the direct verifier's execution as a trace of committed EVM states, witnesses for any single step, the off-chain side of the dispute game, a simulation of whole disputes, and a fuzzer of the one-step contract against revm.
+- `verifier/` — the Solidity verifier (Foundry): `FlockLift` verifies every chunk and the Fiat-Shamir gate, and `FlockMatrix` discharges the resulting matrix claims, computing their Keccak part (`Structured`) and checking the matrix proof against the pinned entry commitment; `FlockDischarge` is the row-walking discharge it replaced. `src/optimistic/` holds the optimistic route: `OneStep` re-executes one step of those two calls, and `Dispute` runs uploads, assertions and games.
 - `TODO.md` — the open work on the on-chain verifier, in order.
-- `knowledge/` — design record and measurements; `design.md` explains the block and why the lift proves it through the row-major path, `matrix-discharge.md` how the verifier checks the lincheck's last equation without a vector over the block's columns, `evm-verifier.md` what verifying a lift on Ethereum first cost, `verifier-routes.md` the routes costed to cheapen it, and `committed-matrix.md` the regular layout and committed matrix that were built.
+- `knowledge/` — design record and measurements; `design.md` explains the block and why the lift proves it through the row-major path, `matrix-discharge.md` how the verifier checks the lincheck's last equation without a vector over the block's columns, `evm-verifier.md` what verifying a lift on Ethereum first cost, `verifier-routes.md` the routes costed to cheapen it, `committed-matrix.md` the regular layout and committed matrix that were built, and `optimistic-verification.md` the optimistic route beside it.

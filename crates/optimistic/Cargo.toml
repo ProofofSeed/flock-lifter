@@ -1,0 +1,41 @@
+[package]
+name = "pofseed-flock-lift-optimistic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Optimistic verification of a Flock lift on Ethereum: the verifier contracts' execution as a bisectable trace, and a dispute game that re-executes one EVM step."
+publish = false
+
+[dependencies]
+pofseed-flock-lift = { path = "../lift" }
+pofseed-flock-lift-block = { path = "../block" }
+pofseed-flock-lift-evm = { path = "../evm" }
+pofseed-flock-lift-host = { path = "../host" }
+pofseed-flock-lift-statement = { path = "../statement" }
+revm = { version = "43", features = ["dev"] }
+bincode = { version = "1.3" }
+hex = { version = "0.4" }
+zkboo-circuit-hash = { version = "1.2" }
+rayon = { version = "1" }
+sha2 = { version = "0.10" }
+c-kzg = { version = "2.1" }
+
+[[bin]]
+name = "trace-stats"
+path = "src/bin/trace_stats.rs"
+
+[[bin]]
+name = "onestep-check"
+path = "src/bin/onestep_check.rs"
+
+[[bin]]
+name = "dispute-sim"
+path = "src/bin/dispute_sim.rs"
+
+[[bin]]
+name = "dispute-costs"
+path = "src/bin/dispute_costs.rs"
+
+[[bin]]
+name = "onestep-fuzz"
+path = "src/bin/onestep_fuzz.rs"

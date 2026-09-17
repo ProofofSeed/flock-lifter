@@ -1,0 +1,127 @@
+# trace-stats 219: the verification as a trace of EVM steps, per call: steps, stack and memory peaks, the largest bulk operations, the most words one step must prove, and opcodes outside the machine.
+# 2026-09-17, M4 Max, revm 43.0.2 under Osaka rules with the verifier calls uncapped and every protocol transaction sent with a 2^24 gas limit; the disputed program is the direct route (FlockLift.verify then FlockMatrix.verify) on the 219-response hardened-child lift, regular layout, committed matrix, Fast profile, read from a cached lift.
+
+scenario built in 2.1 s
+untraced run in 1.0 s: success [true, true], gas [830428401, 435474623]
+call 0: calldata 1215364 B, 257299998 steps in 1.2 s (208356599 steps/s), max stack 140, max memory 2192032 B, output 7232 B
+  largest 0x20: 65856 B at step 452123
+  largest 0x37: 16384 B at step 1472234
+  largest 0x39: 12288 B at step 87469918
+  largest 0x5e: 128 B at step 11727
+  largest 0xa2: 32 B at step 327
+  largest 0xf3: 7232 B at step 257299997
+  largest 0xfa: 1024 B at step 7586174
+  most words proved by one 0x20: 2059 at step 452123
+  most words proved by one 0x37: 258 at step 451689
+  most words proved by one 0x39: 385 at step 87469918
+  most words proved by one 0x5e: 10 at step 11727
+  most words proved by one 0xf3: 227 at step 257299997
+  most words proved by one 0xfa: 34 at step 7586174
+  unsupported opcodes stepped: 0
+call 1: calldata 444996 B, 136089146 steps in 0.7 s (206123702 steps/s), max stack 113, max memory 2590304 B, output 32 B
+  largest 0x20: 151632 B at step 57473862
+  largest 0x37: 1057280 B at step 3554
+  largest 0x39: 12288 B at step 96674782
+  largest 0x5e: 69 B at step 3104
+  largest 0xa2: 32 B at step 244
+  largest 0xf3: 32 B at step 136089145
+  largest 0xfa: 256 B at step 67464624
+  most words proved by one 0x20: 4739 at step 57473862
+  most words proved by one 0x37: 9476 at step 57473795
+  most words proved by one 0x39: 385 at step 96674782
+  most words proved by one 0x5e: 6 at step 3104
+  most words proved by one 0xf3: 2 at step 136089145
+  most words proved by one 0xfa: 10 at step 67464624
+  unsupported opcodes stepped: 0
+opcodes used:
+  0x01: 33798660
+  0x02: 1397581
+  0x03: 1045173
+  0x04: 222714
+  0x06: 4737
+  0x10: 4276619
+  0x11: 303044
+  0x12: 6
+  0x13: 1
+  0x14: 276674
+  0x15: 4593234
+  0x16: 14066274
+  0x17: 552949
+  0x18: 21151573
+  0x19: 86613
+  0x1a: 26416
+  0x1b: 31917071
+  0x1c: 13631468
+  0x20: 2404
+  0x34: 2
+  0x35: 99293
+  0x36: 722
+  0x37: 5053
+  0x39: 27
+  0x50: 20592696
+  0x51: 17371320
+  0x52: 7473338
+  0x56: 6478471
+  0x57: 5085382
+  0x5a: 21262
+  0x5b: 7895790
+  0x5e: 686
+  0x5f: 1490519
+  0x60: 65741945
+  0x61: 4912718
+  0x62: 11564540
+  0x63: 13
+  0x64: 2
+  0x66: 4
+  0x68: 5
+  0x69: 1
+  0x6b: 106570
+  0x6c: 2
+  0x6d: 106570
+  0x6e: 106572
+  0x6f: 2833
+  0x70: 20
+  0x71: 5
+  0x72: 1
+  0x74: 4
+  0x77: 1
+  0x7b: 102
+  0x7d: 102
+  0x7e: 102
+  0x7f: 373
+  0x80: 3067863
+  0x81: 30544899
+  0x82: 17203343
+  0x83: 20057084
+  0x84: 6639496
+  0x85: 1547208
+  0x86: 6261432
+  0x87: 3926847
+  0x88: 1159860
+  0x89: 159010
+  0x8a: 98572
+  0x8b: 69887
+  0x8c: 78058
+  0x8d: 66692
+  0x8e: 140
+  0x8f: 50154
+  0x90: 10398004
+  0x91: 13003585
+  0x92: 1769058
+  0x93: 302256
+  0x94: 208140
+  0x95: 298202
+  0x96: 3055
+  0x97: 22546
+  0x98: 20438
+  0x99: 262
+  0x9a: 174
+  0x9b: 25
+  0x9c: 676
+  0x9d: 657
+  0xa2: 50
+  0xf3: 2
+  0xfa: 21212
+steps in all: 393389144
+        5.33 real         7.49 user         0.33 sys
+          1900789760  maximum resident set size

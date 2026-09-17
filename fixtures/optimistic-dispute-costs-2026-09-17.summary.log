@@ -1,0 +1,27 @@
+# dispute-costs 219 <cache> 393389144: one dissection and one choice at several arities, the dissections a dispute over the whole trace takes, the unchallenged path on the lift and matrix proof themselves, and a KZG point evaluation on the first blob of the lift bytes.
+# 2026-09-17, M4 Max, revm 43.0.2 under Osaka rules with the verifier calls uncapped and every protocol transaction sent with a 2^24 gas limit; the disputed program is the direct route (FlockLift.verify then FlockMatrix.verify) on the 219-response hardened-child lift, regular layout, committed matrix, Fast profile, read from a cached lift.
+
+trace of 393389144 steps
+ arity  dissections    dissect gas     choose gas  both sides, all
+     2           29          85220          66002          4385438
+     4           15          86792          73502          2404410
+    16            8          96202          84569          1446168
+    64            5         133890         128882          1313860
+   256            4         347710         348060          2783080
+  1024            3        1327780        1328130          7967730
+unchallenged path (1215008 + 437664 proof bytes):
+  lift: beginUpload                             88237
+  lift: chunk 0 (262144 bytes)               10166540
+  lift: chunk 1 (262144 bytes)               10471220
+  lift: chunk 2 (262144 bytes)               10449710
+  lift: chunk 3 (262144 bytes)               10473380
+  lift: chunk 4 (166432 bytes)                6646670
+  lift: finishUpload                            82494
+  matrix proof: beginUpload                     71137
+  matrix proof: chunk 0 (262144 bytes)        7770830
+  matrix proof: chunk 1 (175520 bytes)        7003830
+  matrix proof: finishUpload                    72786
+  assertLift                                   297132
+  confirm                                       84011
+  in all                                     63677977 in 13 transactions
+proofs of 1652672 bytes: 14 blobs of 4096 elements at 31 bytes each; one point evaluation: 73688 gas in all, 50000 of it the precompile

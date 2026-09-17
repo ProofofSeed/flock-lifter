@@ -1,0 +1,140 @@
+# trace-stats 219: the verification as a trace of EVM steps, per call: steps, stack and memory peaks, the largest bulk operations, the most words one step must prove, and opcodes outside the machine.
+# Run while another process shared the machine, so the seconds are not clean figures.
+# 2026-09-16, M4 Max, revm 43.0.2 under Osaka rules with the verifier calls uncapped and every protocol transaction sent with a 2^24 gas limit; 219-response hardened-child lift from the cached Fast-profile proof.
+
+scenario built in 1.5 s
+untraced run in 147.3 s: success [true, true, true, true], gas [830279861, 1037333902, 156423354831, 51082460]
+call 0: calldata 1215364 B, 257254596 steps in 1.3 s (202656063 steps/s), max stack 140, max memory 2192032 B, output 7232 B
+  largest 0x20: 65856 B at step 452097
+  largest 0x37: 16384 B at step 1472208
+  largest 0x39: 12288 B at step 87469903
+  largest 0x5e: 128 B at step 11727
+  largest 0xa2: 32 B at step 327
+  largest 0xf3: 7232 B at step 257254595
+  largest 0xfa: 1024 B at step 7586129
+  most words proved by one 0x20: 2059 at step 452097
+  most words proved by one 0x37: 258 at step 451663
+  most words proved by one 0x39: 385 at step 87469903
+  most words proved by one 0x5e: 10 at step 11727
+  most words proved by one 0xf3: 227 at step 257254595
+  most words proved by one 0xfa: 34 at step 7586129
+  unsupported opcodes stepped: 0
+call 1: calldata 7236 B, 323757884 steps in 1.6 s (196223173 steps/s), max stack 61, max memory 1486784 B, output 4160 B
+  largest 0x37: 131072 B at step 1784189
+  largest 0x39: 5000 B at step 12471045
+  largest 0x5e: 51200 B at step 15728395
+  largest 0xa2: 32 B at step 323754729
+  largest 0xf3: 4160 B at step 323757883
+  most words proved by one 0x37: 15 at step 828888
+  most words proved by one 0x39: 157 at step 12471045
+  most words proved by one 0x5e: 3200 at step 15728395
+  most words proved by one 0xf3: 130 at step 323757883
+  unsupported opcodes stepped: 0
+call 2: calldata 238416676 B, 48473269630 steps in 264.6 s (183181337 steps/s), max stack 69, max memory 24307584 B, output 224 B
+  largest 0x20: 32800 B at step 478
+  largest 0x37: 1155744 B at step 16983089
+  largest 0x39: 2048 B at step 292123
+  largest 0xa2: 32 B at step 193641942
+  largest 0xf3: 224 B at step 48473269629
+  most words proved by one 0x20: 1025 at step 478
+  most words proved by one 0x37: 2048 at step 474
+  most words proved by one 0x39: 64 at step 292123
+  most words proved by one 0xf3: 7 at step 48473269629
+  unsupported opcodes stepped: 0
+call 3: calldata 11620 B, 16696970 steps in 0.1 s (207921698 steps/s), max stack 58, max memory 680704 B, output 32 B
+  largest 0x37: 131072 B at step 1009595
+  largest 0x39: 2048 B at step 914
+  largest 0xf3: 32 B at step 16696969
+  most words proved by one 0x37: 15 at step 54294
+  most words proved by one 0x39: 64 at step 914
+  most words proved by one 0xf3: 1 at step 16696969
+  unsupported opcodes stepped: 0
+opcodes used:
+  0x01: 4068776463
+  0x02: 98538001
+  0x03: 78671094
+  0x04: 2351766
+  0x06: 3766137
+  0x10: 312845433
+  0x11: 5662490
+  0x12: 13
+  0x13: 1
+  0x14: 146164617
+  0x15: 1035577254
+  0x16: 2293398414
+  0x17: 107169229
+  0x18: 1865248380
+  0x19: 58900
+  0x1a: 2721464
+  0x1b: 2552139532
+  0x1c: 2169882625
+  0x20: 9007
+  0x34: 4
+  0x35: 133586913
+  0x36: 560
+  0x37: 11675
+  0x39: 72
+  0x50: 2976902858
+  0x51: 2157056291
+  0x52: 371293328
+  0x56: 1058175454
+  0x57: 1133122689
+  0x5a: 16093
+  0x5b: 1668647862
+  0x5e: 778
+  0x5f: 336536267
+  0x60: 7478686841
+  0x61: 3428237310
+  0x62: 75944922
+  0x63: 28
+  0x64: 2
+  0x66: 3
+  0x68: 9
+  0x69: 1
+  0x6b: 92586
+  0x6c: 2
+  0x6d: 92586
+  0x6e: 92588
+  0x6f: 2768
+  0x70: 16
+  0x71: 4
+  0x74: 3
+  0x77: 1
+  0x7b: 102
+  0x7d: 102
+  0x7e: 102
+  0x7f: 53200
+  0x80: 241720023
+  0x81: 2611787578
+  0x82: 1762001400
+  0x83: 1650137597
+  0x84: 636979788
+  0x85: 718617738
+  0x86: 1216458239
+  0x87: 510688518
+  0x88: 26515424
+  0x89: 31762751
+  0x8a: 24392239
+  0x8b: 216608
+  0x8c: 158655
+  0x8d: 61571
+  0x8e: 76934
+  0x8f: 41864
+  0x90: 1639800006
+  0x91: 814091938
+  0x92: 525154422
+  0x93: 205470906
+  0x94: 8694247
+  0x95: 854533851
+  0x96: 30031229
+  0x97: 17250
+  0x98: 15621
+  0x99: 230
+  0x9a: 171
+  0x9b: 17
+  0x9c: 671
+  0x9d: 657
+  0xa2: 37
+  0xf3: 4
+  0xfa: 16056
+steps in all: 49070979080
