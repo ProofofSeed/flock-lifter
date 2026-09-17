@@ -891,10 +891,11 @@ library Residual {
         }
         ctx[6] = ctx[2] > f ? ctx[2] - f : 0;
         uint256 buf = ctx[6] <= TREE_BITS ? (ctx[6] > ctx[3] ? 1 << ctx[6] : points_) : 0;
-        uint256[] memory scratch = new uint256[](S_BUF / 32 + 2 * buf);
         assembly ("memory-safe") {
+            let scratch := mload(0x40)
+            mstore(0x40, add(scratch, add(S_BUF, shl(6, buf))))
             mstore(add(ctx, 0xa0), add(table, 0x20))
-            mstore(add(ctx, 0xc0), add(scratch, 0x20))
+            mstore(add(ctx, 0xc0), scratch)
         }
     }
 

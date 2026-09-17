@@ -8,6 +8,9 @@ pragma solidity ^0.8.30;
 /// pending bytes, so a fold hashes one contiguous range. Every failed proof of work reverts.
 library Transcript {
     uint256 internal constant CAPACITY = 1 << 17;
+    /// The most bytes one `CALLDATACOPY` moves, so that no single step of a disputed verification
+    /// carries a large witness.
+    uint256 internal constant COPY = 1 << 14;
     uint256 internal constant M128 = 0xffffffffffffffffffffffffffffffff;
 
     error ProofOfWork();
@@ -65,12 +68,17 @@ library Transcript {
         }
     }
 
-    /// Appends `len` calldata bytes, zero-padded to a multiple of sixteen.
+    /// Appends `len` calldata bytes, zero-padded to a multiple of sixteen, copied in pieces of at
+    /// most `COPY` bytes.
     function bytesFromCalldata(uint256 tr, uint256 offset, uint256 len) internal pure {
         assembly ("memory-safe") {
             let l := mload(add(tr, 0x20))
             let dst := add(add(tr, 0x40), l)
-            calldatacopy(dst, offset, len)
+            for { let done := 0 } lt(done, len) { done := add(done, COPY) } {
+                let part := sub(len, done)
+                if gt(part, COPY) { part := COPY }
+                calldatacopy(add(dst, done), add(offset, done), part)
+            }
             mstore(add(dst, len), 0)
             mstore(add(tr, 0x20), add(l, and(add(len, 15), not(15))))
         }
@@ -96,13 +104,19 @@ library Transcript {
         }
     }
 
-    /// Observes a slice of `n` field elements stored big-endian, sixteen bytes each, in calldata.
+    /// Observes a slice of `n` field elements stored big-endian, sixteen bytes each, in calldata,
+    /// copied in pieces of at most `COPY` bytes.
     function observeSliceFromCalldata(uint256 tr, uint256 offset, uint256 n) internal pure {
         header(tr, 3, 2, n);
         assembly ("memory-safe") {
             let l := mload(add(tr, 0x20))
             let len := mul(n, 16)
-            calldatacopy(add(add(tr, 0x40), l), offset, len)
+            let dst := add(add(tr, 0x40), l)
+            for { let done := 0 } lt(done, len) { done := add(done, COPY) } {
+                let part := sub(len, done)
+                if gt(part, COPY) { part := COPY }
+                calldatacopy(add(dst, done), add(offset, done), part)
+            }
             mstore(add(tr, 0x20), add(l, len))
         }
     }
