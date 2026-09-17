@@ -1,0 +1,15 @@
+# Deletion validation of the staged verifier's session checks, 2026-09-17, M4 Max.
+# Each check in verifier/src/staged/FlockSessions.sol was deleted in turn and cargo test --release -p pofseed-flock-lift-evm --test staged run; the source was restored after each.
+# staged.rs:98 asserts that startMatrix refuses claims other than the recorded ones; staged.rs:79 asserts that advance refuses a well-formed state other than the recorded one.
+# A third check (advance refusing a session that was never opened) was not load-bearing, since no state hashes to the empty slot, and was removed.
+
+## control
+test a_lift_verifies_in_capped_transactions ... ok
+## deleted: startMatrix's check of the recorded claims
+test a_lift_verifies_in_capped_transactions ... FAILED
+thread 'a_lift_verifies_in_capped_transactions' (30521063) panicked at crates/evm/tests/staged.rs:98:5:
+## deleted: advance's check of the state against the recorded hash
+test a_lift_verifies_in_capped_transactions ... FAILED
+thread 'a_lift_verifies_in_capped_transactions' (30521430) panicked at crates/evm/tests/staged.rs:79:5:
+## restored
+test a_lift_verifies_in_capped_transactions ... ok

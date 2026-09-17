@@ -114,7 +114,7 @@ On chain this replaced the 1,037 M gas `keccakPart` call with about 70 M per cla
 - **"Before"** is `evm-bench-2026-09-16-optimised.summary.log`: the compact layout with the row-stream discharge.
 - **"Residuals in assembly"** is `evm-bench-2026-09-17-residuals-fast.summary.log`, described in the next section.
 - **`Slim` profile.** Under `POFSEED_LIGERITO_PROFILE=slim` the committed column costs 680.22 M (lift) + 379.96 M (matrix) = 1,060.18 M, at least 64 transactions (`fixtures/evm-bench-2026-09-17-committed-slim.summary.log`), and the last column 343.40 M + 304.43 M = **647.83 M**, at least 39 (`fixtures/evm-bench-2026-09-17-residuals-slim.summary.log`). The saving is in the openings' level-0 rows and consistency residuals; the ring-switch residuals and the structured parts do not depend on the profile.
-- **Deployment.** The matrix contract (`FlockMatrix`) costs 20.3 M gas to deploy, and its runtime is 94,197 bytes, over EIP-170's limit like the lift contract's 94,320.
+- **Deployment.** The matrix contract (`FlockMatrix`) cost 20.3 M gas to deploy, and its runtime was 94,197 bytes, over EIP-170's limit like the lift contract's 94,320. With the schedules generated as a byte table both are now about 53 KB, still over; `staged-verification.md` describes the contracts that are deployed instead.
 
 ## Ligerito's final-level residuals in assembly
 
@@ -154,6 +154,5 @@ The six residuals went from 812.9 M to 307.9 M, and verification from 1,265.90 M
 
 ## What is still open
 
-- **Transaction splitting.** Neither call is split into transactions, nor are the calls bound to each other on chain (the matrix contract takes the lift contract's claims and statement digest as arguments). `optimistic-verification.md` describes the alternative built beside this route: it disputes these two calls instead of running them, with every transaction under the cap and the digest derived on chain.
-- **Code size.** Both contracts exceed EIP-170.
+- **Transaction splitting and code size.** Done since: `staged-verification.md` runs the same checks in 106 transactions under the cap, from contracts under EIP-170's limit, with the matrix session bound to the claims a lift session recorded. The single calls here remain the reference. `optimistic-verification.md` describes the alternative built beside this route, which disputes these two calls instead of running them.
 - **Larger lifts.** The claim-batching grinding covers at most four chunks.

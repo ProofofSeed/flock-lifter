@@ -104,7 +104,7 @@ Removing them from the verifier entirely, through Flock's claim accumulation, wa
 | prove        |                                        3,613.03 s |                                       13.30 s |
 | peak RSS     |                                          48.39 GB |                                      74.77 GB |
 | proof        |                     356 B Groth16 + 219 B journal |                                   1,675,231 B |
-| verify       | 280,590 gas on L1 (225,975 pairing + 54,615 gate) |    0.02 s native; 0.76 B gas in EVM contracts |
+| verify       | 280,590 gas on L1 (225,975 pairing + 54,615 gate) |       0.02 s native; 0.89 B gas in 106 L1 txs |
 | weakest link |                     BN254 pairing, about 100 bits | Flock `Fast` profile and ZKBoo, 128 classical |
 
 Proving is about **272× faster** (about 280× before the matrix proof, on the 2026-09-15 figures), for about half as much memory again (+55%).
@@ -120,14 +120,14 @@ Three costs multiply — every word-pool read, refcount and bounds check in `zkb
 This lifter never executes a machine.
 Each two-party AND is one committed bit and one R1CS row, every XOR is free, and the 219-response lift commits about 34 × 10⁹ AND constraints and proves them in about 13 s — ~2.6 × 10⁹ AND gates per second.
 What it pays instead is the compilation: the block is a hand-written encoding of the verifier, which is why `crates/block/tests/block.rs` exists.
-What is traded for it is everything after proving: the SP1 lifter ends in a constant-size proof a contract checks for under 300k gas, and the Flock lifter in a megabyte-scale proof whose EVM verification costs about 2,700 times as much (758 million gas).
+What is traded for it is everything after proving: the SP1 lifter ends in a constant-size proof a contract checks for under 300k gas, and the Flock lifter in a megabyte-scale proof whose EVM verification costs about 3,200 times as much (889 million gas in 106 transactions).
 The two also differ in what is trusted: the SP1 guest is the ZKBoo verifier itself, while the Flock block is a compilation of it checked differentially against ZKBoo's replay.
 
 ## On chain
 
 From `evm-bench 219` on 2026-09-16 and 2026-09-17, in an in-process EVM under Osaka rules with the gas cap and the size limits lifted (`fixtures/evm-bench-2026-09-16-*.summary.log`, `fixtures/evm-bench-2026-09-17-*.summary.log`).
 Gas includes calldata at standard pricing.
-The transaction count is a lower bound, because the verification is not yet split into transactions; `evm-verifier.md` records what is missing and why.
+For the single calls the transaction count is a lower bound. The last rows are the staged verifier, which runs in real transactions under the cap from contracts under the code-size limit (`staged-verification.md`).
 
 | contracts                                | lift contract (M gas) | matrix discharge (M gas) | in all (M gas) | transactions at 2^24, at least |
 | ---------------------------------------- | --------------------: | -----------------------: | -------------: | -----------------------------: |
@@ -138,7 +138,10 @@ The transaction count is a lower bound, because the verification is not yet spli
 | regular layout, committed matrix, `Slim` |                680.22 |                   379.96 |       1,060.18 |                             64 |
 | residuals in assembly, `Fast`            |                432.16 |                   326.14 |         758.30 |                             46 |
 | residuals in assembly, `Slim`            |                343.40 |                   304.43 |         647.83 |                             39 |
+| staged, `Fast`                           |                464.84 |                   424.32 |         889.16 |                            106 |
+| staged, `Slim`                           |                383.51 |                   397.69 |         781.19 |                            100 |
 
-The row-walking discharge did not depend on the profile, and was 99% of the total; the committed discharge's figures are `fixtures/evm-bench-2026-09-16-committed-final.summary.log` (`Fast`) and `fixtures/evm-bench-2026-09-17-committed-slim.summary.log` (`Slim`), and those with Ligerito's final-level residuals in assembly are `fixtures/evm-bench-2026-09-17-residuals-{fast,slim}.summary.log`.
-`committed-matrix.md` breaks them down.
+The row-walking discharge did not depend on the profile, and was 99% of the total.
+The committed discharge's figures are `fixtures/evm-bench-2026-09-16-committed-final.summary.log` (`Fast`) and `fixtures/evm-bench-2026-09-17-committed-slim.summary.log` (`Slim`), and those with Ligerito's final-level residuals in assembly are `fixtures/evm-bench-2026-09-17-residuals-{fast,slim}.summary.log`; `committed-matrix.md` breaks them down.
+The staged rows are `fixtures/evm-bench-2026-09-17-staged-{fast,slim}.summary.log`, where the single calls, re-measured beside them, cost 759.08 and 648.93 M; `staged-verification.md` breaks them down.
 Under `Slim` the committed path is 16% cheaper: the lift contract's level-0 openings and consistency residuals shrink with the narrower rows, and so does the matrix contract's own opening (375.30 M execution against 429.49 M); the structured parts and the matrix sumchecks do not depend on the profile.

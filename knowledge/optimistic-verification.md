@@ -4,7 +4,7 @@ Status: prototype, 2026-09-17. It is an addition to direct verification, which i
 
 A lift can be accepted on Ethereum in two ways, and both are built:
 
-- **Direct verification** (`evm-verifier.md`, `committed-matrix.md`). Anyone calls `FlockLift.verify` on the lift, which returns the chunks' matrix claims. Then `FlockMatrix.verify` is called on those claims, the lift's statement digest and the matrix proof. At 219 responses this was 1,265.9 M gas, at least 76 transactions' worth, when the figures below were measured, and it is not yet split into transactions.
+- **Direct verification** (`evm-verifier.md`, `committed-matrix.md`). Anyone calls `FlockLift.verify` on the lift, which returns the chunks' matrix claims. Then `FlockMatrix.verify` is called on those claims, the lift's statement digest and the matrix proof. At 219 responses this was 1,265.9 M gas, at least 76 transactions' worth, when the figures below were measured. It has since been made to run in 106 transactions under the cap, for 889 M gas (`staged-verification.md`).
 - **Optimistic verification** (this record). An asserter uploads the lift and its matrix proof, asserts that those same two calls accept, and posts a bond. Anyone may challenge within a window. A disagreement is narrowed to one EVM step of the two calls, and `OneStep` re-executes that step. Every transaction fits the 2^24 gas cap.
 
 The two routes check the same thing: the optimistic machine runs the direct route's deployed bytecode, unmodified. What differs is who pays for the checking, and when.
