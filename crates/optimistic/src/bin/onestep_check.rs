@@ -15,13 +15,14 @@ use std::{
     time::Instant,
 };
 
+
 use pofseed_flock_lift_optimistic::{
     deploy::{deploy, step_calldata},
+    game::Oracle,
     machine::Machine,
-    merkle::{levels, root, words_of},
     scenario::{CALLS, Scenario},
-    trace::{Capture, Captured, contexts, run_call},
-    vm::{ACCEPTED, BODY_DEPTH, Committed, Ctx, REJECTED, StepWitness, start_hash, terminal},
+    trace::{Capture, Captured, Proofs, contexts, run_call},
+    vm::{ACCEPTED, Committed, Ctx, REJECTED, StepWitness, start_hash, terminal},
 };
 use revm::primitives::{B256, U256};
 
@@ -61,22 +62,21 @@ fn main() {
     let mut machine = Machine::new(false);
     let scenario = Scenario::new(&mut machine, n, &cache);
     let t = Instant::now();
-    let plain = scenario.run(&mut machine, &scenario.proof);
+    let plain = scenario.run(&mut machine);
     assert!(plain.success.iter().all(|&s| s), "the verification accepts");
     println!("plain run {:.1} s, gas {:?}", t.elapsed().as_secs_f64(), plain.gas);
-    let t = Instant::now();
-    let stream_words = words_of(&scenario.stream.segments[0]);
-    let stream_body = Arc::new(levels(&stream_words, BODY_DEPTH));
-    let stream_root = stream_body[BODY_DEPTH][0];
-    drop(stream_words);
-    println!("stream tree built in {:.1} s, root {stream_root}", t.elapsed().as_secs_f64());
-    assert_eq!(stream_root, root(&words_of(&scenario.stream.segments[0]), BODY_DEPTH));
-    let ctxs = contexts(&scenario, &scenario.proof, &plain.outputs[..3], &stream_body);
-    let on = deploy(&mut machine, &scenario, stream_root);
+    let proofs = Proofs {
+        lift: scenario.proof.clone(),
+        matrix: scenario.matrix_proof.clone(),
+    };
+    let counts = Oracle::new(&mut machine, &scenario, proofs.clone()).steps;
+    println!("steps per call: {counts:?}");
+    let ctxs = contexts(&scenario, &proofs, &plain.outputs[..1]);
+    let on = deploy(&mut machine, &scenario);
     for (label, gas) in &on.gas {
         println!("deploy {label}: {gas} gas");
     }
-    let codes = [machine.code(scenario.lift), machine.code(scenario.discharge)];
+    let codes = [machine.code(scenario.lift), machine.code(scenario.matrix)];
     let mut seed = 0x9e37_79b9_7f4a_7c15u64;
     let mut all_cases: Vec<Case> = Vec::new();
     let only: Option<Vec<usize>> = env::var("ONLY_CALLS").ok().map(|v| v.split(',').map(|c| c.parse().unwrap()).collect());
@@ -85,7 +85,7 @@ fn main() {
             continue;
         }
         let ctx = ctxs[call].clone();
-        let code = codes[if call == 0 { 0 } else { 1 }].clone();
+        let code = codes[call].clone();
         let next: Option<Ctx> = ctxs.get(call + 1).cloned();
         let cases: Arc<Mutex<Vec<Case>>> = Arc::new(Mutex::new(Vec::new()));
         let sink_cases = cases.clone();
@@ -121,12 +121,7 @@ fn main() {
                 targets.insert(k);
             }
         }
-        let count = match call {
-            0 => 257_254_596u64,
-            1 => 323_757_884,
-            2 => 48_473_269_630,
-            _ => 16_696_970,
-        };
+        let count = counts[call];
         for _ in 0..randoms {
             targets.insert(rng(&mut seed) % count);
         }

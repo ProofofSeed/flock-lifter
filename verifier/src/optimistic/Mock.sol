@@ -1,21 +1,34 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 pragma solidity ^0.8.30;
 
-/// A stand-in for the lift contract with its interface, for testing the dispute machinery on a
-/// short trace: it rejects a proof whose first byte is `0xff` and otherwise returns claims
-/// derived from its inputs.
+/// A stand-in for the lift contract with its interface and pinned statement, for testing the
+/// dispute machinery on a short trace: it rejects a proof whose first byte is `0xff` and
+/// otherwise returns claims derived from its inputs.
 contract MockLift {
+    /// The circuit fingerprint.
+    bytes32 public immutable fingerprint;
+    /// The chain code.
+    bytes32 public immutable chainCode;
+    /// The child index.
+    uint32 public immutable index;
+
     error Proof();
+
+    constructor(bytes32 fingerprint_, bytes32 chainCode_, uint32 index_) {
+        fingerprint = fingerprint_;
+        chainCode = chainCode_;
+        index = index_;
+    }
 
     /// Stand-in claims for `proof` against `output`, `counts` and `binding`.
     function verify(bytes calldata output, uint256 counts, bytes calldata binding, bytes calldata proof)
         external
-        pure
+        view
         returns (uint256[] memory claims)
     {
         if (proof.length == 0 || proof[0] == 0xff) revert Proof();
         claims = new uint256[](224);
-        bytes32 h = keccak256(abi.encode(output, counts, binding));
+        bytes32 h = keccak256(abi.encode(output, counts, binding, fingerprint));
         for (uint256 i = 0; i < 224; ++i) {
             h = keccak256(abi.encodePacked(h, proof[i % proof.length]));
             claims[i] = uint256(h);
@@ -24,51 +37,29 @@ contract MockLift {
     }
 }
 
-/// A stand-in for the discharge contract with its interface: it folds its inputs and checks the
-/// stream's hash chain against the pinned digest.
-contract MockDischarge {
-    /// The digest the stream must hash to.
-    bytes32 public immutable digest;
+/// A stand-in for the matrix contract with its interface: it accepts a proof whose first byte is
+/// its first claim's first byte, under a nonzero digest.
+contract MockMatrix {
+    /// A stand-in entry commitment.
+    bytes32 public constant capHash = keccak256("stand-in entry commitment");
+    /// A stand-in profile.
+    bool public constant slim = false;
+    /// A stand-in first Keccak sub-block.
+    uint256 public constant firstKeccak = 7;
+    /// A stand-in Keccak sub-block count.
+    uint256 public constant keccakSubs = 11;
 
-    error Stream();
+    error Proof();
 
-    constructor(bytes32 digest_) {
-        digest = digest_;
-    }
-
-    /// Stand-in Keccak part.
-    function keccakPart(uint256[] calldata claims) external pure returns (uint256[] memory out) {
-        out = new uint256[](128);
-        for (uint256 i = 0; i < 128; ++i) {
-            out[i] = claims[i % claims.length] ^ i;
+    /// Stand-in verification of `proof` for `claims` under `digest`.
+    function verify(uint256[] calldata claims, bytes32 digest, bytes calldata proof) external pure returns (bool) {
+        if (digest == 0 || claims.length != 224 || proof.length < 64) revert Proof();
+        bytes32 h = sha256(proof);
+        uint256 acc = uint256(h) ^ uint256(digest);
+        for (uint256 i = 0; i < claims.length; ++i) {
+            acc = uint256(keccak256(abi.encode(acc, claims[i])));
         }
-    }
-
-    /// Stand-in stream fold.
-    function rows(uint256[] calldata claims, uint256[] calldata state, bytes32 chain, bytes calldata segment)
-        external
-        pure
-        returns (uint256[] memory out, bytes32 chainOut)
-    {
-        bytes32 hashed;
-        for (uint256 off = 0; off < segment.length; off += 32768) {
-            uint256 end = off + 32768 < segment.length ? off + 32768 : segment.length;
-            hashed = keccak256(abi.encodePacked(hashed, segment[off:end]));
-        }
-        chainOut = keccak256(abi.encodePacked(chain, hashed));
-        out = new uint256[](state.length);
-        for (uint256 i = 0; i < state.length; ++i) {
-            out[i] = state[i] ^ claims[i] ^ uint256(uint8(segment[i]));
-        }
-    }
-
-    /// Stand-in final check.
-    function finish(uint256[] calldata claims, uint256[] calldata part, uint256[] calldata state, bytes32 chain)
-        external
-        view
-        returns (bool)
-    {
-        if (chain != digest) revert Stream();
-        return part[0] == claims[0] && state.length == 2 * claims.length / 112;
+        if (uint8(proof[0]) != claims[0] >> 248) revert Proof();
+        return acc != 0;
     }
 }

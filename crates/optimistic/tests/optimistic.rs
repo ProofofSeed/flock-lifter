@@ -13,11 +13,10 @@ use pofseed_flock_lift_optimistic::{
     deploy::{deploy, step_calldata},
     fuzz,
     machine::Machine,
-    merkle::{levels, words_of},
     scenario::Scenario,
     sim::simulate,
-    trace::{Capture, Captured, context, run_call},
-    vm::{BODY_DEPTH, Committed, StepWitness},
+    trace::{Capture, Captured, Proofs, context, run_call},
+    vm::{Committed, StepWitness},
 };
 
 #[test]
@@ -25,10 +24,14 @@ fn every_game_ends_with_the_truthful_side_winning() {
     for arity in [2, 16] {
         let mut machine = Machine::new(false);
         let scenario = Scenario::mock(&mut machine);
-        let mut tampered = scenario.proof.clone();
-        tampered[0] = 0xff;
-        let report = simulate(machine, &scenario, tampered, arity, false);
-        assert_eq!(report.games.len(), 13);
+        let mut tampered = Proofs {
+            lift: scenario.proof.clone(),
+            matrix: scenario.matrix_proof.clone(),
+        };
+        tampered.lift[0] = 0xff;
+        tampered.matrix[0] ^= 0x01;
+        let report = simulate(machine, &scenario, tampered, arity, &[40_000], false);
+        assert_eq!(report.games.len(), 14);
         for g in &report.games {
             assert!(g.ok, "arity {arity}: {} ended with the wrong winner", g.name);
         }
@@ -49,9 +52,12 @@ fn the_one_step_contract_agrees_with_revm_on_random_programs() {
 fn forged_witnesses_are_refused() {
     let mut machine = Machine::new(false);
     let scenario = Scenario::mock(&mut machine);
-    let body = Arc::new(levels(&words_of(&scenario.stream.segments[0]), BODY_DEPTH));
-    let on = deploy(&mut machine, &scenario, body[BODY_DEPTH][0]);
-    let ctx = context(&scenario, &scenario.proof, &[], 0, &body);
+    let on = deploy(&mut machine, &scenario);
+    let proofs = Proofs {
+        lift: scenario.proof.clone(),
+        matrix: scenario.matrix_proof.clone(),
+    };
+    let ctx = context(&scenario, &proofs, &[], 0);
     let code = machine.code(scenario.lift);
     let calls: Arc<Mutex<Vec<(Vec<u8>, usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
     let sink = calls.clone();
@@ -74,7 +80,7 @@ fn forged_witnesses_are_refused() {
         let good = machine.call(on.onestep, data.clone());
         assert!(good.success, "the genuine witness is accepted");
         let start = data.len() - encoded.div_ceil(32) * 32;
-        let sections = [(start + 32, mem_len), (start + 64 + mem_len, encoded - 96 - mem_len)];
+        let sections = [(start + 32, mem_len), (start + 64 + mem_len, encoded - 64 - mem_len)];
         for (at, len) in sections {
             if len < 96 {
                 continue;

@@ -14,51 +14,73 @@ use revm::{
         interpreter::EthInterpreter,
         interpreter_types::{Jumps, LoopControl},
     },
-    primitives::{B256, U256},
+    primitives::{B256, U256, keccak256},
 };
 
 use crate::{
     machine::{Machine, Sink},
-    scenario::{CALLS, Scenario, words_at},
-    vm::{CallData, Ctx, MEM_DEPTH, Snap, supported},
+    merkle::{root as tree_root, words_of},
+    scenario::{CALLS, Scenario},
+    vm::{BODY_DEPTH, CallData, Ctx, MEM_DEPTH, Snap, supported},
 };
 
 /// Memory bytes the machine allows.
 const MEM_LIMIT: usize = 32 << MEM_DEPTH;
 
 /// Argument words before the body in call `call`'s calldata `data`.
-pub fn prefix_words(call: usize, data: &[u8], outputs: &[Vec<u8>]) -> usize {
-    let words = (data.len() - 4) / 32;
+pub fn prefix_words(call: usize, data: &[u8]) -> usize {
+    let word = |i: usize| -> usize { u64::from_be_bytes(data[4 + 32 * i + 24..4 + 32 * i + 32].try_into().unwrap()) as usize };
     return match call {
-        0 => {
-            let at = |i: usize| -> usize { u64::from_be_bytes(data[4 + 32 * i + 24..4 + 32 * i + 32].try_into().unwrap()) as usize };
-            let proof_at = at(3);
-            proof_at / 32 + 1
-        }
-        2 => {
-            let n0 = words_at(&outputs[0], 32).len();
-            let s = 2 * n0 / 112;
-            4 + 1 + n0 + 1 + s + 1
-        }
-        _ => words,
+        0 => word(3) / 32 + 1,
+        _ => word(2) / 32 + 1,
     };
 }
 
-/// The context of call `call` of a verification whose earlier calls output `outputs`.
-pub fn context(scenario: &Scenario, proof: &[u8], outputs: &[Vec<u8>], call: usize, stream_body: &Arc<Vec<Vec<B256>>>) -> Ctx {
-    let data = scenario.calldata(call, outputs, proof);
-    let p = prefix_words(call, &data, outputs);
-    let body = if call == 2 { Some(stream_body.clone()) } else { None };
+/// The proofs a verification runs over.
+#[derive(Clone)]
+pub struct Proofs {
+    /// The lift's encoding.
+    pub lift: Vec<u8>,
+    /// The matrix proof's encoding.
+    pub matrix: Vec<u8>,
+}
+
+impl Proofs {
+    /// The root of the word tree over the matrix proof.
+    pub fn matrix_root(&self) -> B256 {
+        return tree_root(&words_of(&self.matrix), BODY_DEPTH);
+    }
+
+    /// The root of the word tree over the lift's encoding.
+    pub fn lift_root(&self) -> B256 {
+        return tree_root(&words_of(&self.lift), BODY_DEPTH);
+    }
+}
+
+/// The context of call `call` of a verification of `proofs` whose earlier calls output
+/// `outputs`.
+pub fn context(scenario: &Scenario, proofs: &Proofs, outputs: &[Vec<u8>], call: usize) -> Ctx {
+    let data = scenario.calldata(call, outputs, &proofs.lift, &proofs.matrix);
+    let p = prefix_words(call, &data);
+    let tail = if call == 0 {
+        [
+            scenario.digest(&proofs.lift).0,
+            proofs.matrix_root().0,
+            U256::from(proofs.matrix.len()).to_be_bytes(),
+        ]
+    } else {
+        [keccak256(&outputs[0]).0, [0u8; 32], [0u8; 32]]
+    };
     return Ctx {
         call,
-        calldata: CallData::new(data, p, body),
-        outputs: outputs[..call].to_vec(),
+        calldata: CallData::new(data, p, None),
+        tail,
     };
 }
 
-/// Contexts of every call of a verification that ran with `outputs`.
-pub fn contexts(scenario: &Scenario, proof: &[u8], outputs: &[Vec<u8>], stream_body: &Arc<Vec<Vec<B256>>>) -> Vec<Ctx> {
-    return (0..CALLS.min(outputs.len() + 1)).map(|call| context(scenario, proof, outputs, call, stream_body)).collect();
+/// Contexts of every call of a verification of `proofs` that ran with `outputs`.
+pub fn contexts(scenario: &Scenario, proofs: &Proofs, outputs: &[Vec<u8>]) -> Vec<Ctx> {
+    return (0..CALLS.min(outputs.len() + 1)).map(|call| context(scenario, proofs, outputs, call)).collect();
 }
 
 /// A step captured with the states before and after it.

@@ -1,23 +1,19 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 //! Meters what the simulation does not: a dissection move at several arities, the number of
-//! moves a dispute over the whole trace takes at each, and the point evaluation a blob-based
-//! upload would need, on the proof's own bytes.
+//! moves a dispute over the whole trace takes at each, the unchallenged path on the lift and
+//! matrix proof themselves, and the point evaluation a blob-based upload would need.
 //!
-//! Usage: `dispute-costs <trace-steps> <lift-cache-file>`.
+//! Usage: `dispute-costs <responses> <lift-cache-file> <trace-steps>`.
 
 use std::env;
 
 use c_kzg::{Blob, Bytes32, ethereum_kzg_settings};
-use pofseed_flock_lift::lift::LiftedProof;
-use pofseed_flock_lift_evm::{
-    calldata::encode_lift,
-    evm::{Abi, artifact, encode},
-};
-use pofseed_flock_lift_host::vector_1_proof;
+use pofseed_flock_lift_evm::evm::{Abi, artifact, encode};
 use pofseed_flock_lift_optimistic::{
+    deploy::deploy,
     machine::{Machine, Outcome},
-    scenario::{BINDING, ENTROPY},
+    scenario::{BINDING, Scenario},
 };
 use revm::primitives::{Address, U256, keccak256};
 use sha2::Digest;
@@ -25,6 +21,7 @@ use sha2::Digest;
 const ASSERTER: Address = Address::new([0xa5; 20]);
 const CHALLENGER: Address = Address::new([0xc4; 20]);
 const CAP: u64 = 1 << 24;
+const DAY: u64 = 86_400;
 
 fn ether(n: u64) -> U256 {
     return U256::from(n) * U256::from(10u64).pow(U256::from(18));
@@ -49,58 +46,64 @@ fn dissections(steps: u64, arity: u64) -> usize {
     return moves;
 }
 
+fn deploy_dispute(machine: &mut Machine, onestep: Address, arity: u64) -> Address {
+    let args = Abi::default()
+        .uint(U256::from_be_slice(onestep.as_slice()))
+        .uint(ether(1))
+        .uint(U256::from(7 * DAY))
+        .uint(U256::from(DAY))
+        .uint(U256::from(arity))
+        .finish(Vec::new());
+    let mut code = artifact("Dispute.sol", "Dispute");
+    code.extend_from_slice(&args);
+    return machine.deploy(code).0;
+}
+
+/// Uploads `data` to `dispute`, returning the upload and each transaction's gas.
+fn upload(machine: &mut Machine, dispute: Address, data: &[u8], label: &str) -> (U256, Vec<(String, u64)>) {
+    let mut gas = Vec::new();
+    let out = machine.call_as(ASSERTER, dispute, encode("beginUpload(uint256)", |a| a.uint(U256::from(data.len()))), U256::ZERO);
+    assert!(out.success, "beginUpload");
+    gas.push((format!("{label}: beginUpload"), out.gas));
+    let id = word(&out, 0);
+    for (i, chunk) in data.chunks(32 << 13).enumerate() {
+        let out = machine.call_as(ASSERTER, dispute, encode("upload(uint256,bytes)", |a| a.uint(id).bytes(chunk)), U256::ZERO);
+        assert!(out.success && out.gas <= CAP, "upload chunk {i}");
+        gas.push((format!("{label}: chunk {i} ({} bytes)", chunk.len()), out.gas));
+    }
+    let out = machine.call_as(ASSERTER, dispute, encode("finishUpload(uint256)", |a| a.uint(id)), U256::ZERO);
+    assert!(out.success, "finishUpload");
+    gas.push((format!("{label}: finishUpload"), out.gas));
+    return (id, gas);
+}
+
+fn assert_lift(machine: &mut Machine, dispute: Address, scenario: &Scenario, ids: (U256, U256), steps: u64) -> Outcome {
+    return machine.call_as(
+        ASSERTER,
+        dispute,
+        encode("assertLift(bytes,uint256,bytes,uint256,uint256,uint256)", |a| {
+            a.bytes(&scenario.output).uint(scenario.counts).bytes(BINDING).uint(ids.0).uint(ids.1).uint(U256::from(steps))
+        }),
+        ether(1),
+    );
+}
+
 fn main() {
-    let steps: u64 = env::args().nth(1).expect("trace steps").parse().expect("steps");
+    let n: usize = env::args().nth(1).expect("responses").parse().expect("responses");
     let cache = env::args().nth(2).expect("lift cache file");
-    let lifted: LiftedProof = bincode::deserialize(&std::fs::read(&cache).expect("cache")).expect("lift");
-    let proof = encode_lift(&lifted);
-    let (_, output, _) = vector_1_proof(1, ENTROPY, BINDING);
-    let out_bytes = output.as_bytes();
-    let counts = U256::from(output.as_vec::<u8>().len() | (output.as_vec::<u32>().len() << 16) | (output.as_vec::<u64>().len() << 32));
+    let steps: u64 = env::args().nth(3).expect("trace steps").parse().expect("steps");
     let mut machine = Machine::new(false);
+    let scenario = Scenario::new(&mut machine, n, &cache);
+    let onestep = deploy(&mut machine, &scenario).onestep;
     machine.fund(ASSERTER, ether(1_000_000));
     machine.fund(CHALLENGER, ether(1_000_000));
-    let dummy = U256::from(1);
-    let args = Abi::default()
-        .uints(&[dummy])
-        .uint(dummy)
-        .uints(&[dummy])
-        .uint(dummy)
-        .uint(dummy)
-        .uint(dummy)
-        .uint(U256::ZERO)
-        .uint(U256::ZERO)
-        .uint(dummy)
-        .uint(dummy)
-        .finish(Vec::new());
-    let mut code = artifact("OneStep.sol", "OneStep");
-    code.extend_from_slice(&args);
-    let (onestep, _) = machine.deploy(code);
     println!("trace of {steps} steps");
     println!("{:>6} {:>12} {:>14} {:>14} {:>16}", "arity", "dissections", "dissect gas", "choose gas", "both sides, all");
     for arity in [2u64, 4, 16, 64, 256, 1024] {
-        let args = Abi::default()
-            .uint(U256::from_be_slice(onestep.as_slice()))
-            .uint(ether(1))
-            .uint(U256::from(7 * 86_400))
-            .uint(U256::from(86_400))
-            .uint(U256::from(arity))
-            .finish(Vec::new());
-        let mut code = artifact("Dispute.sol", "Dispute");
-        code.extend_from_slice(&args);
-        let (dispute, _) = machine.deploy(code);
-        let out = machine.call_as(ASSERTER, dispute, encode("beginUpload(uint256)", |a| a.uint(U256::from(32))), U256::ZERO);
-        let id = word(&out, 0);
-        machine.call_as(ASSERTER, dispute, encode("upload(uint256,bytes)", |a| a.uint(id).bytes(&[7u8; 32])), U256::ZERO);
-        machine.call_as(ASSERTER, dispute, encode("finishUpload(uint256)", |a| a.uint(id)), U256::ZERO);
-        let out = machine.call_as(
-            ASSERTER,
-            dispute,
-            encode("assertLift(bytes,uint256,bytes,uint256,uint256)", |a| {
-                a.bytes(&out_bytes).uint(counts).bytes(BINDING).uint(id).uint(U256::from(steps))
-            }),
-            ether(1),
-        );
+        let dispute = deploy_dispute(&mut machine, onestep, arity);
+        let (a, _) = upload(&mut machine, dispute, &scenario.proof[..64], "lift");
+        let (b, _) = upload(&mut machine, dispute, &[7u8; 64], "matrix");
+        let out = assert_lift(&mut machine, dispute, &scenario, (a, b), steps);
         assert!(out.success, "assertLift");
         let assertion = word(&out, 0);
         let out = machine.call_as(CHALLENGER, dispute, encode("challenge(uint256)", |a| a.uint(assertion)), ether(1));
@@ -121,57 +124,33 @@ fn main() {
         println!("{arity:>6} {moves:>12} {:>14} {:>14} {:>16}", d.gas, c.gas, moves as u64 * (d.gas + c.gas));
     }
 
-    // The unchallenged path on the proof itself: upload, assert, confirm after the window.
-    let args = Abi::default()
-        .uint(U256::from_be_slice(onestep.as_slice()))
-        .uint(ether(1))
-        .uint(U256::from(7 * 86_400))
-        .uint(U256::from(86_400))
-        .uint(U256::from(16))
-        .finish(Vec::new());
-    let mut code = artifact("Dispute.sol", "Dispute");
-    code.extend_from_slice(&args);
-    let (dispute, _) = machine.deploy(code);
+    // The unchallenged path on the proofs themselves: uploads, assertion, confirmation.
+    let dispute = deploy_dispute(&mut machine, onestep, 16);
     machine.set_time(1_800_000_000);
-    let mut honest = Vec::new();
-    let out = machine.call_as(ASSERTER, dispute, encode("beginUpload(uint256)", |a| a.uint(U256::from(proof.len()))), U256::ZERO);
-    honest.push(("beginUpload".to_string(), out.gas));
-    let id = word(&out, 0);
-    for (i, chunk) in proof.chunks(32 << 13).enumerate() {
-        let out = machine.call_as(ASSERTER, dispute, encode("upload(uint256,bytes)", |a| a.uint(id).bytes(chunk)), U256::ZERO);
-        assert!(out.success && out.gas <= CAP, "upload chunk {i}");
-        honest.push((format!("upload chunk {i} ({} bytes)", chunk.len()), out.gas));
-    }
-    let out = machine.call_as(ASSERTER, dispute, encode("finishUpload(uint256)", |a| a.uint(id)), U256::ZERO);
-    assert!(out.success, "finishUpload");
-    honest.push(("finishUpload".to_string(), out.gas));
-    let out = machine.call_as(
-        ASSERTER,
-        dispute,
-        encode("assertLift(bytes,uint256,bytes,uint256,uint256)", |a| {
-            a.bytes(&out_bytes).uint(counts).bytes(BINDING).uint(id).uint(U256::from(steps))
-        }),
-        ether(1),
-    );
+    let (lift_id, mut honest) = upload(&mut machine, dispute, &scenario.proof, "lift");
+    let (matrix_id, gas) = upload(&mut machine, dispute, &scenario.matrix_proof, "matrix proof");
+    honest.extend(gas);
+    let out = assert_lift(&mut machine, dispute, &scenario, (lift_id, matrix_id), steps);
     assert!(out.success, "assertLift");
     honest.push(("assertLift".to_string(), out.gas));
     let assertion = word(&out, 0);
-    machine.set_time(1_800_000_000 + 7 * 86_400);
+    machine.set_time(1_800_000_000 + 7 * DAY);
     let out = machine.call_as(ASSERTER, dispute, encode("confirm(uint256)", |a| a.uint(assertion)), U256::ZERO);
     assert!(out.success, "confirm");
     honest.push(("confirm".to_string(), out.gas));
-    println!("unchallenged path:");
+    println!("unchallenged path ({} + {} proof bytes):", scenario.proof.len(), scenario.matrix_proof.len());
     for (label, gas) in &honest {
-        println!("  {label:<32} {gas:>10}");
+        println!("  {label:<40} {gas:>10}");
     }
-    println!("  {:<32} {:>10}", "in all", honest.iter().map(|h| h.1).sum::<u64>());
+    println!("  {:<40} {:>10} in {} transactions", "in all", honest.iter().map(|h| h.1).sum::<u64>(), honest.len());
 
-    // Blobs: the proof as field elements of 31 bytes each, 4096 to a blob.
+    // Blobs: the proofs as field elements of 31 bytes each, 4096 to a blob.
     let per_blob = 4096 * 31;
-    let blobs = proof.len().div_ceil(per_blob);
+    let bytes = scenario.proof.len() + scenario.matrix_proof.len();
+    let blobs = bytes.div_ceil(per_blob);
     let settings = ethereum_kzg_settings(0);
     let mut blob = vec![0u8; 4096 * 32];
-    for (i, chunk) in proof[..per_blob.min(proof.len())].chunks(31).enumerate() {
+    for (i, chunk) in scenario.proof[..per_blob.min(scenario.proof.len())].chunks(31).enumerate() {
         blob[i * 32 + 1..i * 32 + 1 + chunk.len()].copy_from_slice(chunk);
     }
     let blob = Blob::from_bytes(&blob).expect("blob");
@@ -193,11 +172,9 @@ fn main() {
     let refused = machine.call_as(ASSERTER, pe, bad, U256::ZERO);
     assert!(!refused.success, "a wrong value is refused");
     let zeros = input.iter().filter(|&&b| b == 0).count() as u64;
-    let nonzero = input.len() as u64 - zeros;
-    let intrinsic = 21_000 + 4 * zeros + 16 * nonzero;
+    let intrinsic = 21_000 + 4 * zeros + 16 * (input.len() as u64 - zeros);
     println!(
-        "proof of {} bytes: {blobs} blobs of 4096 elements at 31 bytes each; one point evaluation: {} gas in all, {} of it the precompile",
-        proof.len(),
+        "proofs of {bytes} bytes: {blobs} blobs of 4096 elements at 31 bytes each; one point evaluation: {} gas in all, {} of it the precompile",
         out.gas,
         out.gas - intrinsic
     );

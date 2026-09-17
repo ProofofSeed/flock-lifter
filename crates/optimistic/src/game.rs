@@ -15,15 +15,15 @@ use crate::{
     deploy::step_calldata,
     machine::Machine,
     scenario::{CALLS, Scenario},
-    trace::{Capture, Captured, context, run_call},
+    trace::{Capture, Captured, Proofs, context, run_call},
     vm::{ACCEPTED, Committed, Ctx, REJECTED, StepWitness, terminal},
 };
 
 /// A verification's trace, as far as it goes: its calls' contexts and step counts, and how it
 /// ends.
 pub struct Oracle {
-    /// The proof bytes.
-    pub proof: Vec<u8>,
+    /// The proofs.
+    pub proofs: Proofs,
     /// Contexts of the calls that ran.
     pub ctxs: Vec<Ctx>,
     /// Steps of each call that ran; a call that rejects counts up to its last step.
@@ -34,15 +34,15 @@ pub struct Oracle {
 }
 
 impl Oracle {
-    /// Runs the verification of `proof` once, counting steps.
-    pub fn new(machine: &mut Machine, scenario: &Scenario, proof: Vec<u8>, stream_body: &Arc<Vec<Vec<B256>>>) -> Self {
-        let codes = [machine.code(scenario.lift), machine.code(scenario.discharge)];
+    /// Runs the verification of `proofs` once, counting steps.
+    pub fn new(machine: &mut Machine, scenario: &Scenario, proofs: Proofs) -> Self {
+        let codes = [machine.code(scenario.lift), machine.code(scenario.matrix)];
         let mut outputs: Vec<Vec<u8>> = Vec::new();
         let mut ctxs = Vec::new();
         let mut steps = Vec::new();
         let mut end = ACCEPTED;
         for call in 0..CALLS {
-            let ctx = context(scenario, &proof, &outputs, call, stream_body);
+            let ctx = context(scenario, &proofs, &outputs, call);
             let capture = Capture::new(BTreeSet::new(), None, Box::new(|_| {}));
             let unsupported = capture.unsupported.clone();
             let (ok, output, count) = run_call(machine, scenario, &ctx, capture);
@@ -64,7 +64,7 @@ impl Oracle {
             outputs.push(output);
         }
         return Self {
-            proof,
+            proofs,
             ctxs,
             steps,
             end,
@@ -195,7 +195,7 @@ pub fn terminal_resolve(game: u64, kind: u64) -> Vec<u8> {
         for _ in 0..8 {
             a = a.uint(U256::ZERO);
         }
-        a.bytes(&[0u8; 96])
+        a.bytes(&[0u8; 64])
     });
     return resolve_calldata(game, &step);
 }

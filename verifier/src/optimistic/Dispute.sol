@@ -3,10 +3,11 @@ pragma solidity ^0.8.30;
 
 import {OneStep} from "./OneStep.sol";
 
-/// Optimistic acceptance of lifted proofs: an asserter uploads a proof, asserts that the
-/// machine's run of the verification over it ends accepted after a given number of steps, and
-/// posts a bond; anyone may challenge within a window, and each challenge is settled by a
-/// dissection of the asserter's trace down to one step, which the machine re-executes.
+/// Optimistic acceptance of lifted proofs: an asserter uploads a lift and its matrix proof,
+/// asserts that the machine's run of their direct verification ends accepted after a given
+/// number of steps, and posts a bond; anyone may challenge within a window, and each challenge
+/// is settled by a dissection of the asserter's trace down to one step, which the machine
+/// re-executes.
 contract Dispute {
     /// Argument words per upload chunk: a subtree of this depth.
     uint256 internal constant CHUNK_DEPTH = 13;
@@ -24,6 +25,7 @@ contract Dispute {
         uint256 received;
         bytes32[] subroots;
         bytes32 root;
+        uint256 head;
     }
 
     struct Assertion {
@@ -107,6 +109,7 @@ contract Dispute {
         uint256 full = 32 << CHUNK_DEPTH;
         uint256 left = u.len - u.received;
         if (chunk.length != (left < full ? left : full) || u.root != 0) revert BadMove();
+        if (u.received == 0) u.head = _head(chunk);
         u.received += chunk.length;
         u.subroots.push(_chunkRoot(chunk));
     }
@@ -139,6 +142,16 @@ contract Dispute {
     /// The root and length of a completed upload.
     function uploaded(uint256 id) external view returns (bytes32, uint256) {
         return (uploads[id].root, uploads[id].len);
+    }
+
+    /// The first word of `chunk`, zero-padded.
+    function _head(bytes calldata chunk) internal pure returns (uint256 h) {
+        uint256 n = chunk.length < 32 ? chunk.length : 32;
+        assembly ("memory-safe") {
+            mstore(0, 0)
+            calldatacopy(0, chunk.offset, n)
+            h := mload(0)
+        }
     }
 
     function _zero(uint256 depth) internal pure returns (bytes32 z) {
@@ -175,17 +188,23 @@ contract Dispute {
         return keccak256(abi.encode(output, counts, binding));
     }
 
-    /// Asserts that the verification of upload `data` against the statement ends accepted after
-    /// `steps` steps.
-    function assertLift(bytes calldata output, uint256 counts, bytes calldata binding, uint256 data, uint256 steps)
-        external
-        payable
-        returns (uint256 id)
-    {
+    /// Asserts that the verification of the lift in upload `liftData` with the matrix proof in
+    /// upload `matrixData` against the statement ends accepted after `steps` steps.
+    function assertLift(
+        bytes calldata output,
+        uint256 counts,
+        bytes calldata binding,
+        uint256 liftData,
+        uint256 matrixData,
+        uint256 steps
+    ) external payable returns (uint256 id) {
         if (msg.value != bond) revert Bond();
-        Upload storage u = uploads[data];
-        if (u.owner != msg.sender || u.root == 0 || steps == 0) revert BadMove();
-        bytes32 start = machine.initial(output, counts, binding, u.root, u.len);
+        Upload storage l = uploads[liftData];
+        Upload storage m = uploads[matrixData];
+        if (l.owner != msg.sender || l.root == 0 || m.owner != msg.sender || m.root == 0 || steps == 0) {
+            revert BadMove();
+        }
+        bytes32 start = machine.initial(output, counts, binding, [uint256(l.root), l.len, l.head, uint256(m.root), m.len]);
         id = assertions.length;
         assertions.push(
             Assertion({

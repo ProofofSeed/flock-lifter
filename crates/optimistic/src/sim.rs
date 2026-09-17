@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-//! The optimistic verification of a scenario played end to end: the proof's upload, an
+//! The optimistic verification of a scenario played end to end: the proofs' upload, an
 //! unchallenged assertion confirmed after its window, and a set of disputed assertions in which
 //! honest and dishonest asserters and challengers meet, every game played to its end. Every
 //! transaction runs under mainnet's 2^24 gas cap and is metered.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::Arc,
     time::Instant,
 };
 
@@ -20,6 +19,7 @@ use crate::{
     machine::{Machine, Outcome},
     merkle::{levels, words_of},
     scenario::{BINDING, Scenario},
+    trace::Proofs,
     vm::{ACCEPTED, BODY_DEPTH, terminal},
 };
 
@@ -42,11 +42,12 @@ fn ether(n: u64) -> U256 {
     return U256::from(n) * U256::from(10u64).pow(U256::from(18));
 }
 
-/// Which trace a party reports.
+/// Which proofs an assertion is about.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Proof {
-    Valid,
-    Tampered,
+    Valid = 0,
+    TamperedLift = 1,
+    TamperedMatrix = 2,
 }
 
 /// How the asserter reports states.
@@ -74,7 +75,7 @@ enum Challenger {
 }
 
 struct Case {
-    name: &'static str,
+    name: String,
     proof: Proof,
     steps: u64,
     asserter: Asserter,
@@ -115,8 +116,10 @@ pub struct Report {
     pub deploy_gas: Vec<(String, u64)>,
     /// Steps of each call of the valid trace.
     pub steps: Vec<u64>,
-    /// Steps before the tampered trace rejects.
-    pub tampered_steps: u64,
+    /// Steps before the trace of the tampered lift rejects.
+    pub tampered_lift_steps: u64,
+    /// Steps before the trace of the tampered matrix proof rejects.
+    pub tampered_matrix_steps: u64,
     /// Seconds to count the valid trace.
     pub count_secs: f64,
     /// Seconds of truth passes per round.
@@ -191,12 +194,17 @@ fn upload(chain: &mut Chain, data: &[u8]) -> U256 {
     return id;
 }
 
-fn assert_lift(chain: &mut Chain, scenario: &Scenario, data: U256, steps: u64) -> u64 {
+fn assert_lift(chain: &mut Chain, scenario: &Scenario, data: (U256, U256), steps: u64) -> u64 {
     let out = chain.ok(
         "assertLift",
         ASSERTER,
-        encode("assertLift(bytes,uint256,bytes,uint256,uint256)", |a| {
-            a.bytes(&scenario.output).uint(scenario.counts).bytes(BINDING).uint(data).uint(U256::from(steps))
+        encode("assertLift(bytes,uint256,bytes,uint256,uint256,uint256)", |a| {
+            a.bytes(&scenario.output)
+                .uint(scenario.counts)
+                .bytes(BINDING)
+                .uint(data.0)
+                .uint(data.1)
+                .uint(U256::from(steps))
         }),
         ether(1),
     );
@@ -208,12 +216,12 @@ fn words(hashes: &[B256]) -> Vec<U256> {
 }
 
 /// Plays the scenario's optimistic verification in `machine` with dissections of `arity`,
-/// `tampered` being a proof the verification rejects. Panics if a transaction breaks the cap.
-pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered_bytes: Vec<u8>, arity: u64, verbose: bool) -> Report {
+/// `tampered` being a lift and a matrix proof the verification rejects, and adds for each global
+/// step in `heavy` a game that must be resolved at exactly that step. Panics if a transaction
+/// breaks the cap.
+pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered: Proofs, arity: u64, heavy: &[u64], verbose: bool) -> Report {
     let mut report = Report::default();
-    let stream_body = Arc::new(levels(&words_of(&scenario.stream.segments[0]), BODY_DEPTH));
-    let stream_root = stream_body[BODY_DEPTH][0];
-    let on = deploy(&mut machine, scenario, stream_root);
+    let on = deploy(&mut machine, scenario);
     report.deploy_gas = on.gas.clone();
     let args = Abi::default()
         .uint(U256::from_be_slice(on.onestep.as_slice()))
@@ -239,44 +247,70 @@ pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered_bytes: Vec<u
     };
     chain.advance(0);
 
+    let genuine = Proofs {
+        lift: scenario.proof.clone(),
+        matrix: scenario.matrix_proof.clone(),
+    };
+    let bad_lift = Proofs {
+        lift: tampered.lift.clone(),
+        matrix: genuine.matrix.clone(),
+    };
+    let bad_matrix = Proofs {
+        lift: genuine.lift.clone(),
+        matrix: tampered.matrix.clone(),
+    };
     let t = Instant::now();
-    let valid = Oracle::new(&mut chain.machine, scenario, scenario.proof.clone(), &stream_body);
-    assert_eq!(valid.end, ACCEPTED, "the valid proof's trace accepts");
+    let valid = Oracle::new(&mut chain.machine, scenario, genuine.clone());
+    assert_eq!(valid.end, ACCEPTED, "the valid proofs' trace accepts");
     report.count_secs = t.elapsed().as_secs_f64();
     report.steps = valid.steps.clone();
     let total = valid.len();
-    let tampered = Oracle::new(&mut chain.machine, scenario, tampered_bytes.clone(), &stream_body);
-    assert_ne!(tampered.end, ACCEPTED, "the tampered proof's trace rejects");
-    report.tampered_steps = tampered.len();
+    let lift_bad = Oracle::new(&mut chain.machine, scenario, bad_lift);
+    assert_ne!(lift_bad.end, ACCEPTED, "the tampered lift's trace rejects");
+    let matrix_bad = Oracle::new(&mut chain.machine, scenario, bad_matrix);
+    assert_ne!(matrix_bad.end, ACCEPTED, "the tampered matrix proof's trace rejects");
+    assert!(matrix_bad.steps.len() == 2, "the tampered matrix proof is refused in the matrix call");
+    report.tampered_lift_steps = lift_bad.len();
+    report.tampered_matrix_steps = matrix_bad.len();
     if verbose {
         println!("valid trace: {total} steps ({:?} per call), counted in {:.1} s", valid.steps, report.count_secs);
-        println!("tampered trace: rejects after {} steps", tampered.len());
+        println!("tampered lift: rejects after {} steps; tampered matrix proof: after {}", lift_bad.len(), matrix_bad.len());
     }
 
-    let valid_upload = upload(&mut chain, &scenario.proof);
+    let valid_upload = (upload(&mut chain, &genuine.lift), upload(&mut chain, &genuine.matrix));
     let honest = assert_lift(&mut chain, scenario, valid_upload, total);
     let early = chain.send("confirm (early)", ASSERTER, encode("confirm(uint256)", |a| a.uint(U256::from(honest))), U256::ZERO);
     assert!(!early.success, "confirming inside the window is refused");
-    let tampered_upload = upload(&mut chain, &tampered_bytes);
+    let bad_lift_upload = (upload(&mut chain, &tampered.lift), valid_upload.1);
+    let bad_matrix_upload = (valid_upload.0, upload(&mut chain, &tampered.matrix));
+    let uploads = [valid_upload, bad_lift_upload, bad_matrix_upload];
 
     let st = &valid.steps;
-    let (s0, s01, s012) = (st[0], st[0] + st[1], st[0] + st[1] + st[2]);
-    let r = tampered.len();
-    let mut cases: Vec<Case> = vec![
+    let s0 = st[0];
+    let (rl, rm) = (lift_bad.len(), matrix_bad.len());
+    let mut specs: Vec<(String, Proof, u64, Asserter, Challenger, bool, bool)> = vec![
         ("lie from the first step", Proof::Valid, total, Asserter::LiesFrom(1), Challenger::Honest, true, false),
-        ("lie at the lift contract's return", Proof::Valid, total, Asserter::LiesFrom(s0), Challenger::Honest, true, false),
-        ("lie inside the Keccak part", Proof::Valid, total, Asserter::LiesFrom(s0 + st[1] / 3), Challenger::Honest, true, false),
-        ("lie in the middle of the stream", Proof::Valid, total, Asserter::LiesFrom(s01 + st[2] / 2), Challenger::Honest, true, false),
-        ("lie inside the final check", Proof::Valid, total, Asserter::LiesFrom(s012 + st[3] / 2), Challenger::Honest, true, false),
+        ("lie inside the lift call", Proof::Valid, total, Asserter::LiesFrom(s0 / 2), Challenger::Honest, true, false),
+        ("lie at the lift call's return", Proof::Valid, total, Asserter::LiesFrom(s0), Challenger::Honest, true, false),
+        ("lie inside the matrix call", Proof::Valid, total, Asserter::LiesFrom(s0 + st[1] / 2), Challenger::Honest, true, false),
         ("lie at the last state", Proof::Valid, total, Asserter::LiesFrom(total - 1), Challenger::Honest, true, true),
         ("claim one step too few", Proof::Valid, total - 1, Asserter::Honest, Challenger::Honest, true, false),
-        ("invalid proof, consistent until the failing check", Proof::Tampered, total, Asserter::LiesFrom(r), Challenger::Honest, true, true),
-        ("invalid proof, short claimed trace", Proof::Tampered, r, Asserter::LiesFrom(r), Challenger::Honest, true, false),
+        ("invalid lift, consistent until the failing check", Proof::TamperedLift, total, Asserter::LiesFrom(rl), Challenger::Honest, true, true),
+        ("invalid lift, short claimed trace", Proof::TamperedLift, rl, Asserter::LiesFrom(rl), Challenger::Honest, true, false),
+        ("invalid matrix proof, consistent until the failing check", Proof::TamperedMatrix, total, Asserter::LiesFrom(rm), Challenger::Honest, true, true),
         ("honest asserter, challenger always picks the last interval", Proof::Valid, total, Asserter::Honest, Challenger::Last, false, true),
         ("honest asserter, challenger picks at random", Proof::Valid, total, Asserter::Honest, Challenger::Random, false, true),
         ("honest asserter, challenger stops moving", Proof::Valid, total, Asserter::Honest, Challenger::Silent, false, true),
         ("lying asserter stops moving", Proof::Valid, total, Asserter::Silent, Challenger::Honest, true, false),
     ]
+    .into_iter()
+    .map(|(n, p, st, a, c, w, r)| (n.to_string(), p, st, a, c, w, r))
+    .collect();
+    for &g in heavy {
+        let name = format!("lie right after step {g}, resolved there");
+        specs.push((name, Proof::Valid, total, Asserter::LiesFrom(g + 1), Challenger::Honest, true, false));
+    }
+    let mut cases: Vec<Case> = specs
     .into_iter()
     .enumerate()
     .map(|(i, (name, proof, steps, asserter, challenger, win, resolver))| Case {
@@ -300,14 +334,14 @@ pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered_bytes: Vec<u
     })
     .collect();
     for case in cases.iter_mut() {
-        let data = if case.proof == Proof::Valid { valid_upload } else { tampered_upload };
+        let data = uploads[case.proof as usize];
         case.assertion = assert_lift(&mut chain, scenario, data, case.steps);
         let out = chain.ok("challenge", CHALLENGER, encode("challenge(uint256)", |a| a.uint(U256::from(case.assertion))), ether(1));
         case.game = Chain::word(&out, 0).to::<u64>();
     }
 
-    let oracles = [&valid, &tampered];
-    let which = |p: Proof| -> usize { if p == Proof::Valid { 0 } else { 1 } };
+    let oracles = [&valid, &lift_bad, &matrix_bad];
+    let which = |p: Proof| -> usize { p as usize };
     let claim = |case: &Case, truth: &BTreeMap<u64, B256>, g: u64| -> B256 {
         if g >= case.steps {
             return terminal(ACCEPTED);
@@ -317,7 +351,7 @@ pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered_bytes: Vec<u
             _ => truth[&g],
         };
     };
-    let mut truths: [BTreeMap<u64, B256>; 2] = [BTreeMap::new(), BTreeMap::new()];
+    let mut truths: [BTreeMap<u64, B256>; 3] = Default::default();
     let mut round = 0u64;
     loop {
         round += 1;
@@ -326,7 +360,7 @@ pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered_bytes: Vec<u
             break;
         }
         let t = Instant::now();
-        let mut wanted: [BTreeSet<u64>; 2] = [BTreeSet::new(), BTreeSet::new()];
+        let mut wanted: [BTreeSet<u64>; 3] = Default::default();
         for &i in &live {
             let c = &cases[i];
             for g in points(c.lo, c.hi, arity) {
@@ -335,7 +369,7 @@ pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered_bytes: Vec<u
                 }
             }
         }
-        for w in 0..2 {
+        for w in 0..3 {
             let got = oracles[w].hashes(&mut chain.machine, scenario, &wanted[w]);
             truths[w].extend(got);
         }
@@ -413,13 +447,14 @@ pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered_bytes: Vec<u
     }
 
     let t = Instant::now();
-    let mut wanted: [Vec<(u64, u64)>; 2] = [Vec::new(), Vec::new()];
+    let mut wanted: [Vec<(u64, u64)>; 3] = Default::default();
     for c in cases.iter().filter(|c| !c.done) {
         wanted[which(c.proof)].push((c.game, c.lo));
     }
     let inputs = [
         valid.resolve_inputs(&mut chain.machine, scenario, &wanted[0]),
-        tampered.resolve_inputs(&mut chain.machine, scenario, &wanted[1]),
+        lift_bad.resolve_inputs(&mut chain.machine, scenario, &wanted[1]),
+        matrix_bad.resolve_inputs(&mut chain.machine, scenario, &wanted[2]),
     ];
     report.resolve_secs = t.elapsed().as_secs_f64();
     for c in cases.iter_mut().filter(|c| !c.done) {
@@ -427,7 +462,7 @@ pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered_bytes: Vec<u
         let from = if c.resolver_is_asserter { ASSERTER } else { CHALLENGER };
         let out = chain.ok("resolve", from, data, U256::ZERO);
         if out.gas > report.heaviest.0 {
-            report.heaviest = (out.gas, c.name.to_string(), words);
+            report.heaviest = (out.gas, c.name.clone(), words);
         }
         c.challenger_won = Some(chain.game_word(c.game, 9) == U256::from(1));
         c.done = true;
@@ -448,7 +483,7 @@ pub fn simulate(mut machine: Machine, scenario: &Scenario, tampered_bytes: Vec<u
         let won = c.challenger_won.expect("settled");
         assert_eq!(confirm.success, !won, "{}: confirmation after the dispute follows its outcome", c.name);
         report.games.push(GameReport {
-            name: c.name.to_string(),
+            name: c.name.clone(),
             ok: won == c.challenger_should_win,
             dissections: c.rounds,
             challenger_won: won,

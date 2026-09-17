@@ -100,15 +100,16 @@ impl CallData {
     }
 }
 
-/// A call's context: its calldata and the outputs of the calls before it.
+/// A call's context: its calldata, and three words that carry what later calls need.
 #[derive(Clone)]
 pub struct Ctx {
     /// Which call.
     pub call: usize,
     /// Its calldata.
     pub calldata: CallData,
-    /// Earlier outputs.
-    pub outputs: Vec<Vec<u8>>,
+    /// For the lift call, the statement digest and the matrix proof's root and length; for the
+    /// matrix call, the hash of the lift call's output.
+    pub tail: [[u8; 32]; 3],
 }
 
 impl Ctx {
@@ -116,9 +117,7 @@ impl Ctx {
     pub fn words(&self) -> [[u8; 32]; 8] {
         let mut out = [[0u8; 32]; 8];
         out[..5].copy_from_slice(&self.calldata.commit());
-        for (i, o) in self.outputs.iter().enumerate() {
-            out[5 + i] = keccak256(o).0;
-        }
+        out[5..].copy_from_slice(&self.tail);
         return out;
     }
 
@@ -207,8 +206,6 @@ pub struct Witness {
     pub mem: Vec<u8>,
     /// Calldata proofs.
     pub cd: Vec<u8>,
-    /// Earlier outputs.
-    pub outs: Vec<u8>,
     /// Words proved in all.
     pub words: usize,
 }
@@ -217,7 +214,7 @@ impl Witness {
     /// The witness as the contract takes it.
     pub fn encode(&self) -> Vec<u8> {
         let mut out = Vec::new();
-        for s in [&self.mem, &self.cd, &self.outs] {
+        for s in [&self.mem, &self.cd] {
             out.extend_from_slice(&w(U256::from(s.len())));
             out.extend_from_slice(s);
         }
@@ -344,16 +341,6 @@ impl<'a> StepWitness<'a> {
         return cd[o..o + n].to_vec();
     }
 
-    /// The outputs `outs` of earlier calls, as the boundary step takes them.
-    pub fn outputs(&mut self, outs: &[&[u8]]) {
-        for o in outs {
-            self.witness.outs.extend_from_slice(&w(U256::from(o.len())));
-            let mut padded = o.to_vec();
-            padded.resize(o.len().div_ceil(32) * 32, 0);
-            self.witness.outs.extend_from_slice(&padded);
-        }
-    }
-
     /// Builds the witness of the step at the state's program counter. Returns the output if the
     /// step ends the call.
     pub fn build(mut self) -> (Witness, Option<Vec<u8>>) {
@@ -437,15 +424,6 @@ impl<'a> StepWitness<'a> {
                 }
             }
             _ => {}
-        }
-        if output.is_some() {
-            let outs: Vec<Vec<u8>> = match self.ctx.call {
-                1 => vec![self.ctx.outputs[0].clone()],
-                2 => vec![self.ctx.outputs[0].clone(), self.ctx.outputs[1].clone()],
-                _ => Vec::new(),
-            };
-            let refs: Vec<&[u8]> = outs.iter().map(|o| o.as_slice()).collect();
-            self.outputs(&refs);
         }
         return (self.witness, output);
     }

@@ -4,7 +4,7 @@
 //! one-step contract, and its jump tables, each transaction metered.
 
 use pofseed_flock_lift_evm::evm::{Abi, artifact, encode};
-use revm::primitives::{Address, B256, U256};
+use revm::primitives::{Address, U256};
 
 use crate::{
     machine::{CALLER, Machine},
@@ -30,7 +30,8 @@ fn address_of(out: &[u8]) -> Address {
     return Address::from_slice(&out[12..32]);
 }
 
-fn put_all(machine: &mut Machine, store: Address, code: &[u8], label: &str, gas: &mut Vec<(String, u64)>) -> Vec<Address> {
+/// Deploys `code` into holding contracts through the store at `store`.
+pub fn put_all(machine: &mut Machine, store: Address, code: &[u8], label: &str, gas: &mut Vec<(String, u64)>) -> Vec<Address> {
     let mut out = Vec::new();
     for (i, chunk) in code.chunks(CHUNK).enumerate() {
         let res = machine.call(store, encode("put(bytes)", |a| a.bytes(chunk)));
@@ -41,29 +42,39 @@ fn put_all(machine: &mut Machine, store: Address, code: &[u8], label: &str, gas:
     return out;
 }
 
-/// Deploys the one-step contract for `scenario`, whose stream's word tree has root
-/// `stream_root`.
-pub fn deploy(machine: &mut Machine, scenario: &Scenario, stream_root: B256) -> OnChain {
+fn addr(a: &Address) -> U256 {
+    return U256::from_be_slice(a.as_slice());
+}
+
+/// The one-step contract's constructor arguments: the two programs' held code and lengths, the
+/// addresses they run as, and the contracts their pinned statement and matrix parameters are
+/// read from.
+pub fn onestep_args(lift: (&[Address], usize), matrix: (&[Address], usize), selves: [Address; 4]) -> Vec<u8> {
+    let mut a = Abi::default()
+        .uints(&lift.0.iter().map(addr).collect::<Vec<_>>())
+        .uint(U256::from(lift.1))
+        .uints(&matrix.0.iter().map(addr).collect::<Vec<_>>())
+        .uint(U256::from(matrix.1));
+    for s in selves {
+        a = a.uint(addr(&s));
+    }
+    return a.uint(addr(&CALLER)).uint(U256::from(CHAIN_ID)).finish(Vec::new());
+}
+
+/// Deploys the one-step contract for `scenario`.
+pub fn deploy(machine: &mut Machine, scenario: &Scenario) -> OnChain {
     let mut gas = Vec::new();
     let (store, g) = machine.deploy(artifact("Store.sol", "Store"));
     gas.push(("store".into(), g));
     let lift_code = machine.code(scenario.lift);
-    let discharge_code = machine.code(scenario.discharge);
+    let matrix_code = machine.code(scenario.matrix);
     let lift_chunks = put_all(machine, store, &lift_code, "lift", &mut gas);
-    let discharge_chunks = put_all(machine, store, &discharge_code, "discharge", &mut gas);
-    let addr = |a: &Address| U256::from_be_slice(a.as_slice());
-    let args = Abi::default()
-        .uints(&lift_chunks.iter().map(addr).collect::<Vec<_>>())
-        .uint(U256::from(lift_code.len()))
-        .uints(&discharge_chunks.iter().map(addr).collect::<Vec<_>>())
-        .uint(U256::from(discharge_code.len()))
-        .uint(addr(&scenario.lift))
-        .uint(addr(&scenario.discharge))
-        .uint(U256::from_be_bytes(stream_root.0))
-        .uint(U256::from(scenario.stream.len()))
-        .uint(addr(&CALLER))
-        .uint(U256::from(CHAIN_ID))
-        .finish(Vec::new());
+    let matrix_chunks = put_all(machine, store, &matrix_code, "matrix", &mut gas);
+    let args = onestep_args(
+        (&lift_chunks, lift_code.len()),
+        (&matrix_chunks, matrix_code.len()),
+        [scenario.lift, scenario.matrix, scenario.lift, scenario.matrix],
+    );
     let mut code = artifact("OneStep.sol", "OneStep");
     code.extend_from_slice(&args);
     let (onestep, g) = machine.deploy(code);

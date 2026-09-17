@@ -29,7 +29,7 @@ struct Stats {
 
 /// Opcodes the on-chain interpreter implements.
 pub fn supported(op: u8) -> bool {
-    return matches!(op, 0x00..=0x0b | 0x10..=0x1e | 0x20 | 0x30 | 0x32..=0x3a | 0x3d | 0x3e | 0x46 | 0x50..=0x53 | 0x56..=0x5b | 0x5e..=0xa4 | 0xf3 | 0xfa | 0xfd | 0xfe);
+    return pofseed_flock_lift_optimistic::vm::supported(op);
 }
 
 fn word(v: u64) -> u64 {
@@ -94,19 +94,20 @@ fn main() {
     let scenario = Scenario::new(&mut machine, n, &cache);
     println!("scenario built in {:.1} s", t.elapsed().as_secs_f64());
     let t = Instant::now();
-    let plain = scenario.run(&mut machine, &scenario.proof);
+    let plain = scenario.run(&mut machine);
+    let code_lens = [machine.code(scenario.lift).len() as u64, machine.code(scenario.matrix).len() as u64];
     println!("untraced run in {:.1} s: success {:?}, gas {:?}", t.elapsed().as_secs_f64(), plain.success, plain.gas);
     let mut outputs = Vec::new();
     let mut total_ops = vec![0u64; 256];
     for i in 0..CALLS {
-        let data = scenario.calldata(i, &outputs, &scenario.proof);
+        let data = scenario.calldata(i, &outputs, &scenario.proof, &scenario.matrix_proof);
         let len = data.len();
         let stats = Stats {
             ops: vec![0; 256],
             bulk: vec![(0, 0); 256],
             proved: vec![(0, 0); 256],
             calldata_len: len as u64,
-            code_len: if i == 0 { 87321 } else { 22586 },
+            code_len: code_lens[i],
             ..Default::default()
         };
         let t = Instant::now();

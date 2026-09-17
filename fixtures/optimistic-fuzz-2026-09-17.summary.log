@@ -1,0 +1,10 @@
+# onestep-fuzz 3000 <seed>: random programs run in revm as either of the two calls, every step checked through the one-step contract (a step bound of 400 per program).
+# 2026-09-17, M4 Max, revm 43.0.2 under Osaka rules with the verifier calls uncapped and every protocol transaction sent with a 2^24 gas limit; the disputed program is the direct route (FlockLift.verify then FlockMatrix.verify) on the 219-response hardened-child lift, regular layout, committed matrix, Fast profile, read from a cached lift.
+
+seed 6725414436838240257: 3000 programs, 143972 steps checked (140905 continuing, 3067 rejecting), 111 distinct opcodes, 0 mismatches
+seed 11: 3000 programs, 145808 steps checked (142633 continuing, 3175 rejecting), 111 distinct opcodes, 0 mismatches
+seed 22: 3000 programs, 147140 steps checked (143862 continuing, 3278 rejecting), 111 distinct opcodes, 0 mismatches
+seed 33: 3000 programs, 148767 steps checked (145400 continuing, 3367 rejecting), 111 distinct opcodes, 0 mismatches
+seed 44: 3000 programs, 143428 steps checked (140265 continuing, 3163 rejecting), 111 distinct opcodes, 0 mismatches
+seed 55: 3000 programs, 142946 steps checked (139717 continuing, 3229 rejecting), 111 distinct opcodes, 0 mismatches
+seed 66: 3000 programs, 139791 steps checked (136500 continuing, 3291 rejecting), 111 distinct opcodes, 0 mismatches

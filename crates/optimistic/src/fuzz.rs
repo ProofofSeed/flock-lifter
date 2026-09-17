@@ -9,14 +9,16 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use pofseed_flock_lift_evm::evm::{Abi, artifact, encode};
+use pofseed_flock_lift_evm::evm::{artifact, encode};
 use revm::primitives::{Address, B256, U256, keccak256};
 
 use crate::{
-    deploy::step_calldata,
-    machine::{CALLER, Machine},
+    deploy::{onestep_args, step_calldata},
+    machine::Machine,
+    merkle::{root as tree_root, words_of},
+    scenario::Scenario,
     trace::{Capture, Captured},
-    vm::{CallData, Committed, Ctx, MEM_DEPTH, REJECTED, StepWitness, start_hash, supported, terminal},
+    vm::{ACCEPTED, BODY_DEPTH, CallData, Committed, Ctx, MEM_DEPTH, REJECTED, StepWitness, start_hash, supported, terminal},
 };
 
 struct Rng(u64);
@@ -181,6 +183,7 @@ pub fn run(programs: usize, seed: u64, verbose: bool) -> FuzzReport {
     let mut r = Rng(seed);
     let mut machine = Machine::new(false);
     let (store, _) = machine.deploy(artifact("Store.sol", "Store"));
+    let mock = Scenario::mock(&mut machine);
     let mut steps_checked = 0usize;
     let mut kinds = [0usize; 3];
     let mut ops_seen = BTreeSet::new();
@@ -193,19 +196,7 @@ pub fn run(programs: usize, seed: u64, verbose: bool) -> FuzzReport {
         let (target, _) = machine.deploy(init);
         let res = machine.call(store, encode("put(bytes)", |a| a.bytes(&code)));
         let chunk = Address::from_slice(&res.output[12..32]);
-        let addr = |a: &Address| U256::from_be_slice(a.as_slice());
-        let args = Abi::default()
-            .uints(&[addr(&chunk)])
-            .uint(U256::from(code.len()))
-            .uints(&[addr(&chunk)])
-            .uint(U256::from(code.len()))
-            .uint(addr(&target))
-            .uint(addr(&target))
-            .uint(U256::ZERO)
-            .uint(U256::ZERO)
-            .uint(addr(&CALLER))
-            .uint(U256::from(1))
-            .finish(Vec::new());
+        let args = onestep_args((&[chunk], code.len()), (&[chunk], code.len()), [target, target, mock.lift, mock.matrix]);
         let mut oc = artifact("OneStep.sol", "OneStep");
         oc.extend_from_slice(&args);
         let (onestep, _) = machine.deploy(oc);
@@ -217,14 +208,21 @@ pub fn run(programs: usize, seed: u64, verbose: bool) -> FuzzReport {
             data.extend_from_slice(&r.word());
         }
         let prefix = if words == 0 { 0 } else { r.below(words as u64 + 1) as usize };
+        let call = r.below(2) as usize;
+        let matrix: Vec<u8> = (0..r.below(200)).map(|_| r.below(256) as u8).collect();
+        let tail = if call == 0 {
+            [r.word(), tree_root(&words_of(&matrix), BODY_DEPTH).0, U256::from(matrix.len()).to_be_bytes()]
+        } else {
+            [r.word(), [0u8; 32], [0u8; 32]]
+        };
         let ctx = Ctx {
-            call: 0,
+            call,
             calldata: CallData::new(data.clone(), prefix, None),
-            outputs: Vec::new(),
+            tail,
         };
         let cases: Arc<Mutex<Vec<(Vec<u8>, B256, B256, u8)>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = cases.clone();
-        let (ctx_c, code_c) = (ctx.clone(), code.clone());
+        let (ctx_c, code_c, matrix_c) = (ctx.clone(), code.clone(), matrix.clone());
         let limit = 32usize << MEM_DEPTH;
         let on = Box::new(move |cap: Captured| {
             if cap.pre.memory.len() > limit {
@@ -241,19 +239,24 @@ pub fn run(programs: usize, seed: u64, verbose: bool) -> FuzzReport {
                 match (&cap.post, &output) {
                     (Some(post), None) if post.memory.len() > limit => terminal(REJECTED),
                     (Some(post), None) => Committed::new(post).hash(&ctx_c),
+                    (None, Some(out)) if ctx_c.call == 1 => {
+                        terminal(if out.len() == 32 && U256::from_be_slice(out) == U256::from(1) { ACCEPTED } else { REJECTED })
+                    }
                     (None, Some(out)) => {
                         let well_formed = out.len() >= 64
                             && U256::from_be_slice(&out[..32]) == U256::from(32)
                             && U256::from_be_slice(&out[32..64]) <= U256::from((out.len() - 64) / 32)
                             && out.len() == 64 + 32 * U256::from_be_slice(&out[32..64]).to::<usize>();
                         if well_formed {
-                            let mut cd = keccak256("keccakPart(uint256[])")[..4].to_vec();
-                            cd.extend_from_slice(out);
-                            let words = out.len() / 32;
+                            let claims: Vec<U256> = out[64..].chunks(32).map(U256::from_be_slice).collect();
+                            let cd = encode("verify(uint256[],bytes32,bytes)", |a| {
+                                a.uints(&claims).uint(U256::from_be_bytes(ctx_c.tail[0])).bytes(&matrix_c)
+                            });
+                            let prefix = 3 + 1 + claims.len() + 1;
                             start_hash(&Ctx {
                                 call: 1,
-                                calldata: CallData::new(cd, words, None),
-                                outputs: vec![out.clone()],
+                                calldata: CallData::new(cd, prefix, None),
+                                tail: [keccak256(out).0, [0u8; 32], [0u8; 32]],
                             })
                         } else {
                             terminal(REJECTED)

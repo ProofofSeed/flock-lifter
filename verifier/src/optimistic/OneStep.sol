@@ -28,15 +28,28 @@ struct Frame {
     uint256 memEnd;
     uint256 cdAt;
     uint256 cdEnd;
-    uint256 outsAt;
-    uint256 outsEnd;
 }
 
-/// One step of the EVM executing the lift's verification: four calls in a fixed sequence, the
-/// lift contract then the matrix discharge's Keccak part, stream and final check, each later
-/// call's calldata built from earlier outputs. A state commits to the program counter, the
-/// stack, memory as a Merkle tree, the return data, and the call's context, which commits to its
-/// calldata as a prefix tree and a body tree and to the earlier outputs.
+/// The statement a lift contract pins.
+interface PinnedLift {
+    function fingerprint() external view returns (bytes32);
+    function chainCode() external view returns (bytes32);
+    function index() external view returns (uint32);
+}
+
+/// The parameters a matrix contract pins.
+interface PinnedMatrix {
+    function capHash() external view returns (bytes32);
+    function slim() external view returns (bool);
+    function firstKeccak() external view returns (uint256);
+    function keccakSubs() external view returns (uint256);
+}
+
+/// One step of the EVM executing a lift's direct verification: the lift contract's `verify`,
+/// then the matrix contract's `verify` on the claims it returned, the lift's statement digest
+/// and the matrix proof. A state commits to the program counter, the stack, memory as a Merkle
+/// tree, the return data, and the call's context, which commits to its calldata as a prefix tree
+/// and a body tree, and carries what the next call needs.
 ///
 /// The machine is the EVM with three departures, all of which only ever turn a run into a
 /// rejection or leave it unchanged: `GAS` pushes a constant, the only callable address is the
@@ -46,54 +59,70 @@ contract OneStep {
     uint256 internal constant RUNNING = 0;
     uint256 internal constant ACCEPTED = 1;
     uint256 internal constant REJECTED = 2;
-    uint256 internal constant CALLS = 4;
+    uint256 internal constant CALLS = 2;
     uint256 internal constant MEM_DEPTH = 22;
     uint256 internal constant PREFIX_DEPTH = 10;
     uint256 internal constant BODY_DEPTH = 24;
     uint256 internal constant MAX_STACK = 1024;
     uint256 internal constant GAS_CONSTANT = 1 << 32;
-    bytes4 internal constant KECCAK_PART = bytes4(keccak256("keccakPart(uint256[])"));
-    bytes4 internal constant ROWS = bytes4(keccak256("rows(uint256[],uint256[],bytes32,bytes)"));
-    bytes4 internal constant FINISH = bytes4(keccak256("finish(uint256[],uint256[],uint256[],bytes32)"));
+    bytes4 internal constant LIFT_VERIFY = bytes4(keccak256("verify(bytes,uint256,bytes,bytes)"));
+    bytes4 internal constant MATRIX_VERIFY = bytes4(keccak256("verify(uint256[],bytes32,bytes)"));
+    bytes internal constant LIFT_VERSION = "pofseed-flock-lift-v1";
 
     error Witness();
     error Output();
 
     Program internal lift;
-    Program internal discharge;
-    /// The root of the discharge stream's word tree.
-    bytes32 public immutable streamRoot;
-    /// The discharge stream's length in bytes.
-    uint256 public immutable streamLen;
+    Program internal matrix;
     /// The caller every call runs under.
     address public immutable caller;
     /// The chain identifier every call sees.
     uint256 public immutable chainId;
+    /// The statement's circuit fingerprint.
+    bytes32 public immutable fingerprint;
+    /// The statement's chain code.
+    bytes32 public immutable chainCode;
+    /// The statement's child index.
+    uint32 public immutable index;
+    /// The hash of the statement's entry-list commitment.
+    bytes32 public immutable capHash;
+    /// Whether the openings use Ligerito's `Slim` profile.
+    bool public immutable slim;
+    /// The block's first Keccak sub-block.
+    uint256 public immutable firstKeccak;
+    /// The block's Keccak sub-block count.
+    uint256 public immutable keccakSubs;
 
+    /// Holds the programs, `selves` being the addresses the lift and matrix programs run as, then
+    /// the contracts their statement and parameters are read from.
     constructor(
         address[] memory liftCode,
         uint256 liftLen,
-        address[] memory dischargeCode,
-        uint256 dischargeLen,
-        address liftSelf,
-        address dischargeSelf,
-        bytes32 streamRoot_,
-        uint256 streamLen_,
+        address[] memory matrixCode,
+        uint256 matrixLen,
+        address[4] memory selves,
         address caller_,
         uint256 chainId_
     ) {
-        lift = Program(liftCode, liftLen, address(0), liftSelf);
-        discharge = Program(dischargeCode, dischargeLen, address(0), dischargeSelf);
-        streamRoot = streamRoot_;
-        streamLen = streamLen_;
+        lift = Program(liftCode, liftLen, address(0), selves[0]);
+        matrix = Program(matrixCode, matrixLen, address(0), selves[1]);
         caller = caller_;
         chainId = chainId_;
+        PinnedLift l = PinnedLift(selves[2]);
+        fingerprint = l.fingerprint();
+        chainCode = l.chainCode();
+        index = l.index();
+        PinnedMatrix m = PinnedMatrix(selves[3]);
+        capHash = m.capHash();
+        slim = m.slim();
+        firstKeccak = m.firstKeccak();
+        keccakSubs = m.keccakSubs();
     }
 
     /// Builds the jump-destination bitmaps of both programs; one call each, `which` naming the
     /// program.
     function buildJumps(uint256 which) external {
-        Program storage p = which == 0 ? lift : discharge;
+        Program storage p = which == 0 ? lift : matrix;
         require(p.jumps == address(0), "built");
         p.jumps = CodeStore.buildJumps(p.code, p.codeLen);
     }
@@ -101,13 +130,13 @@ contract OneStep {
     /// Program `which`: the contracts holding its code, its length, its jump table and the
     /// address it runs as.
     function program(uint256 which) external view returns (address[] memory, uint256, address, address) {
-        Program storage p = which == 0 ? lift : discharge;
+        Program storage p = which == 0 ? lift : matrix;
         return (p.code, p.codeLen, p.jumps, p.self);
     }
 
     /// The Keccak-256 hash of program `which`'s code, to compare with the audited bytecode.
     function codeHash(uint256 which) external view returns (bytes32) {
-        Program memory p = which == 0 ? lift : discharge;
+        Program memory p = which == 0 ? lift : matrix;
         bytes memory code = new bytes(p.codeLen);
         uint256 at;
         assembly ("memory-safe") {
@@ -119,7 +148,7 @@ contract OneStep {
 
     /// Whether both programs' bitmaps are built.
     function ready() external view returns (bool) {
-        return lift.jumps != address(0) && discharge.jumps != address(0);
+        return lift.jumps != address(0) && matrix.jumps != address(0);
     }
 
     // ---------------------------------------------------------------- state hashing
@@ -160,12 +189,34 @@ contract OneStep {
         return running(call, 0, 0, Merkle.zero(MEM_DEPTH), _ctx(cx), keccak256(""), keccak256(""));
     }
 
-    /// The first state of a verification of `proof` (committed as `proofRoot` over `proofLen`
-    /// bytes) against the expected output `output`, its word counts `counts` and `binding`.
-    function initial(bytes calldata output, uint256 counts, bytes calldata binding, bytes32 proofRoot, uint256 proofLen)
-        external
+    /// The first state of a verification against the expected output `output`, its word counts
+    /// `counts` and `binding`, of the proofs `proofs`: the lift's word-tree root, length and first
+    /// word, then the matrix proof's word-tree root and length.
+    function initial(
+        bytes calldata output,
+        uint256 counts,
+        bytes calldata binding,
+        uint256[5] calldata proofs
+    ) external view returns (bytes32) {
+        (bytes32 prefixRoot, uint256 p) = _liftPrefix(output, counts, binding, proofs[1]);
+        uint256[8] memory cx;
+        cx[0] = 4 + 32 * p + 32 * ((proofs[1] + 31) / 32);
+        cx[1] = uint32(LIFT_VERIFY);
+        cx[2] = uint256(prefixRoot);
+        cx[3] = p;
+        cx[4] = proofs[0];
+        cx[5] = uint256(statementDigest(output, binding, uint32(proofs[2] >> 192), uint32(proofs[2] >> 224)));
+        cx[6] = proofs[3];
+        cx[7] = proofs[4];
+        return start(0, cx);
+    }
+
+    /// The root of the lift call's calldata prefix and its length in words, for a proof of
+    /// `liftLen` bytes.
+    function _liftPrefix(bytes calldata output, uint256 counts, bytes calldata binding, uint256 liftLen)
+        internal
         pure
-        returns (bytes32)
+        returns (bytes32, uint256)
     {
         uint256 ow = (output.length + 31) / 32;
         uint256 bw = (binding.length + 31) / 32;
@@ -179,14 +230,45 @@ contract OneStep {
         _packBytes(prefix, 5, output);
         prefix[5 + ow] = binding.length;
         _packBytes(prefix, 6 + ow, binding);
-        prefix[p - 1] = proofLen;
-        uint256[8] memory cx;
-        cx[0] = 4 + 32 * p + 32 * ((proofLen + 31) / 32);
-        cx[1] = uint32(bytes4(keccak256("verify(bytes,uint256,bytes,bytes)")));
-        cx[2] = uint256(_treeRoot(prefix, PREFIX_DEPTH));
-        cx[3] = p;
-        cx[4] = uint256(proofRoot);
-        return start(0, cx);
+        prefix[p - 1] = liftLen;
+        return (_treeRoot(prefix, PREFIX_DEPTH), p);
+    }
+
+    /// The statement digest of a lift of `n` responses in chunks of `chunk`, as the lift
+    /// contract computes it.
+    function statementDigest(bytes calldata output, bytes calldata binding, uint32 n, uint32 chunk)
+        public
+        view
+        returns (bytes32)
+    {
+        bytes memory head = bytes.concat(
+            _framed(LIFT_VERSION, abi.encodePacked(fingerprint)),
+            _framed("chain-code", abi.encodePacked(chainCode)),
+            _framed("index", abi.encodePacked(_le32(index)))
+        );
+        bytes memory tail = bytes.concat(
+            _framed("expected-output", output),
+            _framed("binding", binding),
+            _framed("responses", abi.encodePacked(_le64(n))),
+            _framed("chunk", abi.encodePacked(_le32(chunk)))
+        );
+        return keccak256(bytes.concat(head, tail));
+    }
+
+    function _framed(bytes memory tag, bytes memory body) internal pure returns (bytes memory) {
+        return bytes.concat(tag, abi.encodePacked(_le64(body.length)), body);
+    }
+
+    function _le64(uint256 v) internal pure returns (bytes8 r) {
+        for (uint256 i = 0; i < 8; ++i) {
+            r |= bytes8(bytes1(uint8(v >> (8 * i)))) >> (8 * i);
+        }
+    }
+
+    function _le32(uint256 v) internal pure returns (bytes4 r) {
+        for (uint256 i = 0; i < 4; ++i) {
+            r |= bytes4(bytes1(uint8(v >> (8 * i)))) >> (8 * i);
+        }
     }
 
     function _packBytes(uint256[] memory dst, uint256 at, bytes calldata src) internal pure {
@@ -220,9 +302,8 @@ contract OneStep {
 
     /// Executes one step from the state given by `pre` (`kind, call, pc, msize, memRoot`), its
     /// stack (bottom first), return data and context preimage, consuming the witness `w`: the
-    /// memory proofs, the calldata proofs and, at a call boundary, the earlier outputs, each
-    /// section preceded by its length in a word. Returns the hashes of the state before and
-    /// after.
+    /// memory proofs, then the calldata proofs, each section preceded by its length in a word.
+    /// Returns the hashes of the state before and after.
     function step(
         uint256[5] calldata pre,
         uint256[] calldata stack,
@@ -273,9 +354,7 @@ contract OneStep {
         f.memEnd = f.memAt + _word(at);
         f.cdAt = f.memEnd + 32;
         f.cdEnd = f.cdAt + _word(f.memEnd);
-        f.outsAt = f.cdEnd + 32;
-        f.outsEnd = f.outsAt + _word(f.cdEnd);
-        if (f.outsEnd != end) revert Witness();
+        if (f.cdEnd != end) revert Witness();
     }
 
     function _hash(Frame memory f) internal pure returns (bytes32) {
@@ -291,7 +370,7 @@ contract OneStep {
     }
 
     function _program(Frame memory f) internal view returns (Program memory) {
-        return f.call == 0 ? lift : discharge;
+        return f.call == 0 ? lift : matrix;
     }
 
     function _reject(Frame memory f) internal pure {
@@ -789,7 +868,7 @@ contract OneStep {
     // ---------------------------------------------------------------- calls
 
     /// Ends the current call with the output at `[o, o + len)` and moves to the next call.
-    function _return(Frame memory f, uint256 o, uint256 len) internal view {
+    function _return(Frame memory f, uint256 o, uint256 len) internal pure {
         if (!_expand(f, o, len)) return;
         bytes memory output = _readBytes(f, o, len);
         _commitExpand(f, o, len);
@@ -797,64 +876,24 @@ contract OneStep {
             f.kind = len == 32 && uint256(bytes32(output)) == 1 ? ACCEPTED : REJECTED;
             return;
         }
-        uint256[8] memory cx;
-        if (f.call == 0) {
-            if (!_isArray(output, 0x20, 0)) {
-                _reject(f);
-                return;
-            }
-            cx = _toKeccakPart(output);
-            cx[5] = uint256(keccak256(output));
-        } else if (f.call == 1) {
-            bytes memory out0 = _outputArg(f, f.cx[5]);
-            if (!_isArray(output, 0x20, 0)) {
-                _reject(f);
-                return;
-            }
-            cx = _toRows(out0);
-            cx[5] = f.cx[5];
-            cx[6] = uint256(keccak256(output));
-        } else {
-            bytes memory out0 = _outputArg(f, f.cx[5]);
-            bytes memory out1 = _outputArg(f, f.cx[6]);
-            if (!_isArray(output, 0x40, 1)) {
-                _reject(f);
-                return;
-            }
-            cx = _toFinish(out0, out1, output);
-            cx[5] = f.cx[5];
-            cx[6] = f.cx[6];
-            cx[7] = uint256(keccak256(output));
+        if (!_isArray(output)) {
+            _reject(f);
+            return;
         }
-        if (f.outsAt != f.outsEnd) revert Witness();
+        f.cx = _toMatrix(output, f.cx);
         f.call += 1;
         f.pc = 0;
         f.msize = 0;
         f.memRoot = Merkle.zero(MEM_DEPTH);
         f.sp = 0;
         f.ret = "";
-        f.cx = cx;
     }
 
-    /// The next earlier output in `outs`, checked against its committed hash.
-    function _outputArg(Frame memory f, uint256 hash) internal pure returns (bytes memory out) {
-        uint256 len = _word(f.outsAt);
-        out = new bytes(len);
-        uint256 src = f.outsAt + 32;
-        assembly ("memory-safe") {
-            calldatacopy(add(out, 0x20), src, len)
-        }
-        f.outsAt += 32 + (len + 31) / 32 * 32;
-        if (f.outsAt > f.outsEnd || uint256(keccak256(out)) != hash) revert Witness();
-    }
-
-    /// Whether `out` is an ABI encoding of a `uint256[]` whose offset word, at `offsetAt`
-    /// words before the extra ones, is `offset`, with `extra` single words after the offset.
-    function _isArray(bytes memory out, uint256 offset, uint256 extra) internal pure returns (bool) {
-        uint256 head = 32 * (1 + extra);
-        if (out.length < head + 32 || _mword(out, 0) != offset) return false;
-        uint256 n = _mword(out, head);
-        return n <= (out.length - head - 32) / 32 && out.length == head + 32 + 32 * n;
+    /// Whether `out` is the ABI encoding of one `uint256[]`.
+    function _isArray(bytes memory out) internal pure returns (bool) {
+        if (out.length < 64 || _mword(out, 0) != 0x20) return false;
+        uint256 n = _mword(out, 32);
+        return n <= (out.length - 64) / 32 && out.length == 64 + 32 * n;
     }
 
     function _mword(bytes memory b, uint256 at) internal pure returns (uint256 v) {
@@ -863,73 +902,25 @@ contract OneStep {
         }
     }
 
-    function _arrayWords(bytes memory enc, uint256 at) internal pure returns (uint256 n) {
-        n = _mword(enc, at);
-    }
-
-    function _toKeccakPart(bytes memory out0) internal pure returns (uint256[8] memory cx) {
-        uint256 words = out0.length / 32;
-        uint256[] memory prefix = new uint256[](words);
-        for (uint256 i = 0; i < words; ++i) {
-            prefix[i] = _mword(out0, 32 * i);
-        }
-        cx[0] = 4 + out0.length;
-        cx[1] = uint32(KECCAK_PART);
-        cx[2] = uint256(_treeRoot(prefix, PREFIX_DEPTH));
-        cx[3] = words;
-        cx[4] = uint256(Merkle.zero(BODY_DEPTH));
-    }
-
-    function _toRows(bytes memory out0) internal view returns (uint256[8] memory cx) {
-        uint256 n0 = _arrayWords(out0, 32);
-        uint256 s = 2 * n0 / 112;
-        uint256 p = 4 + 1 + n0 + 1 + s + 1;
+    /// The context of the matrix call, from the lift call's output and the lift call's context,
+    /// which carries the statement digest and the matrix proof's root and length.
+    function _toMatrix(bytes memory out0, uint256[8] memory prev) internal pure returns (uint256[8] memory cx) {
+        uint256 n0 = _mword(out0, 32);
+        uint256 p = 3 + 1 + n0 + 1;
         uint256[] memory prefix = new uint256[](p);
-        prefix[0] = 0x80;
-        prefix[1] = 0x80 + 32 * (1 + n0);
-        prefix[2] = 0;
-        prefix[3] = prefix[1] + 32 * (1 + s);
+        prefix[0] = 0x60;
+        prefix[1] = prev[5];
+        prefix[2] = 0x60 + 32 * (1 + n0);
         for (uint256 i = 0; i <= n0; ++i) {
-            prefix[4 + i] = _mword(out0, 32 + 32 * i);
+            prefix[3 + i] = _mword(out0, 32 + 32 * i);
         }
-        prefix[5 + n0] = s;
-        prefix[p - 1] = streamLen;
-        cx[0] = 4 + 32 * p + 32 * ((streamLen + 31) / 32);
-        cx[1] = uint32(ROWS);
+        prefix[p - 1] = prev[7];
+        cx[0] = 4 + 32 * p + 32 * ((prev[7] + 31) / 32);
+        cx[1] = uint32(MATRIX_VERIFY);
         cx[2] = uint256(_treeRoot(prefix, PREFIX_DEPTH));
         cx[3] = p;
-        cx[4] = uint256(streamRoot);
-    }
-
-    function _toFinish(bytes memory out0, bytes memory out1, bytes memory out2)
-        internal
-        pure
-        returns (uint256[8] memory cx)
-    {
-        uint256 n0 = _arrayWords(out0, 32);
-        uint256 n1 = _arrayWords(out1, 32);
-        uint256 n2 = _arrayWords(out2, 64);
-        uint256 p = 4 + (1 + n0) + (1 + n1) + (1 + n2);
-        uint256[] memory prefix = new uint256[](p);
-        prefix[0] = 0x80;
-        prefix[1] = 0x80 + 32 * (1 + n0);
-        prefix[2] = prefix[1] + 32 * (1 + n1);
-        prefix[3] = _mword(out2, 32);
-        uint256 at = 4;
-        for (uint256 i = 0; i <= n0; ++i) {
-            prefix[at++] = _mword(out0, 32 + 32 * i);
-        }
-        for (uint256 i = 0; i <= n1; ++i) {
-            prefix[at++] = _mword(out1, 32 + 32 * i);
-        }
-        for (uint256 i = 0; i <= n2; ++i) {
-            prefix[at++] = _mword(out2, 64 + 32 * i);
-        }
-        cx[0] = 4 + 32 * p;
-        cx[1] = uint32(FINISH);
-        cx[2] = uint256(_treeRoot(prefix, PREFIX_DEPTH));
-        cx[3] = p;
-        cx[4] = uint256(Merkle.zero(BODY_DEPTH));
+        cx[4] = prev[6];
+        cx[5] = uint256(keccak256(out0));
     }
 
     // ---------------------------------------------------------------- code and calldata words
