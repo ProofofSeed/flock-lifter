@@ -30,3 +30,11 @@ The direct route (`FlockLift` then `FlockMatrix`) costs 1,265.9 M gas, at least 
   - **The gap.** `POFSEED_LIGERITO_PROFILE=slim` was measured only with the row-walking discharge (lift contract 680.28 M against 830.28 M under `Fast`). It has not been run with the regular layout and the matrix contract, whose own opening is also profile-dependent.
   - **What to do.** Prove a 219-response lift under `Slim` into its own cache, run `evm-bench`, and add the row to `knowledge/performance-table.md`.
   - **Done when** the fixture exists and the table carries both profiles for the committed path.
+
+## Optimistic route
+
+- [ ] **Widen the heaviest dispute step's margin.**
+  - **The problem.** The heaviest step of the dispute game is `FlockMatrix` copying the 4,738-word matrix proof in one `CALLDATACOPY`. Resolved in a game it costs 14.84 M gas, 1.94 M under the transaction cap (`knowledge/optimistic-verification.md`).
+  - **Why it matters.** A verifier that copied more calldata at once could not be disputed at all.
+  - **What to do.** Split large copies across machine steps, or have the verifier read the proof in pieces.
+  - **Done when** the heaviest resolved step has a comfortable margin, re-measured with the dispute simulator.
