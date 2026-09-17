@@ -70,10 +70,10 @@ BY128 = f"""function by128(x, t) -> o {{
     o := or(shl(128, red(scan(t, shr(128, x)))), red(scan(t, and(x, {M128}))))
 }}"""
 
-WK = """function wk(sub_, k, bits) -> o {
-    for { let b := k } shr(b, bits) { b := add(b, 1) } {
+WK = """function wk(sub_, row, bits) -> o {
+    for { let b := row } shr(b, bits) { b := add(b, 1) } {
         if and(shr(b, bits), 1) {
-            o := xor(o, shr(128, mload(add(sub_, mul(16, add(mul(k, 32), b))))))
+            o := xor(o, shr(128, mload(add(sub_, mul(16, add(mul(row, 32), b))))))
         }
     }
 }"""
@@ -184,11 +184,7 @@ for marker, names in {
     "RANK": FIELD + ("look",),
     "STEP_B": ("red", "hmul", "horner", "look", "masks"),
     "POINT": FIELD + ("look", "xtime", "spreadRow"),
-    "ENTRIES": ("red", "tab4", "scan", "by128"),
-    "APPLY": FIELD,
-    "PLAIN": FIELD + ("by128", "wk"),
-    "TREE": ("red", "tab4", "scan", "by128", "wk"),
-    "SUFFIX": FIELD + ("by128", "wk"),
+    "KERNEL": FIELD + ("by128", "wk"),
 }.items():
     start = f"            // @{marker}\n"
     end = f"            // @END\n"

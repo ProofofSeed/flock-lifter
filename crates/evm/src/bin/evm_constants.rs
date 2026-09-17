@@ -186,44 +186,99 @@ fn main() {
         s.push_str(&label(name, bytes));
     }
     s.push_str("\n    /// Entry `i` of a table of sixteen-byte big-endian values.\n    function at(bytes memory table, uint256 i) internal pure returns (uint256 v) {\n        assembly (\"memory-safe\") {\n            v := shr(128, mload(add(add(table, 32), mul(i, 16))))\n        }\n    }\n\n");
-    s.push_str("    /// The Ligerito schedule of a commitment to `2^m` bits — a chunk, or the committed entry\n    /// list at `m = 28` — under the `Fast` profile or, with `slim`, the `Slim` one.\n    function ligerito(uint256 m, bool slim) internal pure returns (LigeritoConfig memory c) {\n");
+    let mut table = Vec::<u8>::new();
     for (slim, profile) in [(false, LigeritoProfile::Fast), (true, LigeritoProfile::Slim)] {
-    for m in std::iter::once(MATRIX_M).chain(M_RANGE) {
-        let cfg = pcs_params_for(m, profile).ligerito_verifier_config().expect("registered configuration");
-        writeln!(s, "        if (m == {m} && {}slim) {{", if slim { "" } else { "!" }).unwrap();
-        writeln!(s, "            c.steps = {};", cfg.recursive_steps).unwrap();
-        writeln!(s, "            c.initialK = {};", cfg.initial_k).unwrap();
-        for (field, v) in [
-            ("logInvRates", &cfg.log_inv_rates),
-            ("recursiveKs", &cfg.recursive_ks),
-            ("queries", &cfg.queries),
-            ("grindingBits", &cfg.grinding_bits),
-            ("claimBits", &cfg.claim_batch_grinding_bits),
-            ("consistencyBits", &cfg.consistency_batch_grinding_bits),
-            ("oodSamples", &cfg.ood_samples),
-        ] {
-            writeln!(s, "            c.{field} = new uint256[]({});", v.len()).unwrap();
-            for (i, x) in v.iter().enumerate() {
-                writeln!(s, "            c.{field}[{i}] = {x};").unwrap();
+        for m in std::iter::once(MATRIX_M).chain(M_RANGE) {
+            let cfg = pcs_params_for(m, profile).ligerito_verifier_config().expect("registered configuration");
+            assert!(cfg.fold_grinding_bits.iter().all(|&b| b == 0));
+            let mut e = vec![m as u8, slim as u8, cfg.recursive_steps as u8, cfg.initial_k as u8];
+            for (wide, v) in [
+                (false, &cfg.log_inv_rates),
+                (false, &cfg.recursive_ks),
+                (true, &cfg.queries),
+                (false, &cfg.grinding_bits),
+                (false, &cfg.claim_batch_grinding_bits),
+                (false, &cfg.consistency_batch_grinding_bits),
+                (false, &cfg.ood_samples),
+            ] {
+                e.push(v.len() as u8);
+                for &x in v.iter() {
+                    if wide {
+                        e.extend_from_slice(&(x as u16).to_be_bytes());
+                    } else {
+                        e.push(u8::try_from(x).expect("byte-sized schedule entry"));
+                    }
+                }
             }
-        }
-        assert!(cfg.fold_grinding_bits.iter().all(|&b| b == 0));
-        let n = cfg.stratified.len();
-        writeln!(s, "            c.logBlockLens = new uint256[]({n});").unwrap();
-        writeln!(s, "            c.depths = new uint256[][]({n});").unwrap();
-        for (i, l) in cfg.stratified.iter().enumerate() {
-            writeln!(s, "            c.logBlockLens[{i}] = {};", l.log_block_len).unwrap();
-            writeln!(s, "            c.depths[{i}] = new uint256[]({});", l.summand_depths.len()).unwrap();
-            for (j, d) in l.summand_depths.iter().enumerate() {
-                writeln!(s, "            c.depths[{i}][{j}] = {d};").unwrap();
+            e.push(cfg.stratified.len() as u8);
+            for l in &cfg.stratified {
+                e.push(l.log_block_len as u8);
+                e.push(l.summand_depths.len() as u8);
+                e.extend(l.summand_depths.iter().map(|&d| d as u8));
+                let _ = list(&l.summand_depths);
             }
-            let _ = list(&l.summand_depths);
+            table.extend_from_slice(&((e.len() + 2) as u16).to_be_bytes());
+            table.extend_from_slice(&e);
         }
-        s.push_str("            return c;\n        }\n");
     }
-    }
-    s.push_str("        revert(\"unsupported commitment size\");\n    }\n}\n");
+    writeln!(s, "    /// Every supported Ligerito schedule, each as a big-endian `u16` length, then `m`, `slim`,").unwrap();
+    writeln!(s, "    /// the step count and the initial `k`, then its seven lists (length-prefixed, queries in").unwrap();
+    writeln!(s, "    /// `u16`) and its levels (block length, then length-prefixed depths).").unwrap();
+    writeln!(s, "    bytes internal constant LIGERITO = hex\"{}\";\n", hex::encode(&table)).unwrap();
+    s.push_str(LIGERITO_DECODER);
     let path = project().join("src/Constants.sol");
     std::fs::write(&path, s).expect("write constants");
     println!("wrote {}", path.display());
 }
+
+const LIGERITO_DECODER: &str = r#"    /// The Ligerito schedule of a commitment to `2^m` bits — a chunk, or the committed entry
+    /// list at `m = 28` — under the `Fast` profile or, with `slim`, the `Slim` one.
+    function ligerito(uint256 m, bool slim) internal pure returns (LigeritoConfig memory c) {
+        bytes memory t = LIGERITO;
+        uint256 at;
+        while (at < t.length) {
+            uint256 len = _byte(t, at) << 8 | _byte(t, at + 1);
+            if (_byte(t, at + 2) == m && _byte(t, at + 3) == (slim ? 1 : 0)) {
+                return _decode(t, at + 4);
+            }
+            at += len;
+        }
+        revert("unsupported commitment size");
+    }
+
+    function _byte(bytes memory t, uint256 at) private pure returns (uint256 v) {
+        assembly ("memory-safe") {
+            v := byte(0, mload(add(add(t, 32), at)))
+        }
+    }
+
+    function _list(bytes memory t, uint256 at, bool wide) private pure returns (uint256[] memory v, uint256) {
+        v = new uint256[](_byte(t, at++));
+        for (uint256 i = 0; i < v.length; ++i) {
+            v[i] = wide ? _byte(t, at) << 8 | _byte(t, at + 1) : _byte(t, at);
+            at += wide ? 2 : 1;
+        }
+        return (v, at);
+    }
+
+    function _decode(bytes memory t, uint256 at) private pure returns (LigeritoConfig memory c) {
+        c.steps = _byte(t, at);
+        c.initialK = _byte(t, at + 1);
+        at += 2;
+        (c.logInvRates, at) = _list(t, at, false);
+        (c.recursiveKs, at) = _list(t, at, false);
+        (c.queries, at) = _list(t, at, true);
+        (c.grindingBits, at) = _list(t, at, false);
+        (c.claimBits, at) = _list(t, at, false);
+        (c.consistencyBits, at) = _list(t, at, false);
+        (c.oodSamples, at) = _list(t, at, false);
+        uint256 levels = _byte(t, at++);
+        c.logBlockLens = new uint256[](levels);
+        c.depths = new uint256[][](levels);
+        for (uint256 i = 0; i < levels; ++i) {
+            c.logBlockLens[i] = _byte(t, at++);
+            (c.depths[i], at) = _list(t, at, false);
+        }
+    }
+}
+"#;
