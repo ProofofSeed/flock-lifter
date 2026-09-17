@@ -112,6 +112,7 @@ On chain this replaced the 1,037 M gas `keccakPart` call with about 70 M per cla
 | transactions at 2^24, at least              |      9,438 |        76 |
 
 - **"Before"** is `evm-bench-2026-09-16-optimised.summary.log`: the compact layout with the row-stream discharge.
+- **`Slim` profile.** Under `POFSEED_LIGERITO_PROFILE=slim` the same run costs 680.22 M (lift) + 379.96 M (matrix) = **1,060.18 M**, at least 64 transactions (`fixtures/evm-bench-2026-09-17-committed-slim.summary.log`). The saving is in the openings' level-0 rows and consistency residuals; the ring-switch residuals and the structured parts are unchanged.
 - **Deployment.** The matrix contract (`FlockMatrix`) costs 20.3 M gas to deploy, and its runtime is 94,197 bytes, over EIP-170's limit like the lift contract's 94,320.
 
 **What dominates now** is Ligerito's final-level verification. It is shared code, paid once per opening, and there are three openings: one per chunk and one for the matrix. Their ring-switch and consistency residuals cost 187 + 126, 189 + 126 and 66 + 120 M, 814 M of the 1,266 M.
@@ -122,5 +123,4 @@ Measured inside the matrix opening, the ring-switch residual is 31 M of prefix-t
 
 - **Transaction splitting.** Neither call is split into transactions, nor are the calls bound to each other on chain (the matrix contract takes the lift contract's claims and statement digest as arguments). `optimistic-verification.md` describes the alternative built beside this route: it disputes these two calls instead of running them, with every transaction under the cap and the digest derived on chain.
 - **Code size.** Both contracts exceed EIP-170.
-- **Slim profile.** The `Slim` profile has not been measured on this path.
 - **Larger lifts.** The claim-batching grinding covers at most four chunks.
