@@ -2,11 +2,11 @@
 
 Open work on the on-chain verifier, in the order it is worth doing.
 Figures are for the 219-response hardened-child lift, from `fixtures/evm-bench-2026-09-16-committed-final.summary.log` unless stated; `knowledge/committed-matrix.md` has the context.
-The direct route (`FlockLift` then `FlockMatrix`) costs 1,265.9 M gas, at least 76 transactions at the 2^24-gas cap.
+The direct route (`FlockLift` then `FlockMatrix`) costs 758.3 M gas, at least 46 transactions at the 2^24-gas cap (`fixtures/evm-bench-2026-09-17-residuals-fast.summary.log`); it was 1,265.9 M before the first item below.
 
 ## Verifier optimisation
 
-- [ ] **Rewrite Ligerito's final-level residuals in monolithic Yul.**
+- [x] **Rewrite Ligerito's final-level residuals in monolithic Yul.**
   - **Cost.** The ring-switch and consistency residuals of the three openings (two chunks and the matrix) cost 187 + 126, 189 + 126 and 66 + 120 M gas: 814 M of the 1,266 M.
   - **Where it goes.** In the matrix opening, the ring-switch residual is 31 M of prefix-tensor work and 29 M of finishing over its 16 residual points. Both loops make table lookups through Solidity calls at about 220 gas each, where an inline Yul lookup costs about 50.
   - **The consistency residual** is about 20 GF(2^256) multiplications per stratified query, over roughly 435 queries per opening, in Solidity (`Opening.inducedBasis`).
@@ -15,8 +15,9 @@ The direct route (`FlockLift` then `FlockMatrix`) costs 1,265.9 M gas, at least 
     - Try 5- or 6-bit windows for the row-combination tables, which cost less to build than the current 8-bit ones.
     - Precompute the finishing map once per claim, instead of once per residual point.
   - **Done when** `evm-bench 219` shows the three residual pairs well below their current total, and `cargo test --release -p pofseed-flock-lift-evm` still passes.
+  - **Done** (2026-09-17): `verifier/src/Residual.sol`. The three residual pairs cost 51.2 + 64.5, 51.7 + 64.6 and 23.7 + 52.3 M, 307.9 M in all against 812.9 M, and verification 758.3 M (`fixtures/evm-bench-2026-09-17-residuals-fast.summary.log`). The EVM test suite passes, with a new test comparing both routines to the ones they replaced. Windows of 5 or 6 bits came out no cheaper than unrolled 8-bit builds, and a per-claim finishing map costs more than the 16 or 32 points it would replace (`knowledge/committed-matrix.md`).
 - [ ] **Split verification into transactions and bind the calls to each other.**
-  - **The problem.** `FlockLift.verify` (830.4 M) and `FlockMatrix.verify` (435.5 M) each run as one call with the gas cap lifted, so "at least 76 transactions" is a lower bound, not a protocol.
+  - **The problem.** `FlockLift.verify` (432.2 M) and `FlockMatrix.verify` (326.1 M) each run as one call with the gas cap lifted, so "at least 46 transactions" is a lower bound, not a protocol.
   - **What to do.**
     - Make each call resumable across transactions that fit 2^24 gas, carrying its state by hash.
     - Have the lift contract commit its packed claims and statement digest in storage, so the matrix contract reads them instead of taking them as arguments.

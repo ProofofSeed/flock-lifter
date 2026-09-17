@@ -1,6 +1,6 @@
 # An Ethereum verifier for the Flock lift
 
-Status: record, 2026-09-16. Superseded the same day for the matrix discharge: with the regular layout and the committed matrix, the verification below costs 1.27 billion gas, at least 76 transactions (`committed-matrix.md`). This record keeps the row-walking verifier's figures and the reasoning that led there.
+Status: record, 2026-09-16. Superseded the same day for the matrix discharge: with the regular layout and the committed matrix, the verification below costs 1.27 billion gas, at least 76 transactions, and 758 million, at least 46, once Ligerito's final-level residuals are evaluated in assembly (`committed-matrix.md`). This record keeps the row-walking verifier's figures and the reasoning that led there.
 The Flock lift can be verified by EVM contracts, and the verification of the 219-response hardened-child lift is metered phase by phase.
 It costs **158.3 billion gas**, at least **9,438 transactions** at the 2^24-gas cap.
 That is a quarter of the first working version's figure, and still about **564,000×** what the SP1 lifter's Groth16 verification costs on L1 (280,590 gas).
@@ -26,7 +26,7 @@ Three facts shaped the design before any code was written.
 - **`verifier/`**, a Foundry project compiled with legacy codegen (via-IR could not resolve its stack depth):
   - `FlockLift` is deployed per statement and pins the circuit fingerprint, chain code, index, minimum response count and commitment profile. It verifies every chunk (zerocheck, lincheck up to its matrix claim, published-word claim, ring switches, Ligerito over GF(2^256)), runs the ZKBoo Fiat-Shamir gate and the assertion word, and returns the packed matrix claims.
   - `FlockDischarge` is deployed per statement and pins the hash chain of the block's explicit-row stream. It evaluates the matrix claims in three phases: `keccakPart` (the 3,988 Keccak-f sub-blocks through one shared fold), `rows` (one call per stream segment) and `finish`.
-  - `GF2`, `Transcript`, `Piop`, `Opening`, `Tensor`, `Tables` and `FiatShamir` are the libraries behind them. `FlockVerifier` is a single-chunk test contract, and `probes/` holds test entry points for the field and the gate.
+  - `GF2`, `Transcript`, `Piop`, `Opening`, `Tensor`, `Tables` and `FiatShamir` were the libraries behind them. `FlockVerifier` is a single-chunk test contract, and `probes/` holds test entry points for the field and the gate. `Tensor` has since been replaced by `Residual` and kept under `probes/` as its reference.
 - **Tests** (`cargo test --release -p pofseed-flock-lift-evm`, all passing):
   - field operations against Flock's;
   - the mirror against the lifter's verifier, with tampering;

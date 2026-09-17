@@ -3,7 +3,7 @@
 Status: built and measured, 2026-09-16.
 A lift now discharges its matrix claims through a proof against a list of entries committed once per statement, instead of making the verifier walk the block's explicit rows.
 What made that affordable is a regular layout of the block, in which the rows of one gate differ only by a cyclic shift.
-On Ethereum, verifying the 219-response hardened-child lift went from 158.3 billion gas to **1.27 billion**, at least 76 transactions at the 2^24-gas cap.
+On Ethereum, verifying the 219-response hardened-child lift went from 158.3 billion gas to 1.27 billion, at least 76 transactions at the 2^24-gas cap. Evaluating Ligerito's final-level residuals in assembly (below) then took it to **758 million**, at least 46 transactions.
 Natively, verification went from 0.06 s to 0.02 s, for 0.4 s more proving at 219 responses, 441,753 more proof bytes and a 1.2 s commitment once per statement.
 
 ## Why the rows had to be regular
@@ -100,24 +100,57 @@ On chain this replaced the 1,037 M gas `keccakPart` call with about 70 M per cla
 
 `evm-bench 219` (`fixtures/evm-bench-2026-09-16-committed-final.summary.log`), gas in millions:
 
-| part                                        |     before | committed |
-| ------------------------------------------- | ---------: | --------: |
-| lift contract (two chunks, gate)            |     830.28 |    830.43 |
-| structured parts (Keccak, pin)              |   1,037.24 |    139.68 |
-| explicit rows, with the final check         |    153,362 |         — |
-| matrix proof: sumchecks and counts          |          — |     70.47 |
-| matrix proof: opening                       |          — |    219.33 |
-| calldata of the discharge                   |      3,112 |      5.99 |
-| **verification in all**                     | **158,342** | **1,265.90** |
-| transactions at 2^24, at least              |      9,438 |        76 |
+| part                                |      before |    committed | residuals in assembly |
+| ----------------------------------- | ----------: | -----------: | --------------------: |
+| lift contract (two chunks, gate)    |      830.28 |       830.43 |                432.16 |
+| structured parts (Keccak, pin)      |    1,037.24 |       139.68 |                139.68 |
+| explicit rows, with the final check |     153,362 |            — |                     — |
+| matrix proof: sumchecks and counts  |           — |        70.47 |                 70.47 |
+| matrix proof: opening               |           — |       219.33 |                110.00 |
+| calldata of the discharge           |       3,112 |         5.99 |                  5.99 |
+| **verification in all**             | **158,342** | **1,265.90** |            **758.30** |
+| transactions at 2^24, at least      |       9,438 |           76 |                    46 |
 
 - **"Before"** is `evm-bench-2026-09-16-optimised.summary.log`: the compact layout with the row-stream discharge.
-- **`Slim` profile.** Under `POFSEED_LIGERITO_PROFILE=slim` the same run costs 680.22 M (lift) + 379.96 M (matrix) = **1,060.18 M**, at least 64 transactions (`fixtures/evm-bench-2026-09-17-committed-slim.summary.log`). The saving is in the openings' level-0 rows and consistency residuals; the ring-switch residuals and the structured parts are unchanged.
+- **"Residuals in assembly"** is `evm-bench-2026-09-17-residuals-fast.summary.log`, described in the next section.
+- **`Slim` profile.** Under `POFSEED_LIGERITO_PROFILE=slim` the committed column costs 680.22 M (lift) + 379.96 M (matrix) = 1,060.18 M, at least 64 transactions (`fixtures/evm-bench-2026-09-17-committed-slim.summary.log`), and the last column 343.40 M + 304.43 M = **647.83 M**, at least 39 (`fixtures/evm-bench-2026-09-17-residuals-slim.summary.log`). The saving is in the openings' level-0 rows and consistency residuals; the ring-switch residuals and the structured parts do not depend on the profile.
 - **Deployment.** The matrix contract (`FlockMatrix`) costs 20.3 M gas to deploy, and its runtime is 94,197 bytes, over EIP-170's limit like the lift contract's 94,320.
 
-**What dominates now** is Ligerito's final-level verification. It is shared code, paid once per opening, and there are three openings: one per chunk and one for the matrix. Their ring-switch and consistency residuals cost 187 + 126, 189 + 126 and 66 + 120 M, 814 M of the 1,266 M.
+## Ligerito's final-level residuals in assembly
 
-Measured inside the matrix opening, the ring-switch residual is 31 M of prefix-tensor work and 29 M of per-point finishing. Both loops call table lookups through Solidity at about 220 gas per lookup, so a monolithic Yul rewrite of `Tensor` and of the consistency residual is the next lever. That is not done.
+In the committed column, Ligerito's final-level verification dominated. It is shared code, paid once per opening, and there are three openings: one per chunk and one for the matrix. Their ring-switch and consistency residuals cost 187 + 126, 189 + 126 and 66 + 120 M: 814 M of the 1,266 M. `verifier/src/Residual.sol` now evaluates both, each already paired with the final check's weights `μ`, so the residual vector is never formed. The file is generated by `verifier/tools/residual.py`, which unrolls its table builds and lookups.
+
+**The ring-switch residual.** It evaluates, per claim, a product of one factor `1 ⊗ w_i + q_i ⊗ 1` per prefix coordinate in `GF(2^256) ⊗ GF(2^128)`, then contracts it at every binary suffix `y`.
+- **Scalar factors.** The algebra is commutative. So a factor whose right-hand coordinate is 0 or 1 is a left scalar and is multiplied out, costing one product instead of a table step. The published-word claim has 17 such coordinates out of 24.
+- **Rank expansion.** The first five generic factors are expanded as a sum of 32 pure tensors, turned into columns through one small table.
+- **Steps.** The tensor is held as 128 columns in `GF(2^256)`. The right-hand part of a step mixes the columns through one 8-bit combination table. The left-hand part multiplies each column by the fixed `q_i`, through three Horner tables with 8-bit windows, about 700 gas per product. A step costs about 0.65 M, against 1.9 M before.
+- **Points.** Each suffix point takes 128 lookups of `L(x^b·s_y)`, a transposition of those values by byte-spread tables, and 128 lookups in the columns' table, which is built once per claim.
+- **Finishing map.** Precomputing it once per claim, as a table of its values on a basis, was costed and rejected. That is 128 evaluations at about the cost of a point, against 16 or 32 points.
+
+**The consistency residual.** Per level, it is the sum over the queries of a weight, a prefix product `Π_{k<f} (1 + r_k·(1 + w_k(q)))` and a suffix form in `μ`.
+- **Prefix factors.** `w_k(q)` depends only on the bits of `q` from `k` up, because the subspace table is triangular with a unit diagonal. For levels with at least 32 queries, each factor is therefore read from an 8-bit affine table over `q >> k`, built once per level.
+- **Suffix form.** It depends only on `q >> f`. When those bits are few, the queries are grouped by them, and the form is folded for every value of them at once, one variable at a time. This is `ext·2^bits` products instead of one fold per query.
+- **What remains.** About `f` generic `GF(2^256)` products per query. At about 5.8k gas each (three 4-bit-window products), they are most of what is left.
+
+**Windows.** Combination tables use 8-bit windows with unrolled builds, about 122k gas each against 326k looped, and 16-fetch lookups using `BYTE`. With lookups in the hundreds per table, 5- and 6-bit windows came out no cheaper. Generic products keep 4-bit windows, scanned a byte at a time.
+
+**Checks.**
+- `crates/evm/tests/residual.rs` compares both routines against the implementations they replaced, which are kept under `verifier/src/probes/`. It uses random inputs covering every path: binary coordinates, the tabled, plain, bucketed and tree paths, and one to three claims.
+- The mirror, contract and matrix tests pass unchanged, tampering refusals included.
+
+**Result** (`fixtures/evm-bench-2026-09-17-residuals-fast.summary.log`):
+
+| opening | ring switch, before (M gas) | ring switch, now (M gas) | consistency, before (M gas) | consistency, now (M gas) |
+| ------- | --------------------------: | -----------------------: | --------------------------: | -----------------------: |
+| chunk 1 |                      186.76 |                    51.17 |                      125.63 |                    64.50 |
+| chunk 2 |                      189.04 |                    51.65 |                      126.27 |                    64.58 |
+| matrix  |                       65.55 |                    23.73 |                      119.68 |                    52.30 |
+
+The six residuals went from 812.9 M to 307.9 M, and verification from 1,265.90 M to **758.30 M**. The runtime code grew by 8,562 bytes.
+
+**What dominates now.**
+- **Matrix contract.** The structured parts are 139.7 M. The main sumcheck and count claim are 68.5 M, still made of Solidity multiplications.
+- **Lift contract.** Per chunk, the residuals are about 116 M, the level-0 opening 47 M, and the published-word claim 14 M.
 
 ## What is still open
 
