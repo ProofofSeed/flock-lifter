@@ -91,7 +91,7 @@ impl HardenedChildCircuit {
 
 impl Circuit for HardenedChildCircuit {
     fn exec<B: Backend>(&self, frontend: &Frontend<B>) {
-        Assertions::scope(frontend, |_| {
+        Assertions::scope(frontend, |assertions| {
             let chain_code = self
                 .chain_code
                 .iter()
@@ -103,7 +103,7 @@ impl Circuit for HardenedChildCircuit {
                 .map(|&b| frontend.input(b))
                 .collect::<Vec<_>>();
             let (child_priv, child_chain_code) =
-                hardened_child_key(frontend.allocator(), chain_code, parent_priv, self.index);
+                hardened_child_key(frontend.allocator(), chain_code, parent_priv, self.index, assertions);
             frontend.output(child_priv);
             child_chain_code
                 .into_iter()

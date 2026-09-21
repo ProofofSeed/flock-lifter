@@ -12,6 +12,9 @@ import {Transcript} from "./Transcript.sol";
 /// The verifier of a lifted hardened-child proof of seed for one pinned statement circuit: every
 /// chunk proof up to its matrix discharge, the global Fiat-Shamir gate, and the relying party's
 /// checks on the statement. It returns the matrix claims its discharge must close.
+///
+/// Its runtime code exceeds EIP-170's limit, so it cannot be deployed on mainnet: it is the
+/// reference for the staged verifier and the optimistic route's program (see `verifier/README.md`).
 contract FlockLift {
     bytes internal constant LIFT_VERSION = "pofseed-flock-lift-v1";
     uint256 internal constant MAX_CHUNK = 128;

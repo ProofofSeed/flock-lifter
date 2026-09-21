@@ -47,9 +47,8 @@ fn addr(a: &Address) -> U256 {
 }
 
 /// The one-step contract's constructor arguments: the two programs' held code and lengths, the
-/// addresses they run as, and the contracts their pinned statement and matrix parameters are
-/// read from.
-pub fn onestep_args(lift: (&[Address], usize), matrix: (&[Address], usize), selves: [Address; 4]) -> Vec<u8> {
+/// addresses they run as, and the code offsets of what they pin.
+pub fn onestep_args(lift: (&[Address], usize), matrix: (&[Address], usize), selves: [Address; 2], pin_at: [usize; 7]) -> Vec<u8> {
     let mut a = Abi::default()
         .uints(&lift.0.iter().map(addr).collect::<Vec<_>>())
         .uint(U256::from(lift.1))
@@ -57,6 +56,9 @@ pub fn onestep_args(lift: (&[Address], usize), matrix: (&[Address], usize), selv
         .uint(U256::from(matrix.1));
     for s in selves {
         a = a.uint(addr(&s));
+    }
+    for at in pin_at {
+        a = a.uint(U256::from(at));
     }
     return a.uint(addr(&CALLER)).uint(U256::from(CHAIN_ID)).finish(Vec::new());
 }
@@ -73,12 +75,29 @@ pub fn deploy(machine: &mut Machine, scenario: &Scenario) -> OnChain {
     let args = onestep_args(
         (&lift_chunks, lift_code.len()),
         (&matrix_chunks, matrix_code.len()),
-        [scenario.lift, scenario.matrix, scenario.lift, scenario.matrix],
+        [scenario.lift, scenario.matrix],
+        scenario.pin_at,
     );
     let mut code = artifact("OneStep.sol", "OneStep");
     code.extend_from_slice(&args);
     let (onestep, g) = machine.deploy(code);
     gas.push(("one-step contract".into(), g));
+    let pinned = |sig: &str| U256::from_be_slice(&machine.call(onestep, encode(sig, |a| a)).output);
+    let read = [
+        "fingerprint()", "chainCode()", "index()", "capHash()", "slim()", "firstKeccak()", "keccakSubs()",
+    ]
+    .map(pinned);
+    let p = &scenario.pinned;
+    let expected = [
+        U256::from_be_bytes(p.fingerprint),
+        U256::from_be_bytes(p.chain_code),
+        U256::from(p.index),
+        scenario.matrix_params[0],
+        scenario.matrix_params[1],
+        scenario.matrix_params[2],
+        scenario.matrix_params[3],
+    ];
+    assert_eq!(read, expected, "the one-step contract reads the pins from the held code");
     for which in 0..2 {
         let res = machine.call(onestep, encode("buildJumps(uint256)", |a| a.uint(U256::from(which))));
         assert!(res.success, "buildJumps failed: {}", String::from_utf8_lossy(&res.output));

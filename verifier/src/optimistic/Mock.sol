@@ -41,13 +41,20 @@ contract MockLift {
 /// its first claim's first byte, under a nonzero digest.
 contract MockMatrix {
     /// A stand-in entry commitment.
-    bytes32 public constant capHash = keccak256("stand-in entry commitment");
+    bytes32 public immutable capHash;
     /// A stand-in profile.
-    bool public constant slim = false;
+    bool public immutable slim;
     /// A stand-in first Keccak sub-block.
-    uint256 public constant firstKeccak = 7;
+    uint256 public immutable firstKeccak;
     /// A stand-in Keccak sub-block count.
-    uint256 public constant keccakSubs = 11;
+    uint256 public immutable keccakSubs;
+
+    constructor(bytes32 capHash_, bool slim_, uint256 firstKeccak_, uint256 keccakSubs_) {
+        capHash = capHash_;
+        slim = slim_;
+        firstKeccak = firstKeccak_;
+        keccakSubs = keccakSubs_;
+    }
 
     error Proof();
 

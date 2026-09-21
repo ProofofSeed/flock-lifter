@@ -73,6 +73,23 @@ pub fn runtime_len(file: &str, name: &str) -> usize {
     return (hex.trim_start_matches("0x").len()) / 2;
 }
 
+/// The runtime code offset of each immutable of contract `name` in source file `file`, in
+/// declaration order.
+pub fn immutable_offsets(file: &str, name: &str) -> Vec<usize> {
+    build();
+    let path = project().join("out").join(file).join(format!("{name}.json"));
+    let json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())))
+            .expect("artifact json");
+    let refs = json["deployedBytecode"]["immutableReferences"].as_object().expect("immutable references");
+    let mut ids = refs
+        .iter()
+        .map(|(id, at)| (id.parse::<u64>().expect("AST id"), at[0]["start"].as_u64().expect("offset") as usize))
+        .collect::<Vec<_>>();
+    ids.sort();
+    return ids.into_iter().map(|(_, at)| at).collect();
+}
+
 /// The outcome of one transaction.
 #[derive(Clone, Debug)]
 pub struct Outcome {

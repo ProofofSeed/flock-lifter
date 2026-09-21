@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 //! Prints the shape and sparsity of the hardened-child response block: its geometry, how many
-//! explicit rows it has, and how many nonzeros those rows carry.
+//! explicit rows it has, how many nonzeros those rows carry, and how many committed entries they
+//! become.
 
 use std::time::Instant;
 
-use pofseed_flock_lift_block::{keccak::SUB_BITS, program::Program};
+use pofseed_flock_lift_block::{committed::entries, keccak::SUB_BITS, program::Program};
 use pofseed_flock_lift_host::{HARDENED_OFFSET, bip32_vector_1};
 use pofseed_flock_lift_statement::HardenedChildCircuit;
 
@@ -30,5 +31,5 @@ fn main() {
         "nonzeros per row       {:.2} on A, {:.2} on B",
         nnz_a as f64 / program.explicit_rows() as f64,
         nnz_b as f64 / program.explicit_rows() as f64
-    );
+    );    println!("committed entries      {}", entries(&program).len());
 }

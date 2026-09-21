@@ -1,6 +1,6 @@
 # Optimistic verification of a Flock lift
 
-Status: prototype, 2026-09-17, re-measured the same day on the current contracts. It is an addition to direct verification, which it leaves unchanged.
+Status: prototype, 2026-09-17, re-measured the same day on the current contracts, and again on zkboo 1.3.0 on 2026-09-21. It is an addition to direct verification, which it leaves unchanged.
 
 A lift can be accepted on Ethereum in two ways, and both are built:
 
@@ -48,11 +48,11 @@ Accepting and rejecting states are terminal and absorb further steps, so a trace
 
 ## What is fixed per statement
 
-`OneStep` holds the runtime bytecode of the statement's two contracts in data-holding contracts, 24 KB each. Both exceed EIP-170's limit for an executable contract (about 53 KB each), but neither has to run. At construction `OneStep` reads what they pin from the deployed contracts:
+`OneStep` holds the runtime bytecode of the statement's two contracts in data-holding contracts, 24 KB each. Both exceed EIP-170's limit for an executable contract (about 53 KB each), but neither has to run, and neither is deployed: their runtime code is produced off chain by running their initcode. At construction `OneStep` reads what they pin from that held code, at the offsets of their immutables (from the compiler's immutable references, passed to the constructor):
 - from `FlockLift`: the circuit fingerprint, chain code and index;
 - from `FlockMatrix`: the entry-commitment cap hash, the profile, the first Keccak sub-block and the sub-block count.
 
-It exposes all of them, with `codeHash(which)` for the held bytecode. The cap hash and geometry are also enforced by the held matrix bytecode itself, whose immutables embed them.
+It exposes all of them, with `codeHash(which)` for the held bytecode. Checking a deployment therefore means checking the two code hashes and that the seven offsets are those of the immutables; the harness asserts that the values `OneStep` read are the ones the programs were built with. The harness installs the two programs in its EVM for the off-chain run and enforces the code-size limit on every contract it deploys.
 
 ## The protocol
 
@@ -68,6 +68,17 @@ It exposes all of them, with `codeHash(which)` for the held bytecode. The cap ha
    - After the window, an assertion with no open or lost game is confirmed, its bond is returned, and its statement reads as accepted.
 
 ## Firm numbers
+
+### On zkboo 1.3.0
+
+Re-measured on 2026-09-21 on the hardened-child circuit of zkboo 1.3.0 (`zkboo-1.3.0-migration.md`), with `OneStep` reading its pins from the held code (`fixtures/optimistic-*-2026-09-21-zkboo-1.3.0.summary.log`):
+- **Trace.** 237,087,171 steps: 134,107,441 in the lift call and 102,979,730 in the matrix call. The tampered lift is rejected after 26,664,000 steps, the tampered matrix proof after 203,556,551.
+- **Heaviest step.** The same fold of the counts, at step 59,116,487 of the matrix call: 6,787,958 gas alone, **6,960,055 resolved inside a game, with 9.82 M to spare**.
+- **Games.** All 16 games were won by the truthful side, at 7 dissections each where the game went the distance.
+- **One-step check.** `OneStep` agreed with revm on 50,432 steps, with no mismatch.
+- **Costs.** Deployment is 44,730,170 gas in 11 transactions: the one-step contract costs 1,378 gas more now that it reads its pins from the held code, and each jump table about 2,000 more. The unchallenged path is 63,677,857 gas in 13 transactions. The worst dispute is still about 7.65 M for the asserter and 0.94 M for the challenger.
+
+The rest of this section is the measurement of 2026-09-17, on the zkboo 1.2.1 circuit; its figures differ from these by less than 0.1%.
 
 Measured on 2026-09-17 in revm under Osaka rules, on the 219-response hardened-child lift, Fast profile, with the contracts as they stand after the residual rewrite, the resumable fold and the split calldata copies (`fixtures/optimistic-*-2026-09-17-margin.summary.log`; the fuzz campaign, which does not depend on them, is `fixtures/optimistic-fuzz-2026-09-17.summary.log`). Every protocol transaction was sent with a 2^24 gas limit and succeeded, EIP-7623's calldata floor included.
 

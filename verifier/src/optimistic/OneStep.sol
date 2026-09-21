@@ -30,21 +30,6 @@ struct Frame {
     uint256 cdEnd;
 }
 
-/// The statement a lift contract pins.
-interface PinnedLift {
-    function fingerprint() external view returns (bytes32);
-    function chainCode() external view returns (bytes32);
-    function index() external view returns (uint32);
-}
-
-/// The parameters a matrix contract pins.
-interface PinnedMatrix {
-    function capHash() external view returns (bytes32);
-    function slim() external view returns (bool);
-    function firstKeccak() external view returns (uint256);
-    function keccakSubs() external view returns (uint256);
-}
-
 /// One step of the EVM executing a lift's direct verification: the lift contract's `verify`,
 /// then the matrix contract's `verify` on the claims it returned, the lift's statement digest
 /// and the matrix proof. A state commits to the program counter, the stack, memory as a Merkle
@@ -93,14 +78,16 @@ contract OneStep {
     /// The block's Keccak sub-block count.
     uint256 public immutable keccakSubs;
 
-    /// Holds the programs, `selves` being the addresses the lift and matrix programs run as, then
-    /// the contracts their statement and parameters are read from.
+    /// Holds the programs, `selves` being the addresses they run as, and reads what they pin from
+    /// their code at `pinAt`: the fingerprint, chain code and index in the lift program, then the
+    /// cap hash, profile, first Keccak sub-block and sub-block count in the matrix program.
     constructor(
         address[] memory liftCode,
         uint256 liftLen,
         address[] memory matrixCode,
         uint256 matrixLen,
-        address[4] memory selves,
+        address[2] memory selves,
+        uint256[7] memory pinAt,
         address caller_,
         uint256 chainId_
     ) {
@@ -108,15 +95,15 @@ contract OneStep {
         matrix = Program(matrixCode, matrixLen, address(0), selves[1]);
         caller = caller_;
         chainId = chainId_;
-        PinnedLift l = PinnedLift(selves[2]);
-        fingerprint = l.fingerprint();
-        chainCode = l.chainCode();
-        index = l.index();
-        PinnedMatrix m = PinnedMatrix(selves[3]);
-        capHash = m.capHash();
-        slim = m.slim();
-        firstKeccak = m.firstKeccak();
-        keccakSubs = m.keccakSubs();
+        Program memory l = lift;
+        fingerprint = bytes32(_codeWord(l, pinAt[0]));
+        chainCode = bytes32(_codeWord(l, pinAt[1]));
+        index = uint32(_codeWord(l, pinAt[2]));
+        Program memory m = matrix;
+        capHash = bytes32(_codeWord(m, pinAt[3]));
+        slim = _codeWord(m, pinAt[4]) != 0;
+        firstKeccak = _codeWord(m, pinAt[5]);
+        keccakSubs = _codeWord(m, pinAt[6]);
     }
 
     /// Builds the jump-destination bitmaps of both programs; one call each, `which` naming the

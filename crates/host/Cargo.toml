@@ -12,10 +12,10 @@ count = ["pofseed-flock-lift/count"]
 [dependencies]
 flock-prover = { workspace = true }
 rayon = { version = "1.10" }
-zkboo = { version = "1.2", features = ["u32", "u64", "parallel"] }
-zkboo-bip32 = { version = "1.2" }
-zkboo-circuit-hash = { version = "1.2" }
-zkboo-profiling = { version = "1.2" }
+zkboo = { version = "1.3", features = ["u32", "u64", "parallel"] }
+zkboo-bip32 = { version = "1.3" }
+zkboo-circuit-hash = { version = "1.3" }
+zkboo-profiling = { version = "1.3" }
 pofseed-flock-lift = { path = "../lift" }
 pofseed-flock-lift-block = { path = "../block" }
 pofseed-flock-lift-statement = { path = "../statement" }

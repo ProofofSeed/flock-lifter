@@ -22,10 +22,7 @@ pub type WPP = OwnedFlexibleWordPairPool<usize>;
 
 /// Repetitions needed for `(2/3)^n <= 2^-2b`, where `b` is a post-quantum security level in bits.
 pub const fn n_eps(pq_security_bits: usize) -> usize {
-    const NUM: u128 = 1_709_511_291_351_455;
-    const DEN: u128 = 1_000_000_000_000_000;
-    let two_b = (2 * pq_security_bits) as u128;
-    return ((two_b * NUM + (DEN - 1)) / DEN) as usize;
+    return zkboo::Repetitions::for_pq_security_bits(pq_security_bits).count();
 }
 
 /// Decodes a hex string.

@@ -1,0 +1,33 @@
+# acceptance both, 2026-09-21, M4 Max, on zkboo 1.3.0 (hardened-child fingerprint 0x72936f44…); regular layout with the committed-matrix proof; under /usr/bin/time -l, the peak covering the reject matrix and the 219-response run.
+
+block built in 0.54 s (k_log 28)
+entry list committed in 1.12 s (2^22 entries)
+── reject matrix (n=8) ──
+  control (n=8, two chunks, matching expectation): accepted ✓
+  R1 tampered proof: refused (FiatShamir) ✓
+  R2 wrong binding: refused (FiatShamir) ✓
+  R3 wrong fingerprint: refused by check_journal (FingerprintMismatch) ✓
+  R4 too few responses: refused by check_journal (TooFewResponses) ✓
+  R5 empty proof: refused by check_journal (TooFewResponses) ✓
+  R6 wrong statement: refused by check_journal (StatementMismatch) ✓
+  R7 malformed response: refused by the prover (Witness(5, AndMsgShape)) ✓
+  R8 wrong proof format: refused by check_journal (ProofFormatMismatch) ✓
+  F1 tampered published word: refused (Chunk(1, Core(Zerocheck(InvalidGrindingNonce { which: "initial" })))) ✓
+  F2 tampered unopened digest: refused (FiatShamir) ✓
+  F3 swapped chunks: refused (Chunk(0, Core(Zerocheck(InvalidGrindingNonce { which: "initial" })))) ✓
+  F4 another statement: refused (Chunk(0, Core(Zerocheck(InvalidGrindingNonce { which: "initial" })))) ✓
+  F5 truncated lift: refused (Shape) ✓
+  F6 tampered matrix proof: refused (Matrix(Main)) ✓
+  F7 missing matrix proof: refused (Shape) ✓
+  F8 another lift's matrix proof: refused (Matrix(Grinding)) ✓
+reject matrix: PASS
+
+── full-scale positive run (n=219) ──
+  zkboo proof of 219 responses in 0.07 s
+  lifted in 13.40 s (2 chunks)
+  lifted proof: 1675231 B
+  verified in 0.02 s
+  journal passes the relying-party gate: 219 responses ✓
+       37.81 real       257.98 user        42.19 sys
+         72103460864  maximum resident set size
+         71869828360  peak memory footprint
