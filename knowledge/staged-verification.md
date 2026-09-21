@@ -1,8 +1,8 @@
 # Staged verification under mainnet limits
 
-Status: built and measured, 2026-09-17.
+Status: built and measured, 2026-09-17; re-measured on zkboo 1.3.0, 2026-09-21.
 The direct route now runs on Ethereum as it is. Every transaction fits the 2^24-gas cap (EIP-7825), and every deployed contract fits the 24,576-byte code-size limit (EIP-170).
-Verifying the 219-response hardened-child lift takes **888.96 M gas in 106 transactions** under the `Fast` profile, and 780.99 M in 100 under `Slim`, against a one-off deployment of 30.74 M.
+Verifying the 219-response hardened-child lift takes **889.04 M gas in 106 transactions** under the `Fast` profile, and 780.85 M in 100 under `Slim`, against a one-off deployment of 30.74 M (zkboo 1.3.0, `fixtures/evm-bench-2026-09-21-zkboo-1.3.0-{fast,slim}.summary.log`).
 The matrix proof can only be checked against claims that a verified lift recorded.
 
 The single-call contracts (`FlockLift`, `FlockMatrix`, `committed-matrix.md`) are kept in two roles. They are the reference the staged verifier is checked against, and the program the optimistic route disputes (`optimistic-verification.md`). They are never deployed to run: at 53 KB each they are still over the limit.
@@ -79,7 +79,7 @@ What made them fit:
 
 ## What it costs
 
-`evm-bench 219`, both profiles (`fixtures/evm-bench-2026-09-17-staged-fast.summary.log`, `-slim.summary.log`); gas in millions, calldata included:
+`evm-bench 219`, both profiles, on the zkboo 1.2.1 circuit (`fixtures/evm-bench-2026-09-17-staged-fast.summary.log`, `-slim.summary.log`); gas in millions, calldata included. On zkboo 1.3.0 the totals are 889.04 M (`Fast`) and 780.85 M (`Slim`) in the same numbers of transactions, and no session moves by more than 0.4 M (`zkboo-1.3.0-migration.md`):
 
 | session     | transactions, `Fast` | gas, `Fast` | transactions, `Slim` | gas, `Slim` |
 | ----------- | -------------------: | ----------: | -------------------: | ----------: |

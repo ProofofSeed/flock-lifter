@@ -13,8 +13,9 @@ For each of the `N` responses `R_i = (c_i, s_i, s'_i, x_i, M_i, d_i)`:
 
 Globally, the challenge stream derived from `Keccak(TAG_CHALLENGE ‖ le64(|b|) ‖ b ‖ D_0 ‖ … ‖ D_{N−1})` must reproduce every `c_i`.
 
-For the hardened-child statement (`statement-profile`): 3,376 u64 `bitand`, 3,068 u64 `carry` and 10 u8 `bitand` gates, a 32-byte witness, and 412,496 AND-message bits per response.
-That is 1,613 PRG blocks, 380 sponge blocks and one key derivation per slot, so **3,988 Keccak-f permutations per response**, against about 1.65 million two-party AND products.
+For the hardened-child statement on zkboo 1.3.0 (`statement-profile`, fingerprint `0x72936f44…`): 3,380 u64 `bitand`, 3,076 u64 `carry` and 13 u8 `bitand` gates, a 32-byte witness, and 413,288 AND-message bits per response.
+That is 1,616 PRG blocks, 381 sponge blocks and one key derivation per slot, so **3,996 Keccak-f permutations per response**, against about 1.64 million two-party AND products.
+The gates added since zkboo 1.2.1 are BIP-32's validity assertions (`zkboo-1.3.0-migration.md`).
 The Keccak work is 99% of the Boolean relation.
 
 ## Flock's model, and what it rules out
@@ -36,7 +37,7 @@ Only `c_i`, the two view digests and the two output shares leave the row, throug
 The global Fiat-Shamir gate runs natively in the verifier over those public words and the unopened digests: it is a single Keccak sponge over about 60 kB, and it is what binds every challenge.
 
 For the hardened child the block has `k_log = 28`.
-It is tiled by 4,096 aligned sub-blocks of `2^16` bits: 3,988 hold one Keccak-f each, laid out as the retired Flock Keccak encoder did (input state, output state and the 24 χ outputs, with the intermediate states implicit), and the first 108 form the head, which holds the constant wire, the published words, the free inputs (seeds, the party-2 input share, `M_i`, the challenge bits) and the replay's products and materialised linear wires.
+It is tiled by 4,096 aligned sub-blocks of `2^16` bits: 3,996 hold one Keccak-f each, laid out as the retired Flock Keccak encoder did (input state, output state and the 24 χ outputs, with the intermediate states implicit), and the first 100 form the head, which holds the constant wire, the published words, the free inputs (seeds, the party-2 input share, `M_i`, the challenge bits) and the replay's products and materialised linear wires.
 
 The replay's products and materialised wires are laid out regularly (`committed-matrix.md`).
 Every product is committed, with a constant operand kept as a masked reference to the constant wire, and outputs are materialised at every bit of a gate or at none.

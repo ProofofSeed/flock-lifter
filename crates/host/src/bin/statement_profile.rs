@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-//! Prints the gate counts and response size of the hardened-child statement.
+//! Prints the fingerprint, gate counts and response size of the hardened-child statement.
 
 use pofseed_flock_lift_host::{bip32_vector_1, vector_1_proof};
-use pofseed_flock_lift_statement::{HardenedChildCircuit, S};
+use pofseed_flock_lift_statement::{H, HardenedChildCircuit, S};
 use zkboo_bip32::HARDENED_OFFSET;
+use zkboo_circuit_hash::hash_circuit;
 use zkboo_profiling::profile;
 
 fn main() {
     let (_, chain_code) = bip32_vector_1();
     let circuit = HardenedChildCircuit::public_only(chain_code, HARDENED_OFFSET);
+    let fingerprint = hash_circuit::<_, H>(&circuit);
+    println!("fingerprint: 0x{}", fingerprint.iter().map(|b| format!("{b:02x}")).collect::<String>());
     let data = profile(&circuit);
     println!("{:#?}", data.gate_counts());
     println!("response data: {:#?}", data.response_data());

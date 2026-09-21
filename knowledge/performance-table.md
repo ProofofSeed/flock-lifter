@@ -5,6 +5,7 @@ Flock runs on the CPU only, with its NEON kernels and `target-cpu=native`; the S
 Every row is one process, run one at a time on an otherwise quiet machine, by `lift-bench` under `/usr/bin/time -l`.
 Every lift in the table passed verification and the relying-party gate.
 The table was first measured on 2026-09-14 (`fixtures/lift-bench-2026-09-14.summary.log`), re-measured on 2026-09-15 with the structured matrix discharge (`fixtures/lift-bench-2026-09-15-structured.summary.log`), and re-measured whole on 2026-09-16 with the regular block layout and the committed-matrix discharge (`fixtures/lift-bench-2026-09-16-committed-matrix.summary.log`).
+The table is of the zkboo 1.2.1 circuit. Its 128-, 219- and 438-response rows at 16 threads were repeated on zkboo 1.3.0 on 2026-09-21, within 0.2 s and 0.2 GB of these, with identical proof sizes (`zkboo-1.3.0-migration.md`).
 
 ## The lift
 
@@ -101,13 +102,14 @@ Removing them from the verifier entirely, through Flock's claim accumulation, wa
 
 |              |                 SP1 lifter (Metal GPU, full path) |                            Flock lifter (CPU) |
 | ------------ | ------------------------------------------------: | --------------------------------------------: |
-| prove        |                                        3,613.03 s |                                       13.30 s |
-| peak RSS     |                                          48.39 GB |                                      74.77 GB |
+| prove        |                                        3,613.03 s |                                       13.40 s |
+| peak RSS     |                                          48.39 GB |                                      74.61 GB |
 | proof        |                     356 B Groth16 + 219 B journal |                                   1,675,231 B |
 | verify       | 280,590 gas on L1 (225,975 pairing + 54,615 gate) |       0.02 s native; 0.89 B gas in 106 L1 txs |
 | weakest link |                     BN254 pairing, about 100 bits | Flock `Fast` profile and ZKBoo, 128 classical |
 
-Proving is about **272× faster** (about 280× before the matrix proof, on the 2026-09-15 figures), for about half as much memory again (+55%).
+The Flock column is zkboo 1.3.0 (2026-09-21). The SP1 column is zkboo 1.2.0: the SP1 lifter's full-soundness lift has not been re-timed on 1.3.0.
+Proving is about **270× faster** (about 280× before the matrix proof, on the 2026-09-15 figures), for about half as much memory again (+54%).
 
 ### Where the gap comes from
 
@@ -140,8 +142,10 @@ For the single calls the transaction count is a lower bound. The last rows are t
 | residuals in assembly, `Slim`            |                343.40 |                   304.43 |         647.83 |                             39 |
 | staged, `Fast`                           |                464.72 |                   424.24 |         888.96 |                            106 |
 | staged, `Slim`                           |                383.35 |                   397.64 |         780.99 |                            100 |
+| staged, `Fast`, zkboo 1.3.0              |                464.60 |                   424.44 |         889.04 |                            106 |
+| staged, `Slim`, zkboo 1.3.0              |                383.00 |                   397.85 |         780.85 |                            100 |
 
 The row-walking discharge did not depend on the profile, and was 99% of the total.
 The committed discharge's figures are `fixtures/evm-bench-2026-09-16-committed-final.summary.log` (`Fast`) and `fixtures/evm-bench-2026-09-17-committed-slim.summary.log` (`Slim`), and those with Ligerito's final-level residuals in assembly are `fixtures/evm-bench-2026-09-17-residuals-{fast,slim}.summary.log`; `committed-matrix.md` breaks them down.
-The staged rows are `fixtures/evm-bench-2026-09-17-staged-{fast,slim}.summary.log`, where the single calls, re-measured beside them, cost 758.95 and 648.79 M; `staged-verification.md` breaks them down.
+The staged rows are `fixtures/evm-bench-2026-09-17-staged-{fast,slim}.summary.log`, where the single calls, re-measured beside them, cost 758.95 and 648.79 M; `staged-verification.md` breaks them down. The zkboo 1.3.0 rows are `fixtures/evm-bench-2026-09-21-zkboo-1.3.0-{fast,slim}.summary.log`, with single calls at 759.04 and 648.65 M.
 Under `Slim` the committed path is 16% cheaper: the lift contract's level-0 openings and consistency residuals shrink with the narrower rows, and so does the matrix contract's own opening (375.30 M execution against 429.49 M); the structured parts and the matrix sumchecks do not depend on the profile.
