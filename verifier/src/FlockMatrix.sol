@@ -14,6 +14,9 @@ import {Transcript} from "./Transcript.sol";
 /// The verifier of a lift's matrix proof for one pinned statement: that the explicit rows' share
 /// of every chunk's matrix claim is the table-weighted sum of the statement's committed entry list
 /// (see `crates/lift/src/matrix.rs`).
+///
+/// Its runtime code exceeds EIP-170's limit, so it cannot be deployed on mainnet: it is the
+/// reference for the staged verifier and the optimistic route's program (see `verifier/README.md`).
 contract FlockMatrix {
     bytes internal constant LIFT_VERSION = "pofseed-flock-lift-v1";
     uint256 internal constant M = 28;

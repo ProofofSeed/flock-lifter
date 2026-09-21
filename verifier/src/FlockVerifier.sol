@@ -9,6 +9,9 @@ import {Transcript} from "./Transcript.sol";
 
 /// The verifier of one Flock chunk proof of the lift, up to the lincheck's matrix discharge,
 /// whose equation it returns.
+///
+/// Its runtime code exceeds EIP-170's limit, so it cannot be deployed on mainnet (see
+/// `verifier/README.md`).
 contract FlockVerifier {
     error Shape();
 
