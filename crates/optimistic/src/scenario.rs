@@ -10,7 +10,7 @@ use pofseed_flock_lift::lift::{LiftKey, LiftedProof, MAX_CHUNK, Statement, prove
 use pofseed_flock_lift_block::program::Program;
 use pofseed_flock_lift_evm::{
     calldata::{encode_lift, encode_matrix},
-    evm::{artifact, encode},
+    evm::{artifact, encode, immutable_offsets},
 };
 use pofseed_flock_lift_host::{HARDENED_OFFSET, bip32_vector_1, vector_1_proof};
 use pofseed_flock_lift_statement::{H, HardenedChildCircuit};
@@ -73,12 +73,16 @@ pub fn header(proof: &[u8]) -> (u32, u32) {
 
 /// The verification of one lift, ready to run.
 pub struct Scenario {
-    /// The lift contract's deployed address.
+    /// The lift program's address.
     pub lift: Address,
-    /// The matrix contract's deployed address.
+    /// The matrix program's address.
     pub matrix: Address,
-    /// The statement the lift contract pins.
+    /// The statement the lift program pins.
     pub pinned: Pinned,
+    /// The cap hash, profile, first Keccak sub-block and sub-block count the matrix program pins.
+    pub matrix_params: [U256; 4],
+    /// The code offsets of the lift program's three pins, then of the matrix program's four.
+    pub pin_at: [usize; 7],
     /// The expected output, as serialised bytes.
     pub output: Vec<u8>,
     /// The output's word counts.
@@ -100,6 +104,13 @@ pub struct Run {
     pub gas: Vec<u64>,
 }
 
+/// The code offsets of the first three immutables of `lift` and the first four of `matrix`.
+fn pin_offsets(lift: (&str, &str), matrix: (&str, &str)) -> [usize; 7] {
+    let l = immutable_offsets(lift.0, lift.1);
+    let m = immutable_offsets(matrix.0, matrix.1);
+    return [l[0], l[1], l[2], m[0], m[1], m[2], m[3]];
+}
+
 /// The words of an ABI-encoded `uint256[]` starting at `at` in `out`.
 pub fn words_at(out: &[u8], at: usize) -> Vec<U256> {
     let n = U256::from_be_slice(&out[at..at + 32]).to::<usize>();
@@ -108,7 +119,8 @@ pub fn words_at(out: &[u8], at: usize) -> Vec<U256> {
 
 impl Scenario {
     /// Builds the scenario for an `n`-response lift, read from `cache` or proved and written
-    /// there, and deploys its contracts into `machine`.
+    /// there, and installs its two programs in `machine`: both exceed EIP-170's limit, so neither
+    /// is deployed, and the one-step contract holds their runtime code as data.
     pub fn new(machine: &mut Machine, n: usize, cache: &str) -> Self {
         let (_, chain_code) = bip32_vector_1();
         let (_, output, proof) = vector_1_proof(n, ENTROPY, BINDING);
@@ -138,14 +150,19 @@ impl Scenario {
         code.extend_from_slice(&U256::from(HARDENED_OFFSET).to_be_bytes::<32>());
         code.extend_from_slice(&U256::from(n).to_be_bytes::<32>());
         code.extend_from_slice(&U256::ZERO.to_be_bytes::<32>());
-        let (lift, _) = machine.deploy(code);
+        let lift = machine.install(Machine::runtime_code(code));
         let g = program.geometry();
+        let matrix_params = [
+            U256::from_be_bytes(keccak256(vk.matrix.commitment.cap.concat()).0),
+            U256::ZERO,
+            U256::from(g.head_subs()),
+            U256::from(g.keccak_subs()),
+        ];
         let mut code = artifact("FlockMatrix.sol", "FlockMatrix");
-        code.extend_from_slice(&keccak256(vk.matrix.commitment.cap.concat()).0);
-        for v in [0, g.head_subs(), g.keccak_subs()] {
-            code.extend_from_slice(&U256::from(v).to_be_bytes::<32>());
+        for v in matrix_params {
+            code.extend_from_slice(&v.to_be_bytes::<32>());
         }
-        let (matrix, _) = machine.deploy(code);
+        let matrix = machine.install(Machine::runtime_code(code));
         let y = &statement.expected_output;
         let counts = U256::from(y.as_vec::<u8>().len() | (y.as_vec::<u32>().len() << 16) | (y.as_vec::<u64>().len() << 32));
         let pinned = Pinned {
@@ -164,6 +181,8 @@ impl Scenario {
             lift,
             matrix,
             pinned,
+            matrix_params,
+            pin_at: pin_offsets(("FlockLift.sol", "FlockLift"), ("FlockMatrix.sol", "FlockMatrix")),
             output: y.as_bytes(),
             counts,
             matrix_proof: encode_matrix(lifted.matrix.as_ref().expect("a matrix proof"), &vk.matrix),
@@ -186,7 +205,17 @@ impl Scenario {
         code.extend_from_slice(&pinned.chain_code);
         code.extend_from_slice(&U256::from(pinned.index).to_be_bytes::<32>());
         let (lift, _) = machine.deploy(code);
-        let (matrix, _) = machine.deploy(artifact("Mock.sol", "MockMatrix"));
+        let matrix_params = [
+            U256::from_be_bytes(keccak256(b"stand-in entry commitment").0),
+            U256::ZERO,
+            U256::from(7),
+            U256::from(11),
+        ];
+        let mut code = artifact("Mock.sol", "MockMatrix");
+        for v in matrix_params {
+            code.extend_from_slice(&v.to_be_bytes::<32>());
+        }
+        let (matrix, _) = machine.deploy(code);
         let mut proof = vec![0, 0, 0, 128, 0, 0, 0, 3];
         proof.extend((0..300u32).map(|i| (i.wrapping_mul(40_503) >> 3) as u8 | 1));
         let output = b"stand-in expected output".to_vec();
@@ -194,6 +223,8 @@ impl Scenario {
             lift,
             matrix,
             pinned,
+            matrix_params,
+            pin_at: pin_offsets(("Mock.sol", "MockLift"), ("Mock.sol", "MockMatrix")),
             output,
             counts: U256::from(24),
             proof,

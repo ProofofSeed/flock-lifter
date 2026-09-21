@@ -16,8 +16,8 @@ use revm::{
         CallInputs, CallOutcome, CreateInputs, CreateOutcome, Interpreter, interpreter::EthInterpreter,
         interpreter_types::Jumps,
     },
-    primitives::{Address, Bytes, TxKind, U256, hardfork::SpecId},
-    state::AccountInfo,
+    primitives::{Address, Bytes, TxKind, U256, hardfork::SpecId, keccak256},
+    state::{AccountInfo, Bytecode},
 };
 
 /// The caller every transaction is sent from.
@@ -116,6 +116,7 @@ pub struct Outcome {
 pub struct Machine {
     evm: MainnetEvm<MainnetContext<CacheDB<EmptyDB>>, Hook>,
     nonce: u64,
+    installed: u64,
 }
 
 impl Default for Machine {
@@ -125,9 +126,20 @@ impl Default for Machine {
 }
 
 impl Machine {
-    /// A fresh machine; `capped` keeps mainnet's transaction gas cap, block limit and code-size
-    /// limit instead of lifting them.
+    /// A fresh machine; `capped` keeps mainnet's transaction gas cap and block limit instead of
+    /// lifting them. The code-size limits always hold.
     pub fn new(capped: bool) -> Self {
+        return Self::build(capped, true);
+    }
+
+    /// The runtime code `initcode` deploys, however large.
+    pub fn runtime_code(initcode: Vec<u8>) -> Vec<u8> {
+        let mut machine = Self::build(false, false);
+        let (at, _) = machine.deploy(initcode);
+        return machine.code(at);
+    }
+
+    fn build(capped: bool, code_limits: bool) -> Self {
         let mut db = CacheDB::<EmptyDB>::default();
         db.insert_account_info(
             CALLER,
@@ -145,8 +157,10 @@ impl Machine {
                     cfg.disable_block_gas_limit = true;
                     cfg.memory_limit = u64::MAX;
                 }
-                cfg.limit_contract_code_size = Some(usize::MAX);
-                cfg.limit_contract_initcode_size = Some(usize::MAX);
+                if !code_limits {
+                    cfg.limit_contract_code_size = Some(usize::MAX);
+                    cfg.limit_contract_initcode_size = Some(usize::MAX);
+                }
                 cfg.disable_base_fee = true;
                 cfg.disable_nonce_check = true;
             })
@@ -156,6 +170,7 @@ impl Machine {
         return Self {
             evm: ctx.build_mainnet_with_inspector(Hook::default()),
             nonce: 0,
+            installed: 0,
         };
     }
 
@@ -242,6 +257,21 @@ impl Machine {
         let db = &self.evm.ctx.journaled_state.database;
         let info = &db.cache.accounts.get(&at).expect("deployed account").info;
         return info.code.as_ref().expect("code").original_byte_slice().to_vec();
+    }
+
+    /// Places `code` at a fresh address without deploying it, as a program that runs off chain.
+    pub fn install(&mut self, code: Vec<u8>) -> Address {
+        self.installed += 1;
+        let at = Address::from_word(keccak256(format!("installed program {}", self.installed)));
+        let db = &mut self.evm.ctx.journaled_state.database;
+        db.insert_account_info(
+            at,
+            AccountInfo {
+                code: Some(Bytecode::new_raw(Bytes::from(code))),
+                ..Default::default()
+            },
+        );
+        return at;
     }
 
     /// Credits `who` with `amount` wei.

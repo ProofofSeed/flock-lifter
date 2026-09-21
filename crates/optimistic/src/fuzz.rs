@@ -16,7 +16,6 @@ use crate::{
     deploy::{onestep_args, step_calldata},
     machine::Machine,
     merkle::{root as tree_root, words_of},
-    scenario::Scenario,
     trace::{Capture, Captured},
     vm::{ACCEPTED, BODY_DEPTH, CallData, Committed, Ctx, MEM_DEPTH, REJECTED, StepWitness, start_hash, supported, terminal},
 };
@@ -183,7 +182,6 @@ pub fn run(programs: usize, seed: u64, verbose: bool) -> FuzzReport {
     let mut r = Rng(seed);
     let mut machine = Machine::new(false);
     let (store, _) = machine.deploy(artifact("Store.sol", "Store"));
-    let mock = Scenario::mock(&mut machine);
     let mut steps_checked = 0usize;
     let mut kinds = [0usize; 3];
     let mut ops_seen = BTreeSet::new();
@@ -196,7 +194,7 @@ pub fn run(programs: usize, seed: u64, verbose: bool) -> FuzzReport {
         let (target, _) = machine.deploy(init);
         let res = machine.call(store, encode("put(bytes)", |a| a.bytes(&code)));
         let chunk = Address::from_slice(&res.output[12..32]);
-        let args = onestep_args((&[chunk], code.len()), (&[chunk], code.len()), [target, target, mock.lift, mock.matrix]);
+        let args = onestep_args((&[chunk], code.len()), (&[chunk], code.len()), [target, target], [0; 7]);
         let mut oc = artifact("OneStep.sol", "OneStep");
         oc.extend_from_slice(&args);
         let (onestep, _) = machine.deploy(oc);
