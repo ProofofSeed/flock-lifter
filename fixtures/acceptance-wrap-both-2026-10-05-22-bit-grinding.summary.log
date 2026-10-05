@@ -1,0 +1,51 @@
+block built in 0.55 s (k_log 28)
+── reject matrix (n=8) ──
+  control (n=8, two chunks, matching expectation): accepted ✓
+  R1 tampered proof: refused (FiatShamir) ✓
+  R2 wrong binding: refused (FiatShamir) ✓
+  R3 wrong fingerprint: refused by check_journal (FingerprintMismatch) ✓
+  R4 too few responses: refused by check_journal (TooFewResponses) ✓
+  R5 empty proof: refused by the prover (Shape) ✓
+  R6 wrong statement: refused by check_journal (StatementMismatch) ✓
+  R7 malformed response: refused by the prover (Witness(5, AndMsgShape)) ✓
+  R8 wrong proof format: refused by check_journal (ProofFormatMismatch) ✓
+  W1 tampered published word: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"skip\" })"))) ✓
+  W2 tampered unopened digest: refused (FiatShamir) ✓
+  W3 swapped responses: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
+  W4 another statement's tables: refused (Wrap(Structure(Opening))) ✓
+  W5 truncated lift: refused (Shape) ✓
+  W6 tampered matrix claim: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
+  W7 tampered commitment: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
+  W8 another lift's unopened digests: refused (FiatShamir) ✓
+  W9 a key of another shape: refused (Shape) ✓
+  a key made by one lift verifies another of the same shape ✓
+  S1 tampered structure proof: refused (Wrap(Structure(Grinding))) ✓
+  S2 tampered wiring evaluation: refused (Wrap(Outer("Wiring(Gkr(InputMismatch))"))) ✓
+  S3 tampered table evaluation: refused (Wrap(Outer("ConsistencyFailed { which: \"matrix-evals\" }"))) ✓
+  S4 another lift's structure proof: refused (Wrap(Structure(Fold))) ✓
+reject matrix: PASS
+── full-scale positive run (n=219) ──
+  zkboo proof of 219 responses in 0.07 s
+  wrapped lift in 43.20 s: chunks 11.74 s, wrap 10.19 s, tables committed in 2.39 s, structure proof 21.27 s
+  parts: wrap proof 324851 B, structure proof 412392 B, tables over 2^27 bytes
+  wrapped lift: 827003 B
+  verified in 0.010 s
+  journal passes the relying-party gate: 219 responses ✓
+      227.75 real      1545.06 user       255.44 sys
+         88203968512  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+           170360944  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+             2040983  involuntary context switches
+      26470728731093  instructions retired
+       6565092954992  cycles elapsed
+         87501535896  peak memory footprint

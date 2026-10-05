@@ -1,7 +1,8 @@
-# wrap-bench 219 128 6 4, 2026-10-05: 219 responses, outer rate 2^-6, tables' rate 2^-4, 22 grinding bits
+# POFSEED_WRAP_FRESH=1 wrap-bench 219 128 6 4, 2026-10-05: 219 responses, outer rate 2^-6, tables' rate 2^-4, 22 grinding bits
+lifted 219 responses in 95.4 s: chunks 12.1 s, wrap 16.5 s, tables committed in 10.4 s, structure proof 56.2 s
 lift of 219 responses in chunks of 128, outer rate 2^-6, tables' rate 2^-4: 478248 B of calldata
 FlockWrap: runtime 111352 B, deployment 23940054 gas
-ran in 0.05 s: success true, gas 85062609 (execution 77722921, calldata and base 7339688)
+ran in 0.06 s: success true, gas 85062609 (execution 77722921, calldata and base 7339688)
   stage   1:      1294729 gas ✓
   stage   2:       540433 gas ✓
   stage   3:       536054 gas ✓
@@ -47,8 +48,11 @@ staged tampering: 11 flipped bits refused
   staged, a lift failing only the last opening's last equation: refused at stage 7
   staged, a lift failing only a Merkle path: refused at stage 6
   staged, a lift failing only the Fiat-Shamir gate: refused at stage 1
-  staged, a state other than the session's: a tampered state refused, another session's state refused
+  staged, a state other than the session's: a state under another digest refused, another session's state refused
 tampering: 23 flipped bits refused
   a lift failing only the last opening's last equation: refused
   a lift failing only a Merkle path: refused
   a lift failing only the Fiat-Shamir gate: refused
+      127.08 real       766.10 user       134.65 sys
+        120356487168  maximum resident set size
+        140317167000  peak memory footprint

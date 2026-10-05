@@ -1,6 +1,6 @@
 # verifier
 
-The Solidity side of the Flock lifter: the contracts that verify a lifted proof on Ethereum, directly or optimistically, built with Foundry (`forge build`) and exercised from Rust.
+The Solidity side of the Flock lifter: the contracts that verify a lifted proof on Ethereum, directly, optimistically or through the WHIR wrapper, built with Foundry (`forge build`) and exercised from Rust.
 
 ## What can be deployed
 
@@ -17,6 +17,8 @@ What each route deploys:
 - **Direct verification** deploys `src/staged/`: `FlockSessions`, seven stage contracts and one data contract holding the subspace table, all under the limit (largest 22,893 B). `crates/evm/src/staged.rs` deploys and drives them; see `knowledge/staged-verification.md`.
 - **Optimistic verification** deploys `Store`, the data contracts holding the runtime code of `FlockLift` and `FlockMatrix` in 24,000-byte chunks, `OneStep` (18,104 B) and `Dispute`. The two programs are never deployed: their runtime code is produced off chain, and `OneStep` reads the statement and parameters they pin from that held code. See `knowledge/optimistic-verification.md`.
 
+- **Wrapped verification** deploys `src/wrap/staged/`: `WrapSessions`, seven stage contracts and four data contracts, all under the limit (largest 23,896 B). `crates/evm/src/wrap/staged.rs` deploys and drives them; see `knowledge/whir-wrapper.md`. `FlockWrap` (111,352 B) is their single-call reference and is never deployed. `src/wrap/` compiles under its own profile in `foundry.toml`, through the IR pipeline, which leaves the other contracts' bytecode unchanged.
+
 `FlockDischarge` (22,586 B) fits, but it is the row-walking discharge the committed matrix replaced, at 158 billion gas for a 219-response lift (`knowledge/evm-verifier.md`).
 `forge build --sizes` prints every contract's margin.
 
@@ -28,12 +30,14 @@ There are no Solidity tests.
 Every contract is exercised from Rust in revm, against the native verifier or a Rust mirror of it:
 - `crates/evm/tests/`: the chunk verifier against the mirror (`contract.rs`, `mirror.rs`), the lift contract and its Fiat-Shamir gate on forgeries, the matrix contract on tampering (`matrix.rs`), the row-walking discharge (`discharge.rs`), the field arithmetic (`gf2.rs`), the assembly residuals against their reference (`residual.rs`), the structured fold in pieces (`structured.rs`), and the staged verifier end to end under both mainnet limits with its refusals (`staged.rs`).
 - `crates/optimistic/tests/optimistic.rs`: disputes played to the end, forged witnesses, and `OneStep` against revm on random programs.
+- `crates/evm/tests/wrap_field.rs`: the wrap verifier's field kernels.
 - The binaries `evm-bench`, `onestep-check` and `dispute-sim` repeat these checks at 219 responses.
+- The wrap contracts are exercised by the binary `wrap-bench` only: against the Rust mirror stage by stage, under both mainnet limits, with tampered lifts and session states, at 8 and at 219 responses.
 
 Several checks were validated by deletion: the check is removed and the test must fail (`fixtures/deletion-validation-*.summary.log`).
 
 ## Audit status
 
-None of these contracts has been audited: not the staged verifier and its session contract, not `OneStep` and `Dispute`, and not the soundness accounting of the matrix proof they verify.
+None of these contracts has been audited: not the staged verifiers and their session contracts, not `OneStep` and `Dispute`, not the wrap verifier or the structure proof it checks, and not the soundness accounting of the matrix proof they verify.
 The evidence is the tests above, agreement with the native verifier, and fuzzing, which show that the contracts accept what the native verifier accepts and refuse the forgeries that were tried.
 They are not a proof of soundness, and the contracts are not for production.
