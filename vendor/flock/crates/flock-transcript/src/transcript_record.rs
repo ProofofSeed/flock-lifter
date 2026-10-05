@@ -775,6 +775,10 @@ impl<Ch: Challenger> RecordingChallenger<Ch> {
 }
 
 impl<Ch: Challenger> Challenger for RecordingChallenger<Ch> {
+    fn publics_commitment(&self, public: &[F128]) -> Option<[u8; 32]> {
+        self.inner.publics_commitment(public)
+    }
+
     fn supports_fused_pow_squeeze(&self) -> bool {
         self.inner.supports_fused_pow_squeeze()
     }

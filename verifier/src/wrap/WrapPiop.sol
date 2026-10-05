@@ -128,8 +128,14 @@ library WrapPiop {
         x.capAt = p;
         W.appendCalldata(tr, p, capLen);
         W.append(tr, WrapKey.BIND_CIRCUIT);
-        W.appendCalldata(tr, p + capLen, 32);
-        x.p = p + capLen + 32;
+        uint256 numPublic = WrapKey.NUM_PUBLIC;
+        // The commitment to the public words that the statement binding absorbs.
+        assembly ("memory-safe") {
+            let len := mload(add(tr, 0x20))
+            mstore(add(add(tr, 0x40), len), keccak256(img, mul(16, numPublic)))
+            mstore(add(tr, 0x20), add(len, 32))
+        }
+        x.p = p + capLen;
         child = W.fork(tr, "flock-par-wiring-v1", 1 << 14);
         // The public words stay where they are: the transcript continues in a fresh region.
         uint256 next;
