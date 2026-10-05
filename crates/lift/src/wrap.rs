@@ -67,6 +67,10 @@ pub enum WrapError {
     Words,
     /// An accumulated matrix claim does not hold on the block's matrices.
     Matrix,
+    /// An element table's reported evaluation is not the table's.
+    Element,
+    /// The structure proof was refused.
+    Structure(pofseed_flock_lift_structure::proof::StructError),
 }
 
 /// A wrap's outer transcript, bound to the circuit's public segment.
@@ -201,6 +205,9 @@ pub fn verify_wrapped(
     key.key
         .verify_on(proof, outer, &mut outer_transcript(&proof.public))
         .map_err(|e| WrapError::Outer(format!("{e:?}")))?;
+    // Flock's verifier takes the element tables' evaluations from the proof; the claims pass checks them.
+    let table_of = vec![0; key.key.shape.registry.num_boolean()];
+    crate::root::outer_claims(key, &table_of, proof, outer)?;
     for (i, p) in publics.iter().enumerate() {
         let (at, len) = words_at(key, i);
         let words: Vec<F128> = padded_publics(p, row_log(program, p.len())).into_iter().flatten().collect();
