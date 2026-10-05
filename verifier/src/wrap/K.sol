@@ -655,20 +655,20 @@ library K {
             }
             let g := gamma
             let e := 1
-            let len := shl(5, n)
+            let end := add(x, shl(5, n))
             for { let j := 0 } lt(j, 128) { j := add(j, 1) } {
                 if j {
-                    for { let p := x let end := add(x, len) } lt(p, end) { p := add(p, 0x20) } {
+                    for { let p := x } lt(p, end) { p := add(p, 0x20) } {
                         mstore(p, sq(mload(p)))
                     }
                     g := sq(g)
                     e := gm(sq(e), g)
                 }
-                let prod := 1
-                for { let i := 0 } lt(i, len) { i := add(i, 0x20) } {
-                    prod := gm(prod, xor(1, xor(mload(add(rho, i)), mload(add(x, i)))))
+                let prod := e
+                for { let p := x let q := rho } lt(p, end) { p := add(p, 0x20) q := add(q, 0x20) } {
+                    prod := gm(prod, xor(1, xor(mload(q), mload(p))))
                 }
-                acc := xor(sq(acc), gm(e, prod))
+                acc := xor(sq(acc), prod)
             }
             acc := sq(acc)
         }
@@ -705,19 +705,18 @@ library K {
             function gm(ka, kb) -> ko {
                 ko := red(cl(ka, kb))
             }
-            let p0 := mload(tables)
-            let p1 := mload(add(tables, 0x20))
-            let p2 := mload(add(tables, 0x40))
-            let q0 := mload(add(tables, 0x60))
-            let q1 := mload(add(tables, 0x80))
-            let q2 := mload(add(tables, 0xa0))
             for { let i := 0 } lt(i, count) { i := add(i, 1) } {
                 let rec := mload(add(runs, mul(i, 12)))
-                let t0 := shr(224, rec)
-                let t1 := and(shr(192, rec), 0xffffffff)
-                let a := gm(gm(mload(add(p0, shl(5, and(t0, 255)))), mload(add(p1, shl(5, and(shr(8, t0), 255))))), mload(add(p2, shl(5, shr(16, t0)))))
-                let b := gm(gm(mload(add(q0, shl(5, and(t1, 255)))), mload(add(q1, shl(5, and(shr(8, t1), 255))))), mload(add(q2, shl(5, shr(16, t1)))))
-                mstore(add(out, shl(5, i)), gm(a, b))
+                let v := 1
+                for { let h := 0 } lt(h, 2) { h := add(h, 1) } {
+                    // A height's low byte, middle byte and the rest, each into its table.
+                    let t := and(shr(sub(224, shl(5, h)), rec), 0xffffffff)
+                    let tp := add(tables, mul(h, 0x60))
+                    v := gm(v, mload(add(mload(tp), shl(5, and(t, 255)))))
+                    v := gm(v, mload(add(mload(add(tp, 0x20)), shl(5, and(shr(8, t), 255)))))
+                    v := gm(v, mload(add(mload(add(tp, 0x40)), shl(5, shr(16, t)))))
+                }
+                mstore(add(out, shl(5, i)), v)
             }
         }
     }
@@ -803,42 +802,49 @@ library K {
             function gm(ka, kb) -> ko {
                 ko := red(cl(ka, kb))
             }
-            // g[carry][below]: the weight of ending below with no carry, from the layers above.
-            let g00 := 0
-            let g01 := 1
-            let g10 := 0
-            let g11 := 0
+            // Scratch: g[carry][below] at 0x40·carry + 0x20·below, the weight of ending below with no carry
+            // from the layers above; then h[carry][bit][below] at 0x80 + 0x80·carry + 0x40·bit + 0x20·below.
+            let g := mload(0x40)
+            mstore(g, 0)
+            mstore(add(g, 0x20), 1)
+            mstore(add(g, 0x40), 0)
+            mstore(add(g, 0x60), 0)
             for { let layer := layers } gt(layer, 0) { layer := sub(layer, 1) } {
                 let l := sub(layer, 1)
-                let a := 0
-                let b0 := 1
-                if lt(l, nu) { a := mload(add(row, shl(5, l))) }
-                if lt(l, m) { b0 := xor(1, mload(add(index, shl(5, l)))) }
-                let c := mload(add(sigma, shl(6, l)))
-                let d := mload(add(sigma, add(shl(6, l), 0x20)))
-                // Per next carry: the index bit 0 or 1 against the height's bit, keeping or setting the comparison.
-                let s := xor(g00, gm(d, xor(g00, g01)))
-                let h000 := gm(b0, s)
-                let h011 := xor(s, h000)
-                let h001 := gm(b0, g01)
-                let t := gm(b0, g00)
-                let h010 := xor(g00, t)
-                s := xor(g10, gm(d, xor(g10, g11)))
-                let h100 := gm(b0, s)
-                let h111 := xor(s, h100)
-                let h101 := gm(b0, g11)
-                t := gm(b0, g10)
-                let h110 := xor(g10, t)
-                // The row bit and the first height's bit: both zero, exactly one, both one.
-                let both := gm(a, c)
-                let none := xor(xor(1, a), xor(c, both))
-                let one := xor(a, c)
-                g00 := xor(xor(gm(none, h000), gm(one, h010)), gm(both, h100))
-                g01 := xor(xor(gm(none, h001), gm(one, h011)), gm(both, h101))
-                g10 := xor(xor(gm(none, h010), gm(one, h100)), gm(both, h110))
-                g11 := xor(xor(gm(none, h011), gm(one, h101)), gm(both, h111))
+                {
+                    // Per next carry: the index bit 0 or 1 against the height's bit, keeping or setting the comparison.
+                    let b0 := 1
+                    if lt(l, m) { b0 := xor(1, mload(add(index, shl(5, l)))) }
+                    let d := mload(add(sigma, add(shl(6, l), 0x20)))
+                    for { let k := 0 } lt(k, 2) { k := add(k, 1) } {
+                        let gp := add(g, shl(6, k))
+                        let hp := add(add(g, 0x80), shl(7, k))
+                        let g0 := mload(gp)
+                        let g1 := mload(add(gp, 0x20))
+                        let s := xor(g0, gm(d, xor(g0, g1)))
+                        let t := gm(b0, s)
+                        mstore(hp, t)
+                        mstore(add(hp, 0x60), xor(s, t))
+                        mstore(add(hp, 0x20), gm(b0, g1))
+                        mstore(add(hp, 0x40), xor(g0, gm(b0, g0)))
+                    }
+                }
+                {
+                    // The row bit and the first height's bit: both zero, exactly one, both one.
+                    let a := 0
+                    if lt(l, nu) { a := mload(add(row, shl(5, l))) }
+                    let c := mload(add(sigma, shl(6, l)))
+                    let both := gm(a, c)
+                    let none := xor(xor(1, a), xor(c, both))
+                    let one := xor(a, c)
+                    for { let k := 0 } lt(k, 4) { k := add(k, 1) } {
+                        // The state (carry, below) = (k >> 1, k & 1) reads h at 0x40·carry + 0x20·below onwards.
+                        let hp := add(add(g, 0x80), shl(5, k))
+                        mstore(add(g, shl(5, k)), xor(xor(gm(none, mload(hp)), gm(one, mload(add(hp, 0x40)))), gm(both, mload(add(hp, 0x80)))))
+                    }
+                }
             }
-            r := g00
+            r := mload(g)
         }
     }
 
@@ -1061,56 +1067,72 @@ library K {
                 ko := and(or(ko, shl(1, ko)), 0x5555555555555555555555555555555555555555555555555555555555555555)
                 ko := red(ko)
             }
-            ok := 1
+            // Scratch: this level's eight roots, the equality table of three of them, then the arguments.
             let s := mload(0x40)
-            let e := add(s, 0x100)
+            mstore(add(s, 0x200), gamma)
+            mstore(add(s, 0x220), r)
+            mstore(add(s, 0x240), chains)
+            mstore(add(s, 0x260), values)
+            mstore(add(s, 0x280), d0)
+            mstore(add(s, 0x2a0), 1)
+            mstore(add(s, 0x2c0), 0)
             for { let level := 128 } gt(level, 0) { level := sub(level, 1) } {
-                let j := sub(level, 1)
                 // This level's roots, checked against the level before.
-                switch j
-                case 0 {
-                    mcopy(s, r, 0xe0)
-                    mstore(add(s, 0xe0), gamma)
+                switch level
+                case 1 {
+                    mcopy(s, mload(add(s, 0x220)), 0xe0)
+                    mstore(add(s, 0xe0), mload(add(s, 0x200)))
                 }
                 default {
-                    let at := add(chains, shl(7, sub(j, 1)))
+                    let at := add(mload(add(s, 0x240)), shl(7, sub(level, 2)))
                     for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
                         let v := shr(128, calldataload(add(at, shl(4, i))))
-                        let prev := gamma
-                        switch j
-                        case 1 { if lt(i, 7) { prev := mload(add(r, shl(5, i))) } }
+                        let prev := mload(add(s, 0x200))
+                        switch level
+                        case 2 { if lt(i, 7) { prev := mload(add(mload(add(s, 0x220)), shl(5, i))) } }
                         default { prev := shr(128, calldataload(add(sub(at, 128), shl(4, i)))) }
-                        ok := and(ok, eq(sq(v), prev))
+                        if iszero(eq(sq(v), prev)) { mstore(add(s, 0x2a0), 0) }
                         mstore(add(s, shl(5, i)), v)
                     }
                 }
-                // Π_i (s_i + (1 + s_i)·x^(2^i)).
-                let top := 1
-                for { let i := 0 } lt(i, 7) { i := add(i, 1) } {
-                    let si := mload(add(s, shl(5, i)))
-                    top := gm(top, xor(si, red(shl(shl(i, 1), xor(1, si)))))
+                // Π_i (s_i + (1 + s_i)·x^(2^i)), kept in scratch.
+                {
+                    let top := 1
+                    for { let i := 0 } lt(i, 7) { i := add(i, 1) } {
+                        let si := mload(add(s, shl(5, i)))
+                        top := gm(top, xor(si, red(shl(shl(i, 1), xor(1, si)))))
+                    }
+                    mstore(add(s, 0x2e0), top)
                 }
                 // The equality table of the three low coordinates, scaled by the others' weight at zero.
-                let high := gm(gm(xor(1, mload(add(s, 0x60))), xor(1, mload(add(s, 0x80)))), gm(xor(1, mload(add(s, 0xa0))), xor(1, mload(add(s, 0xc0)))))
-                mstore(e, high)
-                for { let i := 0 } lt(i, 3) { i := add(i, 1) } {
-                    let xi := mload(add(s, shl(5, i)))
-                    let half := shl(add(i, 5), 1)
-                    for { let p := e let end := add(e, half) } lt(p, end) { p := add(p, 0x20) } {
-                        let lo := mload(p)
-                        let hi := gm(lo, xi)
-                        mstore(add(p, half), hi)
-                        mstore(p, xor(lo, hi))
+                {
+                    let e := add(s, 0x100)
+                    mstore(e, gm(gm(xor(1, mload(add(s, 0x60))), xor(1, mload(add(s, 0x80)))), gm(xor(1, mload(add(s, 0xa0))), xor(1, mload(add(s, 0xc0))))))
+                    for { let i := 0 } lt(i, 3) { i := add(i, 1) } {
+                        let xi := mload(add(s, shl(5, i)))
+                        let half := shl(add(i, 5), 1)
+                        for { let p := e let end := add(e, half) } lt(p, end) { p := add(p, 0x20) } {
+                            let lo := mload(p)
+                            let hi := gm(lo, xi)
+                            mstore(add(p, half), hi)
+                            mstore(p, xor(lo, hi))
+                        }
                     }
                 }
-                let e0 := mload(e)
-                let low := xor(xor(shl(1, e0), e0), mload(add(e, 0x20)))
-                for { let t := 0 } lt(t, 7) { t := add(t, 1) } {
-                    low := xor(low, shl(sub(6, t), mload(add(e, shl(5, t)))))
+                {
+                    let e := add(s, 0x100)
+                    let e0 := mload(e)
+                    let low := xor(xor(shl(1, e0), e0), mload(add(e, 0x20)))
+                    for { let t := 0 } lt(t, 7) { t := add(t, 1) } {
+                        low := xor(low, shl(sub(6, t), mload(add(e, shl(5, t)))))
+                    }
+                    let u := gm(gm(mload(add(s, 0x280)), mload(add(s, 0xe0))), xor(mload(add(s, 0x2e0)), red(low)))
+                    let v := shr(128, calldataload(add(mload(add(s, 0x260)), shl(4, sub(level, 1)))))
+                    mstore(add(s, 0x2c0), xor(sq(mload(add(s, 0x2c0))), gm(u, v)))
                 }
-                let u := gm(gm(d0, mload(add(s, 0xe0))), xor(top, red(low)))
-                acc := xor(sq(acc), gm(u, shr(128, calldataload(add(values, shl(4, j))))))
             }
+            acc := mload(add(s, 0x2c0))
+            ok := mload(add(s, 0x2a0))
         }
     }
 
@@ -1161,16 +1183,17 @@ library K {
                 ko := or(shl(128, red(cl(shr(128, ka), ks))), red(cl(and(ka, 0xffffffffffffffffffffffffffffffff), ks)))
             }
             for { let i := 0 } lt(i, vars) { i := add(i, 1) } {
-                let yi := mload(add(y, shl(5, i)))
                 for { let k := 0 } lt(k, windows) { k := add(k, 1) } {
                     let base := add(nt, shl(9, add(mul(i, windows), k)))
                     mstore(base, 0)
                     for { let b := 0 } lt(b, 4) { b := add(b, 1) } {
-                        let j := add(shl(2, k), b)
                         let val := 0
-                        if and(iszero(lt(j, i)), lt(j, logDomain)) {
-                            val := yi
-                            if gt(j, i) { val := gm21(yi, shr(128, mload(add(space, shl(4, add(shl(5, i), j)))))) }
+                        {
+                            let j := add(shl(2, k), b)
+                            if and(iszero(lt(j, i)), lt(j, logDomain)) {
+                                val := mload(add(y, shl(5, i)))
+                                if gt(j, i) { val := gm21(val, shr(128, mload(add(space, shl(4, add(shl(5, i), j)))))) }
+                            }
                         }
                         let half := shl(add(b, 5), 1)
                         for { let p := base let end := add(base, half) } lt(p, end) { p := add(p, 0x20) } {

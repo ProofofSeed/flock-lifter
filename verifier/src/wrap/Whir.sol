@@ -47,6 +47,17 @@ struct WhirState {
     uint256 last;
 }
 
+/// The state of an opening's shift terms: the running weight, the windowed tables' address, and
+/// one round's variables, domain, windows and challenges' address.
+struct Shift {
+    uint256 weight;
+    uint256 windowed;
+    uint256 vars;
+    uint256 logDomain;
+    uint256 windows;
+    uint256 y;
+}
+
 /// The verifier of a WHIR opening over GF(2^128) with challenges in GF(2^256): codeword rows on
 /// Keccak-256 trees, the folds' sumcheck, and the final weight in closed form.
 library Whir {
@@ -339,31 +350,44 @@ library Whir {
     /// times the weight at the sumcheck's point, which is every equality term and every queried
     /// position's term `Π_i (1 + y_i·(1 + Ŵ_i(position)))`.
     function weigh(WhirState memory st, bytes memory rounds, bytes memory sub) internal pure {
-        uint256 n = rounds.length / 7;
-        uint256 m = st.challenges.length;
-        uint256 y = W.ptr(st.challenges);
-        uint256 weight;
+        Shift memory s;
+        s.weight = _equalities(st);
+        s.windowed = W.ptr(new uint256[](16 * _windowWords(rounds)));
+        for (uint256 r = 0; 7 * (r + 1) < rounds.length; ++r) {
+            s.vars = W.read(rounds, 7 * (r + 1), 1);
+            s.logDomain = W.read(rounds, 7 * r + 2, 1);
+            s.windows = (s.logDomain + 3) / 4;
+            s.y = W.ptr(st.challenges) + 32 * (st.challenges.length - s.vars);
+            K.shiftWindows(s.windowed, s.y, W.data(sub), s.vars, s.logDomain, s.windows);
+            _shifts(s, st.positions[r], st.coeffs[r]);
+        }
+        if (st.claim != K.mul256(st.last, s.weight)) revert Sumcheck();
+    }
+
+    /// Adds the queried positions' terms of one round to the weight of `s`.
+    function _shifts(Shift memory s, uint256[] memory positions, uint256[] memory coeffs) private pure {
+        uint256 weight = s.weight;
+        for (uint256 q = 0; q < positions.length; ++q) {
+            weight ^= K.shiftProduct(coeffs[q], positions[q], s.y, s.windowed, s.vars, s.windows);
+        }
+        s.weight = weight;
+    }
+
+    /// The equality terms of the final weight at the sumcheck's point.
+    function _equalities(WhirState memory st) private pure returns (uint256 weight) {
+        uint256 end = W.ptr(st.challenges) + 32 * st.challenges.length;
         for (uint256 k = 0; k < st.eqCount; ++k) {
             uint256[] memory z = st.eqPoints[k];
-            weight ^= K.eqProduct256(st.eqCoeffs[k], W.ptr(z), y + 32 * (m - z.length), z.length);
+            weight ^= K.eqProduct256(st.eqCoeffs[k], W.ptr(z), end - 32 * z.length, z.length);
         }
-        uint256 size;
+    }
+
+    /// The largest number of windowed-table rows any round's shift terms need.
+    function _windowWords(bytes memory rounds) private pure returns (uint256 size) {
+        uint256 n = rounds.length / 7;
         for (uint256 r = 0; r + 1 < n; ++r) {
             uint256 words = W.read(rounds, 7 * (r + 1), 1) * ((W.read(rounds, 7 * r + 2, 1) + 3) / 4);
             if (words > size) size = words;
         }
-        uint256[] memory windowed = new uint256[](16 * size);
-        for (uint256 r = 0; r + 1 < n; ++r) {
-            uint256 vars = W.read(rounds, 7 * (r + 1), 1);
-            uint256 logDomain = W.read(rounds, 7 * r + 2, 1);
-            uint256 windows = (logDomain + 3) / 4;
-            K.shiftWindows(W.ptr(windowed), y + 32 * (m - vars), W.data(sub), vars, logDomain, windows);
-            uint256[] memory positions = st.positions[r];
-            uint256[] memory coeffs = st.coeffs[r];
-            for (uint256 q = 0; q < positions.length; ++q) {
-                weight ^= K.shiftProduct(coeffs[q], positions[q], y + 32 * (m - vars), W.ptr(windowed), vars, windows);
-            }
-        }
-        if (st.claim != K.mul256(st.last, weight)) revert Sumcheck();
     }
 }

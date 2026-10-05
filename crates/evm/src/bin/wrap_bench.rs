@@ -7,6 +7,8 @@
 //! Usage: `wrap-bench [responses] [chunk] [outer log inverse rate] [tables' log inverse rate] [stop]`
 //! (default 8, 4, 1, 1, none).
 //! A lift is kept under `target/wrap-cache` and reused; `POFSEED_WRAP_FRESH` makes a new one.
+//! The constants' source is put back as it was when the run ends, unless `POFSEED_WRAP_KEEP` is
+//! set, which is how the committed constants are regenerated.
 
 use std::{env, fs, path::PathBuf, sync::Arc, time::Instant};
 
@@ -142,6 +144,20 @@ fn staged_run(case: &Case) {
         }
     }
     println!("staged tampering: {refused} flipped bits refused");
+    for (name, bad) in targeted(case) {
+        let (mut chain, mut probe) = (Evm::mainnet(), Evm::new());
+        let dep = staged::deploy(&mut chain, &case.key);
+        staged::deploy(&mut probe, &case.key);
+        let verdict = match staged::verify(&mut chain, &mut probe, dep.sessions, U256::from(1), &case.output, case.counts, BINDING, &bad) {
+            Ok(_) => "ACCEPTED".to_string(),
+            Err((stage, _)) => format!("refused at stage {stage}"),
+        };
+        println!("  staged, a lift failing only {name}: {verdict}");
+    }
+    let (mut chain, mut probe) = (Evm::mainnet(), Evm::new());
+    let dep = staged::deploy(&mut chain, &case.key);
+    staged::deploy(&mut probe, &case.key);
+    println!("  staged, a state other than the session's: {}", staged::stale_state(&mut chain, &mut probe, dep.sessions, &case.output, case.counts, BINDING, &case.lift));
 }
 
 fn main() {
@@ -154,9 +170,43 @@ fn main() {
         _ => make(n, chunk, rate, tables, &dir),
     };
     let key_path = project().join("src/wrap/WrapKey.sol");
-    if fs::read_to_string(&key_path).ok().as_deref() != Some(case.key.as_str()) {
+    let before = fs::read_to_string(&key_path).ok();
+    if before.as_deref() != Some(case.key.as_str()) {
         fs::write(&key_path, &case.key).expect("write the constants");
     }
+    run(&case, n, chunk, rate, tables, stop);
+    if let Some(before) = before
+        && before != case.key
+        && env::var_os("POFSEED_WRAP_KEEP").is_none()
+    {
+        fs::write(&key_path, before).expect("restore the constants");
+    }
+}
+
+/// A number the constants' source `key` names.
+fn constant(key: &str, name: &str) -> usize {
+    let tag = format!("uint256 internal constant {name} = ");
+    let at = key.find(&tag).unwrap_or_else(|| panic!("no constant {name}")) + tag.len();
+    return key[at..at + key[at..].find(';').expect("a constant's end")].parse().expect("a number");
+}
+
+/// Lifts with one bit flipped where a single check guards: the name of the check and the lift.
+fn targeted(case: &Case) -> Vec<(&'static str, Vec<u8>)> {
+    let flip = |at: usize| {
+        let mut bad = case.lift.clone();
+        bad[at] ^= 1;
+        bad
+    };
+    let len = case.lift.len();
+    let last_rounds = 64 * constant(&case.key, "STRUCT_FINAL");
+    return vec![
+        ("the last opening's last equation", flip(len - 1)),
+        ("a Merkle path", flip(len - last_rounds - 1)),
+        ("the Fiat-Shamir gate", flip(16 * constant(&case.key, "N_IO") * constant(&case.key, "RESPONSES") + 7)),
+    ];
+}
+
+fn run(case: &Case, n: usize, chunk: usize, rate: usize, tables: usize, stop: Option<u64>) {
     println!("lift of {n} responses in chunks of {chunk}, outer rate 2^-{rate}, tables' rate 2^-{tables}: {} B of calldata", case.lift.len());
     let mut evm = Evm::new();
     let (contract, name) = if stop.is_some() { ("WrapProbe.sol", "WrapProbe") } else { ("FlockWrap.sol", "FlockWrap") };
@@ -195,7 +245,7 @@ fn main() {
     assert!(ok, "a stage's transcript differs from the mirror's");
     if stop.is_none() {
         assert!(out.success, "the contract refused the lift");
-        staged_run(&case);
+        staged_run(case);
         let mut refused = 0;
         for at in (0..case.lift.len()).step_by(case.lift.len() / 23 + 1) {
             let mut bad = case.lift.clone();
@@ -208,5 +258,10 @@ fn main() {
             }
         }
         println!("tampering: {refused} flipped bits refused");
+        for (name, bad) in targeted(case) {
+            let call = encode("verify(bytes,uint256,bytes,bytes)", |a| a.bytes(&case.output).uint(U256::from(case.counts)).bytes(BINDING).bytes(&bad));
+            let verdict = if evm.simulate(address, call).success { "ACCEPTED" } else { "refused" };
+            println!("  a lift failing only {name}: {verdict}");
+        }
     }
 }
