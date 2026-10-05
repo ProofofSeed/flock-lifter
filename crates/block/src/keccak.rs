@@ -208,6 +208,65 @@ fn apply_phi_t(v: &[F128]) -> Vec<F128> {
     return out;
 }
 
+/// `φ` on a field-valued state indexed by `state_idx`.
+fn apply_phi(v: &[F128]) -> Vec<F128> {
+    return (0..STATE_BITS)
+        .map(|s_out| {
+            theta_rho_pi_preimage(s_out % 25 % 5, (s_out % 25) / 5, s_out / 25)
+                .iter()
+                .fold(F128::ZERO, |acc, &s| acc + v[s])
+        })
+        .collect();
+}
+
+/// The shared rows applied to column weights on side `A` (`a_side`) or `B`:
+/// `out[p] = Σ_c M[p, c]·w[c] + M[p, const]·w_konst` over the local columns `w` and the constant
+/// wire's weight, the adjoint of [`fold_shared`].
+pub fn row_fold(a_side: bool, w: &[F128], w_konst: F128) -> Vec<F128> {
+    debug_assert_eq!(w.len(), SUB_BITS);
+    let at = |r: usize| -> Vec<F128> { (0..STATE_BITS).map(|s| w[t_pos(r, s)]).collect() };
+    let mut g: Vec<Vec<F128>> = Vec::with_capacity(N_ROUNDS);
+    g.push((0..STATE_BITS).map(|s| w[STATE0_BASE + lane_pos(s)]).collect());
+    for r in 1..N_ROUNDS {
+        let mut next = apply_phi(&g[r - 1]);
+        for (n, x) in next.iter_mut().zip(at(r - 1)) {
+            *n += x;
+        }
+        g.push(next);
+    }
+    let phi_g: Vec<Vec<F128>> = g.iter().map(|v| apply_phi(v)).collect();
+    let bit = |b: bool| if b { F128::ONE } else { F128::ZERO };
+    let mut out = vec![F128::ZERO; SUB_BITS];
+    let mut rc = [false; STATE_BITS];
+    for r in 0..N_ROUNDS {
+        let rc_phi = apply_phi_bool(&rc);
+        for zp in 0..64 {
+            for y in 0..5 {
+                for x in 0..5 {
+                    let src = state_idx(if a_side { (x + 1) % 5 } else { (x + 2) % 5 }, y, zp);
+                    let mut v = phi_g[r][src] + w_konst * bit(rc_phi[src]);
+                    if a_side {
+                        v += w_konst;
+                    }
+                    out[t_pos(r, state_idx(x, y, zp))] = v;
+                }
+            }
+        }
+        rc = rc_phi;
+        for zp in 0..64 {
+            if (ROUND_CONSTANTS[r] >> zp) & 1 == 1 {
+                rc[state_idx(0, 0, zp)] ^= true;
+            }
+        }
+    }
+    let last = at(N_ROUNDS - 1);
+    for s in 0..STATE_BITS {
+        out[STATE24_BASE + lane_pos(s)] =
+            if a_side { last[s] + w_konst * bit(rc[s]) + phi_g[N_ROUNDS - 1][s] } else { w_konst };
+    }
+    return out;
+}
+
 /// `φ` on a Boolean state indexed by `state_idx`.
 fn apply_phi_bool(v: &[bool; STATE_BITS]) -> [bool; STATE_BITS] {
     let mut out = [false; STATE_BITS];

@@ -5,7 +5,8 @@
 
 use flock_prover::{
     field::F128,
-    lincheck::{LincheckCircuit, build_quirky_eq_table_from_weights},
+    lincheck::{LincheckCircuit, build_eq_table, build_quirky_eq_table_from_weights},
+    matrix_fold::FoldMatrix,
 };
 use pofseed_flock_lift_block::{native, program::Program, toy::Toy};
 use pofseed_flock_lift_statement::{H, HardenedChildCircuit, PS, PV, S};
@@ -193,4 +194,35 @@ fn hardened_child_block_agrees_with_native_replay() {
     let witness = HardenedChildCircuit::with_witness(chain_code.clone(), parent_priv, index);
     let public = HardenedChildCircuit::public_only(chain_code, index);
     check(Program::new, &public, &witness, 24, 1);
+}
+
+fn check_matrices<C: Circuit>(build: fn(&C) -> Program, circuit: &C) {
+    let program = build(circuit);
+    let n = program.block_bits();
+    let k = program.geometry().k_log();
+    let mut rng = Rng(0x1357_9bdf_0246_8ace);
+    let dot = |x: &[F128], y: &[F128]| x.iter().zip(y).fold(F128::ZERO, |acc, (&a, &b)| acc + a * b);
+    for a_side in [true, false] {
+        let m = program.matrix(a_side);
+        let w_row: Vec<F128> = (0..n).map(|_| rng.f128()).collect();
+        let w_col: Vec<F128> = (0..n).map(|_| rng.f128()).collect();
+        let by_rows = dot(&w_row, &m.row_marginal(&w_col, n));
+        assert_eq!(by_rows, dot(&m.col_marginal(&w_row, n), &w_col), "the two marginals agree");
+        assert!(by_rows != F128::ZERO);
+        let row: Vec<F128> = (0..k).map(|_| rng.f128()).collect();
+        let col: Vec<F128> = (0..k).map(|_| rng.f128()).collect();
+        let dense = dot(&build_eq_table(&row), &m.row_marginal(&build_eq_table(&col), n));
+        assert_eq!(program.bilinear_eq(a_side, &row, &col), dense, "the structured evaluation");
+    }
+}
+
+#[test]
+fn toy_matrices_fold_and_evaluate_consistently() {
+    check_matrices(Program::new, &Toy);
+}
+
+#[test]
+#[ignore = "full-size block"]
+fn hardened_child_matrices_fold_and_evaluate_consistently() {
+    check_matrices(Program::new, &HardenedChildCircuit::public_only(vec![7u8; 32], 0x8000_0001));
 }

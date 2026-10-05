@@ -12,6 +12,7 @@ use crate::{
 use flock_prover::{
     field::F128,
     lincheck::{LincheckCircuit, build_eq_table},
+    matrix_fold::FoldMatrix,
 };
 use pofseed_flock_lift_statement::S;
 use rayon::prelude::*;
@@ -574,6 +575,26 @@ impl Program {
         return side_a.into_iter().zip(side_b).map(|(a, b)| alpha * a + b).collect();
     }
 
+    /// `Σ_{r,c} eq(row, r)·eq(col, c)·M[r, c]` for `M` the block's `A` (`a_side`) or `B` matrix,
+    /// row `r` being the constraint that defines column `r`.
+    pub fn bilinear_eq(&self, a_side: bool, row: &[F128], col: &[F128]) -> F128 {
+        let skip = build_eq_table(&row[..6]);
+        let col_lo = build_eq_table(&col[..6]);
+        let pair = |alpha: F128| -> F128 {
+            self.comb_partial(alpha, F128::ZERO, &skip, &row[6..], &col[6..])
+                .iter()
+                .zip(&col_lo)
+                .fold(F128::ZERO, |acc, (&x, &e)| acc + x * e)
+        };
+        let b = pair(F128::ZERO);
+        return if a_side { pair(F128::ONE) + b } else { b };
+    }
+
+    /// The block's `A` (`a_side`) or `B` matrix.
+    pub fn matrix(&self, a_side: bool) -> BlockMatrix<'_> {
+        return BlockMatrix { program: self, a_side };
+    }
+
     /// The published words of a block's witness.
     pub fn io_words(&self, z: &[u64]) -> Vec<F128> {
         return self
@@ -666,5 +687,57 @@ impl LincheckCircuit for Program {
 
     fn const_pin_col(&self) -> Option<usize> {
         return Some(CONST as usize);
+    }
+}
+
+/// One side of a block's constraint matrices, row `r` being the constraint that defines column `r`.
+pub struct BlockMatrix<'a> {
+    program: &'a Program,
+    a_side: bool,
+}
+
+impl FoldMatrix for BlockMatrix<'_> {
+    fn row_marginal(&self, w: &[F128], n_rows: usize) -> Vec<F128> {
+        let p = self.program;
+        let n = p.block_bits();
+        assert!(w.len() == n && n_rows == n);
+        let mut out = flock_prover::alloc_zeroed_vec::<F128>(n);
+        let rows = p.rows.cols.len();
+        let explicit: Vec<(u32, F128)> = (0..rows)
+            .into_par_iter()
+            .map(|r| {
+                let side = if self.a_side { p.row_a(r) } else { p.row_b(r) };
+                (p.rows.cols[r], side.iter().fold(F128::ZERO, |acc, &c| acc + w[c as usize]))
+            })
+            .collect();
+        for (col, v) in explicit {
+            out[col as usize] = v;
+        }
+        let first = p.geometry.head_subs() * SUB_BITS;
+        let end = first + p.geometry.keccak_subs() * SUB_BITS;
+        let w_konst = w[CONST as usize];
+        out[first..end].par_chunks_mut(SUB_BITS).zip(w[first..end].par_chunks(SUB_BITS)).for_each(|(o, local)| {
+            for (dst, v) in o.iter_mut().zip(keccak::row_fold(self.a_side, local, w_konst)) {
+                *dst += v;
+            }
+        });
+        return out;
+    }
+
+    fn col_marginal(&self, w: &[F128], _n_cols: usize) -> Vec<F128> {
+        let b = self.program.fold_alpha_batched(F128::ZERO, w);
+        if !self.a_side {
+            return b;
+        }
+        let ab = self.program.fold_alpha_batched(F128::ONE, w);
+        return ab.into_par_iter().zip(b.into_par_iter()).map(|(x, y)| x + y).collect();
+    }
+
+    fn n_rows(&self) -> usize {
+        return self.program.block_bits();
+    }
+
+    fn n_cols(&self) -> usize {
+        return self.program.block_bits();
     }
 }
