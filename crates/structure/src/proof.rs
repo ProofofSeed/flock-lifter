@@ -6,7 +6,7 @@
 //! Boolean table type's two matrices under the weights a lincheck leaves; and the wrap circuit's
 //! live mask, masked identity and wiring permutation at one point. The table claims are first
 //! folded to a point each. Four sumchecks then reduce everything to evaluations of the committed
-//! bytes' bits, which one opening discharges:
+//! bytes' bits, which a fifth reduces to one that an opening of the bytes discharges:
 //!
 //! - over the block's operations and their row masks, for the block claims' explicit part;
 //! - over the Keccak tensor, for the block claims' shared Keccak-f part;
@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adder::rotated_eq,
+    batch,
     key::{Held, KERNEL_LOG, Layout, OP_BITS, Region, StructKey, StructVk, WORD_BITS},
     subfield::{DEGREE, are_conjugates, bit_value, conjugates},
     sumcheck::{self, Rounds, Term, eq},
@@ -79,11 +80,13 @@ pub struct StructProof {
     pub small: Vec<F128>,
     /// The nonce ground before the bit-batching points.
     pub bits_nonce: u64,
-    /// Per bit claim, the square roots of its point, seven deep.
-    pub roots: Vec<Vec<Vec<F128>>>,
-    /// Per bit claim, the bytes' extension at the point and at its seven roots.
-    pub values: Vec<Vec<F128>>,
-    /// The opening of the committed bytes at every such point.
+    /// The sumcheck that reduces the bit claims to one.
+    pub batch_rounds: Rounds,
+    /// The square roots of that claim's point over the bytes, seven deep.
+    pub roots: Vec<Vec<F128>>,
+    /// The bytes' extension at the point and at its seven roots.
+    pub values: Vec<F128>,
+    /// The opening of the committed bytes at those points.
     pub opening: whir::Proof,
 }
 
@@ -558,25 +561,20 @@ pub fn prove<Ch: Challenger>(key: &StructKey, claims: &Claims, ch: &mut Ch) -> S
     bit_claims.push((layout.kernel.lift(&kernel_point, layout.n), kernel));
     bit_claims.push(list_claim(layout.cells, layout.n, &zeta[LOW..2 * LOW], &cells_point, &cells));
     bit_claims.push(list_claim(layout.small, layout.n, &zeta[2 * LOW..], &small_point, &small));
-    let all: Vec<Vec<Vec<F128>>> = bit_claims.iter().map(|(p, _)| conjugates(&p[3..])).collect();
-    let points: Vec<Vec<F256>> =
-        all.iter().flatten().map(|p| p.iter().map(|&c| F256::new(c, F128::ZERO)).collect()).collect();
+    let lambda = ch.sample_f128();
+    let (batch_rounds, point) = batch::prove(&key.bytes, &bit_claims, lambda, ch);
+    lap("bit claims");
+    let all = conjugates(&point[3..]);
+    let points: Vec<Vec<F256>> = all.iter().map(|p| p.iter().map(|&c| F256::new(c, F128::ZERO)).collect()).collect();
     let (opened, opening) = whir::open_kept(&key.committed, &points, ch);
     lap("opening");
-    let values: Vec<Vec<F128>> = opened
-        .chunks(DEGREE)
-        .map(|c| {
-            c.iter()
-                .map(|v| {
-                    assert_eq!(v.c1, F128::ZERO, "bytes at a base-field point are in the base field");
-                    v.c0
-                })
-                .collect()
+    let values: Vec<F128> = opened
+        .iter()
+        .map(|v| {
+            assert_eq!(v.c1, F128::ZERO, "bytes at a base-field point are in the base field");
+            v.c0
         })
         .collect();
-    for ((point, value), ys) in bit_claims.iter().zip(&values) {
-        debug_assert_eq!(bit_value(&point[..3], ys), *value, "a bit claim is the committed bytes'");
-    }
     return StructProof {
         folds,
         kernel_values,
@@ -592,7 +590,8 @@ pub fn prove<Ch: Challenger>(key: &StructKey, claims: &Claims, ch: &mut Ch) -> S
         small_rounds,
         small,
         bits_nonce,
-        roots: all.into_iter().map(|c| c[1..].to_vec()).collect(),
+        batch_rounds,
+        roots: all[1..].to_vec(),
         values,
         opening,
     };
@@ -693,25 +692,20 @@ pub fn reduce<Ch: Challenger>(layout: &Layout, claims: &Claims, proof: &StructPr
     bit_claims.push((layout.kernel.lift(&kernel_point, layout.n), proof.kernel));
     bit_claims.push(list_claim(layout.cells, layout.n, &zeta[LOW..2 * LOW], &cells_point, &proof.cells));
     bit_claims.push(list_claim(layout.small, layout.n, &zeta[2 * LOW..], &small_point, &proof.small));
-    if proof.roots.len() != bit_claims.len() || proof.values.len() != bit_claims.len() {
+    if proof.roots.len() != DEGREE - 1 || proof.values.len() != DEGREE {
         return Err(StructError::Shape);
     }
-    let mut points: Vec<Vec<F128>> = Vec::with_capacity(DEGREE * bit_claims.len());
-    let mut values: Vec<F128> = Vec::with_capacity(DEGREE * bit_claims.len());
-    for (((point, value), roots), ys) in bit_claims.iter().zip(&proof.roots).zip(&proof.values) {
-        if roots.len() != DEGREE - 1 || ys.len() != DEGREE {
-            return Err(StructError::Shape);
-        }
-        let mut all = vec![point[3..].to_vec()];
-        all.extend(roots.iter().cloned());
-        if !are_conjugates(&all) {
-            return Err(StructError::Roots);
-        }
-        if bit_value(&point[..3], ys) != *value {
-            return Err(StructError::Bits);
-        }
-        points.extend(all);
-        values.extend(ys.iter().copied());
+    let lambda = ch.sample_f128();
+    let (claim, point) =
+        sumcheck::verify(2, 3 + layout.n, batch::target(&bit_claims, lambda), &proof.batch_rounds, ch).ok_or(StructError::Grinding)?;
+    let mut points = vec![point[3..].to_vec()];
+    points.extend(proof.roots.iter().cloned());
+    if !are_conjugates(&points) {
+        return Err(StructError::Roots);
     }
+    if claim != batch::weight(&bit_claims, lambda, &point) * bit_value(&point[..3], &proof.values) {
+        return Err(StructError::Bits);
+    }
+    let values = proof.values.clone();
     return Ok((points, values));
 }

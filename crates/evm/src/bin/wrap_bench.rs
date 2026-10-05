@@ -55,7 +55,7 @@ fn load(dir: &PathBuf) -> Option<Case> {
 }
 
 fn make(n: usize, chunk: usize, rate: usize, tables: usize, dir: &PathBuf) -> Case {
-    let whir = WhirOuter::new(4, rate, Regime::Johnson, 6, 22, 128).with_merkle(MerkleHash::Keccak);
+    let whir = WhirOuter::new(4, rate, Regime::Johnson, 3, 22, 128).with_merkle(MerkleHash::Keccak);
     let (_, chain_code) = bip32_vector_1();
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code.clone(), HARDENED_OFFSET)));
     let (_, output, proof) = vector_1_proof(n, b"flock-lifter wrap bench entropy", BINDING);
@@ -230,6 +230,7 @@ fn run(case: &Case, n: usize, chunk: usize, rate: usize, tables: usize, stop: Op
         let id = U256::from_be_bytes(topics[1]).to::<u32>();
         let gas = U256::from_be_bytes::<32>(data[..32].try_into().unwrap()).to::<u64>();
         let state: [u8; 32] = data[32..64].try_into().unwrap();
+        let memory = U256::from_be_bytes::<32>(data[64..96].try_into().unwrap()).to::<u64>();
         let expected = case.marks.iter().find(|(m, _)| *m == id).map(|(_, s)| *s);
         let verdict = match expected {
             Some(e) if e == state => "✓",
@@ -239,7 +240,7 @@ fn run(case: &Case, n: usize, chunk: usize, rate: usize, tables: usize, stop: Op
             }
             None => "",
         };
-        println!("  stage {id:>3}: {:>12} gas {verdict}", last.map_or(0, |l| l - gas));
+        println!("  stage {id:>3}: {:>12} gas, {:>4} KB of memory {verdict}", last.map_or(0, |l| l - gas), memory / 1024);
         last = Some(gas);
     }
     assert!(ok, "a stage's transcript differs from the mirror's");

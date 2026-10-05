@@ -6,7 +6,7 @@
 use flock_prover::{field::F128, matrix_fold::FoldProof};
 use pofseed_flock_lift::transcript::KeccakChallenger;
 use pofseed_flock_lift_structure::{
-    key::{Held, KERNEL_LOG, Layout, OP_BITS, StructVk},
+    key::{KERNEL_LOG, Layout, OP_BITS, StructVk},
     proof::{Claims, StructProof, reduce},
     subfield::DEGREE,
     sumcheck::Rounds,
@@ -41,11 +41,6 @@ fn read_rounds(rd: &mut Reader, vars: usize, degree: usize) -> Result<Rounds> {
 /// The degrees of the sumchecks over the operations, the cells and the small entries.
 fn degrees(layout: &Layout) -> (usize, usize, usize) {
     return (OP_BITS + 1, layout.mu + 2, 1 + layout.small_id + 2 * layout.small_index);
-}
-
-/// The bit claims a proof under `layout` opens.
-fn bit_claims(layout: &Layout) -> usize {
-    return 5 + 2 * layout.tables.iter().filter(|(_, h)| matches!(h, Held::Dense(_))).count();
 }
 
 /// Encodes a structure proof under `vk` in the order its verifier reads it.
@@ -83,10 +78,9 @@ pub fn encode(vk: &StructVk, proof: &StructProof) -> Vec<u8> {
     rounds(&mut w, &proof.small_rounds);
     proof.small.iter().for_each(|&v| w.f128(v));
     w.nonce(proof.bits_nonce);
-    for (roots, values) in proof.roots.iter().zip(&proof.values) {
-        roots.iter().flatten().for_each(|&v| w.f128(v));
-        values.iter().for_each(|&v| w.f128(v));
-    }
+    rounds(&mut w, &proof.batch_rounds);
+    proof.roots.iter().flatten().for_each(|&v| w.f128(v));
+    proof.values.iter().for_each(|&v| w.f128(v));
     w.raw(&whir::encode(&vk.config, &proof.opening));
     return w.bytes;
 }
@@ -139,11 +133,9 @@ pub fn verify(vk: &StructVk, claims: &Claims, rd: &mut Reader, tr: &mut KeccakCh
     let small_rounds = read_rounds(rd, layout.small.slots_log(), d_small)?;
     let small = read_n(rd, layout.small_bits())?;
     let bits_nonce = rd.nonce()?;
-    let (mut roots, mut values) = (Vec::new(), Vec::new());
-    for _ in 0..bit_claims(layout) {
-        roots.push((0..DEGREE - 1).map(|_| read_n(rd, layout.n)).collect::<Result<Vec<Vec<F128>>>>()?);
-        values.push(read_n(rd, DEGREE)?);
-    }
+    let batch_rounds = read_rounds(rd, 3 + layout.n, 2)?;
+    let roots = (0..DEGREE - 1).map(|_| read_n(rd, layout.n)).collect::<Result<Vec<Vec<F128>>>>()?;
+    let values = read_n(rd, DEGREE)?;
     let proof = StructProof {
         folds,
         kernel_values,
@@ -159,6 +151,7 @@ pub fn verify(vk: &StructVk, claims: &Claims, rd: &mut Reader, tr: &mut KeccakCh
         small_rounds,
         small,
         bits_nonce,
+        batch_rounds,
         roots,
         values,
         opening: Proof {

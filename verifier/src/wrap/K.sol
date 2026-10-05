@@ -707,14 +707,15 @@ library K {
             }
             for { let i := 0 } lt(i, count) { i := add(i, 1) } {
                 let rec := mload(add(runs, mul(i, 12)))
-                let v := 1
+                let v := 0
                 for { let h := 0 } lt(h, 2) { h := add(h, 1) } {
                     // A height's low byte, middle byte and the rest, each into its table.
                     let t := and(shr(sub(224, shl(5, h)), rec), 0xffffffff)
                     let tp := add(tables, mul(h, 0x60))
-                    v := gm(v, mload(add(mload(tp), shl(5, and(t, 255)))))
-                    v := gm(v, mload(add(mload(add(tp, 0x20)), shl(5, and(shr(8, t), 255)))))
-                    v := gm(v, mload(add(mload(add(tp, 0x40)), shl(5, shr(16, t)))))
+                    let w := gm(gm(mload(add(mload(tp), shl(5, and(t, 255)))), mload(add(mload(add(tp, 0x20)), shl(5, and(shr(8, t), 255))))), mload(add(mload(add(tp, 0x40)), shl(5, shr(16, t)))))
+                    switch h
+                    case 0 { v := w }
+                    default { v := gm(v, w) }
                 }
                 mstore(add(out, shl(5, i)), v)
             }
@@ -768,13 +769,15 @@ library K {
         }
     }
 
-    /// The layout's branching program at the `2·layers` coordinates at memory `sigma`, for the `nu`
-    /// row coordinates at memory `row` and the `m` dense-index coordinates at memory `index`, both
-    /// zero beyond their lengths. The program reads, per layer, a bit of the row, of the dense index
-    /// and of each of a column's two cumulative heights, carrying the sum of row and first height into
-    /// the dense index and comparing the dense index with the second height; a state is the carry and
-    /// whether the index is below the height so far.
-    function boundary(uint256 row, uint256 nu, uint256 index, uint256 m, uint256 sigma, uint256 layers) internal pure returns (uint256 r) {
+    /// Runs the layout's branching program down the layers `to .. from` at the coordinates at memory
+    /// `sigma`, two per layer, over the four words of state at memory `g`, for the `nu` row coordinates
+    /// at memory `row` and the `m` dense-index coordinates at memory `index`, both zero beyond their
+    /// lengths. The program reads, per layer, a bit of the row, of the dense index and of each of a
+    /// column's two cumulative heights, carrying the sum of row and first height into the dense index
+    /// and comparing the dense index with the second height; a state is the carry and whether the
+    /// index is below the height so far, at `0x40·carry + 0x20·below`, and the program starts from
+    /// the state `(0, 1, 0, 0)` above the top layer and ends in the first word.
+    function boundary(uint256 row, uint256 nu, uint256 index, uint256 m, uint256 sigma, uint256 from, uint256 to, uint256 g) internal pure {
         assembly ("memory-safe") {
             function cl(ka, kb) -> ko {
                 let a0 := and(ka, 0x21084210842108421084210842108421)
@@ -802,14 +805,9 @@ library K {
             function gm(ka, kb) -> ko {
                 ko := red(cl(ka, kb))
             }
-            // Scratch: g[carry][below] at 0x40·carry + 0x20·below, the weight of ending below with no carry
-            // from the layers above; then h[carry][bit][below] at 0x80 + 0x80·carry + 0x40·bit + 0x20·below.
-            let g := mload(0x40)
-            mstore(g, 0)
-            mstore(add(g, 0x20), 1)
-            mstore(add(g, 0x40), 0)
-            mstore(add(g, 0x60), 0)
-            for { let layer := layers } gt(layer, 0) { layer := sub(layer, 1) } {
+            // Scratch: h[carry][bit][below] at 0x80·carry + 0x40·bit + 0x20·below.
+            let hs := mload(0x40)
+            for { let layer := from } gt(layer, to) { layer := sub(layer, 1) } {
                 let l := sub(layer, 1)
                 {
                     // Per next carry: the index bit 0 or 1 against the height's bit, keeping or setting the comparison.
@@ -818,7 +816,7 @@ library K {
                     let d := mload(add(sigma, add(shl(6, l), 0x20)))
                     for { let k := 0 } lt(k, 2) { k := add(k, 1) } {
                         let gp := add(g, shl(6, k))
-                        let hp := add(add(g, 0x80), shl(7, k))
+                        let hp := add(hs, shl(7, k))
                         let g0 := mload(gp)
                         let g1 := mload(add(gp, 0x20))
                         let s := xor(g0, gm(d, xor(g0, g1)))
@@ -831,20 +829,128 @@ library K {
                 }
                 {
                     // The row bit and the first height's bit: both zero, exactly one, both one.
-                    let a := 0
-                    if lt(l, nu) { a := mload(add(row, shl(5, l))) }
                     let c := mload(add(sigma, shl(6, l)))
-                    let both := gm(a, c)
-                    let none := xor(xor(1, a), xor(c, both))
-                    let one := xor(a, c)
-                    for { let k := 0 } lt(k, 4) { k := add(k, 1) } {
-                        // The state (carry, below) = (k >> 1, k & 1) reads h at 0x40·carry + 0x20·below onwards.
-                        let hp := add(add(g, 0x80), shl(5, k))
-                        mstore(add(g, shl(5, k)), xor(xor(gm(none, mload(hp)), gm(one, mload(add(hp, 0x40)))), gm(both, mload(add(hp, 0x80)))))
+                    switch lt(l, nu)
+                    case 0 {
+                        // No row bit: neither is one with weight 1 + c, exactly one with weight c.
+                        for { let k := 0 } lt(k, 4) { k := add(k, 1) } {
+                            let hp := add(hs, shl(5, k))
+                            let h0 := mload(hp)
+                            mstore(add(g, shl(5, k)), xor(h0, gm(c, xor(h0, mload(add(hp, 0x40))))))
+                        }
+                    }
+                    default {
+                        let a := mload(add(row, shl(5, l)))
+                        let both := gm(a, c)
+                        let none := xor(xor(1, a), xor(c, both))
+                        let one := xor(a, c)
+                        for { let k := 0 } lt(k, 4) { k := add(k, 1) } {
+                            // The state (carry, below) = (k >> 1, k & 1) reads h at 0x40·carry + 0x20·below onwards.
+                            let hp := add(hs, shl(5, k))
+                            mstore(add(g, shl(5, k)), xor(xor(gm(none, mload(hp)), gm(one, mload(add(hp, 0x40)))), gm(both, mload(add(hp, 0x80)))))
+                        }
                     }
                 }
             }
-            r := mload(g)
+        }
+    }
+
+    /// Writes at memory `out`, for each column of the `count` twelve-byte run records at memory `runs`,
+    /// the word of its run at memory `at`.
+    function spreadRuns(uint256 out, uint256 runs, uint256 count, uint256 at) internal pure {
+        assembly ("memory-safe") {
+
+            for { let i := 0 } lt(i, count) { i := add(i, 1) } {
+                let rec := mload(add(runs, mul(i, 12)))
+                let v := mload(add(at, shl(5, i)))
+                let p := add(out, shl(5, and(shr(176, rec), 0xffff)))
+                for { let q := add(p, shl(5, and(shr(160, rec), 0xffff))) } lt(p, q) { p := add(p, 0x20) } {
+                    mstore(p, v)
+                }
+            }
+        }
+    }
+
+    /// The multilinear extension of the `2^n` words at memory `v` at the `n` coordinates at memory
+    /// `point`, lowest first; the words are left as they are.
+    function extension(uint256 v, uint256 n, uint256 point) internal pure returns (uint256 r) {
+        assembly ("memory-safe") {
+            function cl(ka, kb) -> ko {
+                let a0 := and(ka, 0x21084210842108421084210842108421)
+                let a1 := and(ka, 0x42108421084210842108421084210842)
+                let a2 := and(ka, 0x84210842108421084210842108421084)
+                let a3 := and(ka, 0x08421084210842108421084210842108)
+                let a4 := and(ka, 0x10842108421084210842108421084210)
+                let b0 := and(kb, 0x21084210842108421084210842108421)
+                let b1 := and(kb, 0x42108421084210842108421084210842)
+                let b2 := and(kb, 0x84210842108421084210842108421084)
+                let b3 := and(kb, 0x08421084210842108421084210842108)
+                let b4 := and(kb, 0x10842108421084210842108421084210)
+                ko := and(xor(xor(mul(a0, b0), mul(a1, b4)), xor(xor(mul(a2, b3), mul(a3, b2)), mul(a4, b1))), 0x8421084210842108421084210842108421084210842108421084210842108421)
+                ko := xor(ko, and(xor(xor(mul(a0, b1), mul(a1, b0)), xor(xor(mul(a2, b4), mul(a3, b3)), mul(a4, b2))), 0x0842108421084210842108421084210842108421084210842108421084210842))
+                ko := xor(ko, and(xor(xor(mul(a0, b2), mul(a1, b1)), xor(xor(mul(a2, b0), mul(a3, b4)), mul(a4, b3))), 0x1084210842108421084210842108421084210842108421084210842108421084))
+                ko := xor(ko, and(xor(xor(mul(a0, b3), mul(a1, b2)), xor(xor(mul(a2, b1), mul(a3, b0)), mul(a4, b4))), 0x2108421084210842108421084210842108421084210842108421084210842108))
+                ko := xor(ko, and(xor(xor(mul(a0, b4), mul(a1, b3)), xor(xor(mul(a2, b2), mul(a3, b1)), mul(a4, b0))), 0x4210842108421084210842108421084210842108421084210842108421084210))
+            }
+            function red(kv) -> ko {
+                let h := shr(128, kv)
+                ko := xor(and(kv, 0xffffffffffffffffffffffffffffffff), xor(xor(h, shl(1, h)), xor(shl(2, h), shl(7, h))))
+                h := shr(128, ko)
+                ko := xor(and(ko, 0xffffffffffffffffffffffffffffffff), xor(xor(h, shl(1, h)), xor(shl(2, h), shl(7, h))))
+            }
+            function gm(ka, kb) -> ko {
+                ko := red(cl(ka, kb))
+            }
+            // Scratch: the words, folded in place; a pair of equal words folds without a product.
+            let s := mload(0x40)
+            mcopy(s, v, shl(add(n, 5), 1))
+            for { let j := 0 } lt(j, n) { j := add(j, 1) } {
+                let x := mload(add(point, shl(5, j)))
+                let half := shl(sub(sub(n, j), 1), 1)
+                for { let k := 0 } lt(k, half) { k := add(k, 1) } {
+                    let src := add(s, shl(6, k))
+                    let lo := mload(src)
+                    let d := xor(lo, mload(add(src, 0x20)))
+                    if d { lo := xor(lo, gm(x, d)) }
+                    mstore(add(s, shl(5, k)), lo)
+                }
+            }
+            r := mload(s)
+        }
+    }
+
+    /// `Σ_i a[i]·b[index_i]` over the `n` words at memory `a` and the words at memory `b` that the
+    /// `n` two-byte indices at memory `indices` select.
+    function dotIndexed(uint256 a, uint256 b, uint256 indices, uint256 n) internal pure returns (uint256 r) {
+        assembly ("memory-safe") {
+            function cl(ka, kb) -> ko {
+                let a0 := and(ka, 0x21084210842108421084210842108421)
+                let a1 := and(ka, 0x42108421084210842108421084210842)
+                let a2 := and(ka, 0x84210842108421084210842108421084)
+                let a3 := and(ka, 0x08421084210842108421084210842108)
+                let a4 := and(ka, 0x10842108421084210842108421084210)
+                let b0 := and(kb, 0x21084210842108421084210842108421)
+                let b1 := and(kb, 0x42108421084210842108421084210842)
+                let b2 := and(kb, 0x84210842108421084210842108421084)
+                let b3 := and(kb, 0x08421084210842108421084210842108)
+                let b4 := and(kb, 0x10842108421084210842108421084210)
+                ko := and(xor(xor(mul(a0, b0), mul(a1, b4)), xor(xor(mul(a2, b3), mul(a3, b2)), mul(a4, b1))), 0x8421084210842108421084210842108421084210842108421084210842108421)
+                ko := xor(ko, and(xor(xor(mul(a0, b1), mul(a1, b0)), xor(xor(mul(a2, b4), mul(a3, b3)), mul(a4, b2))), 0x0842108421084210842108421084210842108421084210842108421084210842))
+                ko := xor(ko, and(xor(xor(mul(a0, b2), mul(a1, b1)), xor(xor(mul(a2, b0), mul(a3, b4)), mul(a4, b3))), 0x1084210842108421084210842108421084210842108421084210842108421084))
+                ko := xor(ko, and(xor(xor(mul(a0, b3), mul(a1, b2)), xor(xor(mul(a2, b1), mul(a3, b0)), mul(a4, b4))), 0x2108421084210842108421084210842108421084210842108421084210842108))
+                ko := xor(ko, and(xor(xor(mul(a0, b4), mul(a1, b3)), xor(xor(mul(a2, b2), mul(a3, b1)), mul(a4, b0))), 0x4210842108421084210842108421084210842108421084210842108421084210))
+            }
+            function red(kv) -> ko {
+                let h := shr(128, kv)
+                ko := xor(and(kv, 0xffffffffffffffffffffffffffffffff), xor(xor(h, shl(1, h)), xor(shl(2, h), shl(7, h))))
+                h := shr(128, ko)
+                ko := xor(and(ko, 0xffffffffffffffffffffffffffffffff), xor(xor(h, shl(1, h)), xor(shl(2, h), shl(7, h))))
+            }
+            let acc := 0
+            for { let i := 0 } lt(i, n) { i := add(i, 1) } {
+                acc := xor(acc, cl(mload(add(a, shl(5, i))), mload(add(b, shl(5, shr(240, mload(add(indices, shl(1, i)))))))))
+            }
+            r := red(acc)
         }
     }
 
@@ -1025,11 +1131,11 @@ library K {
     }
 
     /// `Σ_j c_j·v_j^(2^j)` for the coefficients `c_j` with `Σ_t bit_t(w)·gamma·eq(r, t) = Σ_j c_j·w^(2^j)`,
-    /// over the 128 sixteen-byte values `v_j` at calldata `values`, as a chain of squarings over
-    /// `c_j^(2^-j)·v_j`: calldata `chains` holds 127 levels of eight sixteen-byte values, level `j` the
-    /// `2^j`-th roots of the seven coordinates at memory `r` and of `gamma`, each of which must square
-    /// into the level before; `d0` is `(x^6 + 1)^-1`. Returns the sum and whether the roots hold.
-    function rootedSum(uint256 gamma, uint256 r, uint256 chains, uint256 values, uint256 d0) internal pure returns (uint256 acc, bool ok) {
+    /// over the 128 sixteen-byte values `v_j` at calldata `values`, as `gamma` times a chain of
+    /// squarings over `c_j^(2^-j)·v_j / gamma^(2^-j)`, which has the closed form of `c_0 / gamma` at the
+    /// `2^j`-th roots of the seven coordinates at memory `r`: their `2^(128−j)`-th powers, met in the
+    /// order repeated squaring gives them. `d0` is `(x^6 + 1)^-1`.
+    function rootedSum(uint256 gamma, uint256 r, uint256 values, uint256 d0) internal pure returns (uint256 acc) {
         assembly ("memory-safe") {
             function cl(ka, kb) -> ko {
                 let a0 := and(ka, 0x21084210842108421084210842108421)
@@ -1067,81 +1173,46 @@ library K {
                 ko := and(or(ko, shl(1, ko)), 0x5555555555555555555555555555555555555555555555555555555555555555)
                 ko := red(ko)
             }
-            // Scratch: this level's eight roots, the equality table of three of them, then the arguments.
+            // Scratch: the seven coordinates' current powers.
             let s := mload(0x40)
-            mstore(add(s, 0x200), gamma)
-            mstore(add(s, 0x220), r)
-            mstore(add(s, 0x240), chains)
-            mstore(add(s, 0x260), values)
-            mstore(add(s, 0x280), d0)
-            mstore(add(s, 0x2a0), 1)
-            mstore(add(s, 0x2c0), 0)
+            mcopy(s, r, 0xe0)
+            let m01 := gm(mload(s), mload(add(s, 0x20)))
+            let m02 := gm(mload(s), mload(add(s, 0x40)))
+            let m12 := gm(mload(add(s, 0x20)), mload(add(s, 0x40)))
+            let m012 := gm(m01, mload(add(s, 0x40)))
+            let high := gm(gm(xor(1, mload(add(s, 0x60))), xor(1, mload(add(s, 0x80)))), gm(xor(1, mload(add(s, 0xa0))), xor(1, mload(add(s, 0xc0)))))
             for { let level := 128 } gt(level, 0) { level := sub(level, 1) } {
-                // This level's roots, checked against the level before.
-                switch level
-                case 1 {
-                    mcopy(s, mload(add(s, 0x220)), 0xe0)
-                    mstore(add(s, 0xe0), mload(add(s, 0x200)))
+                // Π_i (s_i + (1 + s_i)·x^(2^i)) over the squared coordinates.
+                let top := 1
+                for { let i := 0 } lt(i, 7) { i := add(i, 1) } {
+                    let si := sq(mload(add(s, shl(5, i))))
+                    mstore(add(s, shl(5, i)), si)
+                    top := gm(top, xor(si, red(shl(shl(i, 1), xor(1, si)))))
                 }
-                default {
-                    let at := add(mload(add(s, 0x240)), shl(7, sub(level, 2)))
-                    for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
-                        let v := shr(128, calldataload(add(at, shl(4, i))))
-                        let prev := mload(add(s, 0x200))
-                        switch level
-                        case 2 { if lt(i, 7) { prev := mload(add(mload(add(s, 0x220)), shl(5, i))) } }
-                        default { prev := shr(128, calldataload(add(sub(at, 128), shl(4, i)))) }
-                        if iszero(eq(sq(v), prev)) { mstore(add(s, 0x2a0), 0) }
-                        mstore(add(s, shl(5, i)), v)
-                    }
-                }
-                // Π_i (s_i + (1 + s_i)·x^(2^i)), kept in scratch.
+                m01 := sq(m01)
+                m02 := sq(m02)
+                m12 := sq(m12)
+                m012 := sq(m012)
+                high := sq(high)
+                let low := 0
                 {
-                    let top := 1
-                    for { let i := 0 } lt(i, 7) { i := add(i, 1) } {
-                        let si := mload(add(s, shl(5, i)))
-                        top := gm(top, xor(si, red(shl(shl(i, 1), xor(1, si)))))
-                    }
-                    mstore(add(s, 0x2e0), top)
+                    let s0 := mload(s)
+                    let s1 := mload(add(s, 0x20))
+                    let s2 := mload(add(s, 0x40))
+                    low := gm(high, red(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(xor(0x43, shl(1, s0)), shl(5, s0)), shl(6, s0)), s1), shl(1, s1)), shl(4, s1)), shl(6, s1)), shl(1, m01)), shl(3, m01)), shl(4, m01)), shl(5, m01)), shl(6, m01)), s2), shl(1, s2)), shl(2, s2)), shl(6, s2)), shl(2, m02)), shl(5, m02)), shl(6, m02)), shl(1, m12)), shl(2, m12)), shl(4, m12)), shl(6, m12)), m012), shl(2, m012)), shl(3, m012)), shl(4, m012)), shl(5, m012)), shl(6, m012))))
                 }
-                // The equality table of the three low coordinates, scaled by the others' weight at zero.
-                {
-                    let e := add(s, 0x100)
-                    mstore(e, gm(gm(xor(1, mload(add(s, 0x60))), xor(1, mload(add(s, 0x80)))), gm(xor(1, mload(add(s, 0xa0))), xor(1, mload(add(s, 0xc0))))))
-                    for { let i := 0 } lt(i, 3) { i := add(i, 1) } {
-                        let xi := mload(add(s, shl(5, i)))
-                        let half := shl(add(i, 5), 1)
-                        for { let p := e let end := add(e, half) } lt(p, end) { p := add(p, 0x20) } {
-                            let lo := mload(p)
-                            let hi := gm(lo, xi)
-                            mstore(add(p, half), hi)
-                            mstore(p, xor(lo, hi))
-                        }
-                    }
-                }
-                {
-                    let e := add(s, 0x100)
-                    let e0 := mload(e)
-                    let low := xor(xor(shl(1, e0), e0), mload(add(e, 0x20)))
-                    for { let t := 0 } lt(t, 7) { t := add(t, 1) } {
-                        low := xor(low, shl(sub(6, t), mload(add(e, shl(5, t)))))
-                    }
-                    let u := gm(gm(mload(add(s, 0x280)), mload(add(s, 0xe0))), xor(mload(add(s, 0x2e0)), red(low)))
-                    let v := shr(128, calldataload(add(mload(add(s, 0x260)), shl(4, sub(level, 1)))))
-                    mstore(add(s, 0x2c0), xor(sq(mload(add(s, 0x2c0))), gm(u, v)))
-                }
+                acc := xor(sq(acc), gm(gm(d0, xor(top, low)), shr(128, calldataload(add(values, shl(4, sub(level, 1)))))))
             }
-            acc := mload(add(s, 0x2c0))
-            ok := mload(add(s, 0x2a0))
+            acc := gm(gamma, acc)
         }
     }
 
-    /// Writes at memory `nt` the windowed sums of the products `y_i·Ŵ_i(x^j)`: for the variable `i` in
-    /// `0..vars` and the window `k` in `0..windows` of four bits of a position, sixteen extension words
-    /// at `16·(i·windows + k)`, entry `v` the sum over the bits `b` of `v` of the product at
-    /// `j = 4k + b`, which is zero below `i` and from `logDomain` on. `y` holds the extension challenges
-    /// and `space` the subspace polynomials' sixteen-byte values at `32·i + j`.
-    function shiftWindows(uint256 nt, uint256 y, uint256 space, uint256 vars, uint256 logDomain, uint256 windows) internal pure {
+    /// Writes at memory `out`, for the `m` extension challenges `y_i = y0 + y1·u` at memory `y`, the
+    /// constants that turn a factor `1 + y_i·w`, `w` in the base field, into `kappa_i·(u + t)` with
+    /// `t = tau_i + beta_i·(1 + w)`: `m` words of `tau_i`, then of `beta_i`, then of `kappa_i`, where
+    /// `N = y0² + y0·y1 + x^-1·y1²` is the norm, `beta = N/y1`, `tau = 1 + y0/y1 + beta` and
+    /// `kappa = y·y1/N`. Returns whether every `y1` and norm is invertible.
+    function shiftConstants(uint256 out, uint256 y, uint256 m) internal pure returns (bool ok) {
         assembly ("memory-safe") {
             function cl(ka, kb) -> ko {
                 let a0 := and(ka, 0x21084210842108421084210842108421)
@@ -1166,6 +1237,19 @@ library K {
                 h := shr(128, ko)
                 ko := xor(and(ko, 0xffffffffffffffffffffffffffffffff), xor(xor(h, shl(1, h)), xor(shl(2, h), shl(7, h))))
             }
+            function gm(ka, kb) -> ko {
+                ko := red(cl(ka, kb))
+            }
+            function sq(ka) -> ko {
+                ko := and(or(ka, shl(64, ka)), 0x0000000000000000ffffffffffffffff0000000000000000ffffffffffffffff)
+                ko := and(or(ko, shl(32, ko)), 0x00000000ffffffff00000000ffffffff00000000ffffffff00000000ffffffff)
+                ko := and(or(ko, shl(16, ko)), 0x0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff)
+                ko := and(or(ko, shl(8, ko)), 0x00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff)
+                ko := and(or(ko, shl(4, ko)), 0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f)
+                ko := and(or(ko, shl(2, ko)), 0x3333333333333333333333333333333333333333333333333333333333333333)
+                ko := and(or(ko, shl(1, ko)), 0x5555555555555555555555555555555555555555555555555555555555555555)
+                ko := red(ko)
+            }
             function xinv(kz) -> ko {
                 ko := xor(shr(1, kz), mul(and(kz, 1), 0x80000000000000000000000000000043))
             }
@@ -1182,6 +1266,86 @@ library K {
             function gm21(ka, ks) -> ko {
                 ko := or(shl(128, red(cl(shr(128, ka), ks))), red(cl(and(ka, 0xffffffffffffffffffffffffffffffff), ks)))
             }
+            function sqn(ka, kn) -> ko {
+                ko := ka
+                for { } kn { kn := sub(kn, 1) } { ko := sq(ko) }
+            }
+            function finv(ka) -> ko {
+                let b3 := gm(sq(gm(sq(ka), ka)), ka)
+                let b7 := gm(sq(gm(sqn(b3, 3), b3)), ka)
+                let b15 := gm(sq(gm(sqn(b7, 7), b7)), ka)
+                let b31 := gm(sq(gm(sqn(b15, 15), b15)), ka)
+                let b63 := gm(sq(gm(sqn(b31, 31), b31)), ka)
+                ko := sq(gm(sq(gm(sqn(b63, 63), b63)), ka))
+            }
+            // Scratch: per challenge, `y1` and the norm, then the products of everything before each.
+            let s := mload(0x40)
+            let pre := add(s, shl(6, m))
+            let acc := 1
+            for { let i := 0 } lt(i, m) { i := add(i, 1) } {
+                let w := mload(add(y, shl(5, i)))
+                let y0 := and(w, 0xffffffffffffffffffffffffffffffff)
+                let y1 := shr(128, w)
+                let norm := xor(xor(sq(y0), gm(y0, y1)), xinv(sq(y1)))
+                mstore(add(s, shl(6, i)), y1)
+                mstore(add(s, add(shl(6, i), 0x20)), norm)
+                mstore(add(pre, shl(6, i)), acc)
+                acc := gm(acc, y1)
+                mstore(add(pre, add(shl(6, i), 0x20)), acc)
+                acc := gm(acc, norm)
+            }
+            ok := iszero(iszero(acc))
+            acc := finv(acc)
+            for { let j := m } gt(j, 0) { j := sub(j, 1) } {
+                let i := sub(j, 1)
+                let norm := mload(add(s, add(shl(6, i), 0x20)))
+                let normInv := gm(acc, mload(add(pre, add(shl(6, i), 0x20))))
+                acc := gm(acc, norm)
+                let y1 := mload(add(s, shl(6, i)))
+                let y1Inv := gm(acc, mload(add(pre, shl(6, i))))
+                acc := gm(acc, y1)
+                let w := mload(add(y, shl(5, i)))
+                let beta := gm(norm, y1Inv)
+                mstore(add(out, shl(5, i)), xor(xor(1, gm(and(w, 0xffffffffffffffffffffffffffffffff), y1Inv)), beta))
+                mstore(add(out, shl(5, add(m, i))), beta)
+                mstore(add(out, shl(5, add(shl(1, m), i))), gm21(w, gm(y1, normInv)))
+            }
+        }
+    }
+
+    /// Writes at memory `nt` the windowed sums of the products `beta_i·Ŵ_i(x^j)`: for the variable `i`
+    /// in `0..vars` and the window `k` in `0..windows` of four bits of a position, sixteen words at
+    /// `16·(i·windows + k)`, entry `v` the sum over the bits `b` of `v` of the product at `j = 4k + b`,
+    /// which is zero below `i` and from `logDomain` on. `beta` holds the variables' constants and
+    /// `space` the subspace polynomials' sixteen-byte values at `32·i + j`.
+    function shiftWindows(uint256 nt, uint256 beta, uint256 space, uint256 vars, uint256 logDomain, uint256 windows) internal pure {
+        assembly ("memory-safe") {
+            function cl(ka, kb) -> ko {
+                let a0 := and(ka, 0x21084210842108421084210842108421)
+                let a1 := and(ka, 0x42108421084210842108421084210842)
+                let a2 := and(ka, 0x84210842108421084210842108421084)
+                let a3 := and(ka, 0x08421084210842108421084210842108)
+                let a4 := and(ka, 0x10842108421084210842108421084210)
+                let b0 := and(kb, 0x21084210842108421084210842108421)
+                let b1 := and(kb, 0x42108421084210842108421084210842)
+                let b2 := and(kb, 0x84210842108421084210842108421084)
+                let b3 := and(kb, 0x08421084210842108421084210842108)
+                let b4 := and(kb, 0x10842108421084210842108421084210)
+                ko := and(xor(xor(mul(a0, b0), mul(a1, b4)), xor(xor(mul(a2, b3), mul(a3, b2)), mul(a4, b1))), 0x8421084210842108421084210842108421084210842108421084210842108421)
+                ko := xor(ko, and(xor(xor(mul(a0, b1), mul(a1, b0)), xor(xor(mul(a2, b4), mul(a3, b3)), mul(a4, b2))), 0x0842108421084210842108421084210842108421084210842108421084210842))
+                ko := xor(ko, and(xor(xor(mul(a0, b2), mul(a1, b1)), xor(xor(mul(a2, b0), mul(a3, b4)), mul(a4, b3))), 0x1084210842108421084210842108421084210842108421084210842108421084))
+                ko := xor(ko, and(xor(xor(mul(a0, b3), mul(a1, b2)), xor(xor(mul(a2, b1), mul(a3, b0)), mul(a4, b4))), 0x2108421084210842108421084210842108421084210842108421084210842108))
+                ko := xor(ko, and(xor(xor(mul(a0, b4), mul(a1, b3)), xor(xor(mul(a2, b2), mul(a3, b1)), mul(a4, b0))), 0x4210842108421084210842108421084210842108421084210842108421084210))
+            }
+            function red(kv) -> ko {
+                let h := shr(128, kv)
+                ko := xor(and(kv, 0xffffffffffffffffffffffffffffffff), xor(xor(h, shl(1, h)), xor(shl(2, h), shl(7, h))))
+                h := shr(128, ko)
+                ko := xor(and(ko, 0xffffffffffffffffffffffffffffffff), xor(xor(h, shl(1, h)), xor(shl(2, h), shl(7, h))))
+            }
+            function gm(ka, kb) -> ko {
+                ko := red(cl(ka, kb))
+            }
             for { let i := 0 } lt(i, vars) { i := add(i, 1) } {
                 for { let k := 0 } lt(k, windows) { k := add(k, 1) } {
                     let base := add(nt, shl(9, add(mul(i, windows), k)))
@@ -1191,8 +1355,8 @@ library K {
                         {
                             let j := add(shl(2, k), b)
                             if and(iszero(lt(j, i)), lt(j, logDomain)) {
-                                val := mload(add(y, shl(5, i)))
-                                if gt(j, i) { val := gm21(val, shr(128, mload(add(space, shl(4, add(shl(5, i), j)))))) }
+                                val := mload(add(beta, shl(5, i)))
+                                if gt(j, i) { val := gm(val, shr(128, mload(add(space, shl(4, add(shl(5, i), j)))))) }
                             }
                         }
                         let half := shl(add(b, 5), 1)
@@ -1205,9 +1369,9 @@ library K {
         }
     }
 
-    /// `coeff·Π_i (1 + y_i + Σ_{j ≥ i, bit j of pos} y_i·Ŵ_i(x^j))` over `vars` variables, from the
-    /// windowed sums `shiftWindows` wrote at memory `nt`.
-    function shiftProduct(uint256 coeff, uint256 pos, uint256 y, uint256 nt, uint256 vars, uint256 windows) internal pure returns (uint256 r) {
+    /// `coeff·Π_i (u + tau_i + Σ_{j ≥ i, bit j of pos} beta_i·Ŵ_i(x^j))` over `vars` variables, from the
+    /// `vars` words at memory `tau` and the windowed sums `shiftWindows` wrote at memory `nt`.
+    function shiftProduct(uint256 coeff, uint256 pos, uint256 tau, uint256 nt, uint256 vars, uint256 windows) internal pure returns (uint256 r) {
         assembly ("memory-safe") {
             function cl(ka, kb) -> ko {
                 let a0 := and(ka, 0x21084210842108421084210842108421)
@@ -1250,11 +1414,14 @@ library K {
             }
             r := coeff
             for { let i := 0 } lt(i, vars) { i := add(i, 1) } {
-                let u := xor(1, mload(add(y, shl(5, i))))
+                let t := mload(add(tau, shl(5, i)))
                 for { let k := shr(2, i) } lt(k, windows) { k := add(k, 1) } {
-                    u := xor(u, mload(add(nt, shl(5, add(shl(4, add(mul(i, windows), k)), and(shr(shl(2, k), pos), 15))))))
+                    t := xor(t, mload(add(nt, shl(5, add(shl(4, add(mul(i, windows), k)), and(shr(shl(2, k), pos), 15))))))
                 }
-                r := gm2(r, u)
+                // (a0 + a1·u)·(u + t) with u² = u + x^-1.
+                let a0 := and(r, 0xffffffffffffffffffffffffffffffff)
+                let a1 := shr(128, r)
+                r := or(shl(128, xor(xor(a0, a1), red(cl(a1, t)))), xor(red(cl(a0, t)), xinv(a1)))
             }
         }
     }

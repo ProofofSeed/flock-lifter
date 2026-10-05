@@ -48,10 +48,11 @@ contract FlockWrap {
         Run memory x;
         x.phi = Constants.PHI8;
         x.p = g.unopenedAt + 32 * WrapKey.RESPONSES;
+        uint256 free = W.top();
+        FiatShamir.gate(s, g);
+        W.release(free);
         if (!_proofs(x, g.wordsAt, stop)) return bytes32(0);
         if (x.p != g.wordsAt + lift.length) revert Shape();
-        FiatShamir.gate(s, g);
-        W.mark(21, x.tr);
         return W.state(x.tr);
     }
 
@@ -101,10 +102,10 @@ contract FlockWrap {
         o.weight = WrapOpening.rooted(a, gammas, r);
         if (o.target != F.mul(o.value, o.weight)) revert Transport();
         W.mark(81, a.ch);
-        (uint256 bits, uint256 words) = WrapOpening.layoutSums(x, a, gammas, WrapKey.RUNS, WrapKey.GATE_RUNS);
+        uint256 free = W.top();
+        WrapOpening.layout(x, a, o.rho, gammas, WrapKey.RUNS, WrapKey.GATE_RUNS);
+        W.release(free);
         W.mark(82, a.ch);
-        WrapOpening.layoutCheck(a, o.rho, bits, words);
-        W.mark(83, a.ch);
         x.p = a.p;
         WhirClaim memory c;
         c.rounds = WrapKey.OUTER_ROUNDS;
@@ -131,16 +132,17 @@ contract FlockWrap {
         W.mark(9, x.tr);
         if (stop == 9) return 0;
         Whir.weigh(st, c.rounds, space);
+        W.release(free);
         W.mark(91, x.tr);
         return a.ch;
     }
 
     /// The proof of what the outer proof leaves about the committed tables.
     function _structure(Run memory x) private {
-        (uint256[][] memory claims, uint256[] memory claimed) = WrapStructure.reduce(x);
+        (uint256[] memory point, uint256 claim, uint256 weight) = WrapStructure.reduce(x);
         W.mark(11, x.tr);
         WhirClaim memory c;
-        (c.points, c.values, x.p) = WrapStructure.conjugates(claims, claimed, x.p);
+        (c.points, c.values, x.p) = WrapStructure.conjugates(point, claim, weight, x.p);
         W.mark(12, x.tr);
         c.rounds = WrapKey.STRUCT_ROUNDS;
         c.finalVars = WrapKey.STRUCT_FINAL;

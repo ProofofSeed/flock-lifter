@@ -4,6 +4,7 @@
 //! their evaluations.
 
 pub mod adder;
+pub mod batch;
 pub mod key;
 pub mod proof;
 pub mod subfield;

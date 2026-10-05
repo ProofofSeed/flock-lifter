@@ -660,7 +660,8 @@ impl<'r> UnionInstance<'r> {
         self.bind_statement(challenger, commitment);
         challenger.observe_label(b"flock-circuit-stmt-v2");
         challenger.observe_bytes(circuit_digest);
-        challenger.observe_bytes(&publics_digest(public));
+        let digest = challenger.publics_commitment(public).unwrap_or_else(|| publics_digest(public));
+        challenger.observe_bytes(&digest);
     }
 
     // -----------------------------------------------------------------------

@@ -8,15 +8,15 @@ use revm::primitives::{Address, U256};
 
 use crate::evm::{CODE_CAP, Evm, artifact, encode, runtime_len};
 
-/// The stage contracts, with the table each reads from a data contract.
-const STAGES: [(&str, &str); 7] = [
-    ("WrapStageA", "FIXED"),
-    ("WrapStageB", "ELEM_DATA"),
-    ("WrapStageC", "RUNS"),
-    ("WrapStageD", "SUBSPACE"),
-    ("WrapStageE", "SUBSPACE"),
-    ("WrapStageF", "SUBSPACE"),
-    ("WrapStageG", "SUBSPACE"),
+/// The stage contracts, with the table each reads from a data contract, if any.
+const STAGES: [(&str, Option<&str>); 7] = [
+    ("WrapStageA", Some("FIXED")),
+    ("WrapStageB", Some("ELEM_DATA")),
+    ("WrapStageC", Some("RUNS")),
+    ("WrapStageD", Some("SUBSPACE")),
+    ("WrapStageE", None),
+    ("WrapStageF", Some("SUBSPACE")),
+    ("WrapStageG", Some("SUBSPACE")),
 ];
 
 /// The stage after the last.
@@ -27,10 +27,10 @@ pub fn stage_name(stage: u64) -> &'static str {
     return match stage {
         1 => "gate, binding, zerocheck, lincheck, wiring",
         2 => "element class, ring switches, assist sumchecks, claim weights",
-        3 => "layout weights and boundary values",
-        4 => "layout equation, outer opening",
-        5 => "outer opening's last equation, table folds and sumchecks",
-        6 => "bit claims' conjugates, tables' opening",
+        3 => "layout equation",
+        4 => "outer opening",
+        5 => "table folds and sumchecks, bit claims' batching",
+        6 => "bit claim's conjugates, tables' opening",
         7 => "tables' opening's last equation",
         _ => "?",
     };
@@ -85,19 +85,21 @@ pub fn deploy(evm: &mut Evm, key: &str) -> Deployment {
     let mut stores: Vec<(&str, Address)> = Vec::new();
     let mut targets = Vec::new();
     for (name, data) in STAGES {
-        let store = match stores.iter().find(|(d, _)| *d == data) {
-            Some(&(_, at)) => at,
-            None => {
-                let bytes = table(key, data);
-                assert!(bytes.len() < CODE_CAP, "the table {data} is {} bytes", bytes.len());
-                let (at, gas) = evm.deploy(data_contract(&bytes));
-                contracts.push((format!("table {data}"), bytes.len() + 1, gas));
-                stores.push((data, at));
-                at
-            }
-        };
         let mut code = artifact("WrapStages.sol", name);
-        code.extend(address_word(store));
+        if let Some(data) = data {
+            let store = match stores.iter().find(|(d, _)| *d == data) {
+                Some(&(_, at)) => at,
+                None => {
+                    let bytes = table(key, data);
+                    assert!(bytes.len() < CODE_CAP, "the table {data} is {} bytes", bytes.len());
+                    let (at, gas) = evm.deploy(data_contract(&bytes));
+                    contracts.push((format!("table {data}"), bytes.len() + 1, gas));
+                    stores.push((data, at));
+                    at
+                }
+            };
+            code.extend(address_word(store));
+        }
         let (at, gas) = evm.deploy(code);
         let size = runtime_len("WrapStages.sol", name);
         assert!(size <= CODE_CAP, "{name} is {size} bytes");

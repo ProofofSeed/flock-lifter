@@ -24,12 +24,12 @@ pub struct Rounds {
 }
 
 /// The points round polynomials of degree `degree` are evaluated at by the prover.
-fn nodes(degree: usize) -> Vec<F128> {
+pub(crate) fn nodes(degree: usize) -> Vec<F128> {
     return (0..=degree as u64).map(|i| F128::new(i, 0)).collect();
 }
 
 /// The coefficients of the polynomial of degree below `nodes.len()` taking `values` at `nodes`.
-fn interpolate(nodes: &[F128], values: &[F128]) -> Vec<F128> {
+pub(crate) fn interpolate(nodes: &[F128], values: &[F128]) -> Vec<F128> {
     let n = nodes.len();
     // Newton's divided differences, then expansion.
     let mut dd = values.to_vec();
@@ -50,7 +50,7 @@ fn interpolate(nodes: &[F128], values: &[F128]) -> Vec<F128> {
 }
 
 /// The value at `r` of the round polynomial whose message is `message` under running claim `claim`.
-fn evaluate(claim: F128, message: &[F128], r: F128) -> F128 {
+pub(crate) fn evaluate(claim: F128, message: &[F128], r: F128) -> F128 {
     // g(0) + g(1) = claim, so the coefficients of degree one and above sum to the claim.
     let linear = message[1..].iter().fold(claim, |acc, &c| acc + c);
     let mut acc = F128::ZERO;

@@ -194,8 +194,9 @@ fn a_structure_proof_accepts_honest_claims_and_refuses_wrong_ones() {
     assert!(tamper(&|p| p.ops_rounds.messages[1][4] += F128::ONE).is_err(), "an operations round");
     assert!(tamper(&|p| p.kernel_rounds.messages[9][0] += F128::ONE).is_err(), "a tensor round");
     assert!(tamper(&|p| p.folds[0][0].bridge[1] += F128::ONE).is_err(), "a fold");
-    assert_eq!(tamper(&|p| p.roots[2][0][0] += F128::ONE), Err(StructError::Roots), "a root");
-    assert_eq!(tamper(&|p| p.values[1][3] += F128::ONE), Err(StructError::Bits), "an opened value");
+    assert!(tamper(&|p| p.batch_rounds.messages[4][1] += F128::ONE).is_err(), "a batching round");
+    assert_eq!(tamper(&|p| p.roots[2][0] += F128::ONE), Err(StructError::Roots), "a root");
+    assert_eq!(tamper(&|p| p.values[3] += F128::ONE), Err(StructError::Bits), "an opened value");
     assert!(tamper(&|p| p.opening.sumcheck[0][0] += flock_prover::field::F256::ONE).is_err(), "the opening");
 
     // Another commitment does not accept the proof.

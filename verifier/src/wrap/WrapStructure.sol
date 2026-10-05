@@ -571,49 +571,65 @@ library WrapStructure {
         }
     }
 
-    /// Verifies the proof at the cursor of the claims `x` holds, up to the claims it leaves on the
-    /// committed bytes' bits: the table claims' folds and the four sumchecks. Returns those claims'
-    /// points and values.
-    function reduce(Run memory x) internal pure returns (uint256[][] memory points, uint256[] memory values) {
+    /// Verifies the proof at the cursor of the claims `x` holds, up to the one claim it leaves on
+    /// the committed bytes' bits: the table claims' folds, the four sumchecks and the sumcheck that
+    /// batches their claims. Returns that claim's point, and the batching sumcheck's last claim
+    /// with the weight the bits' value there must carry.
+    function reduce(Run memory x) internal pure returns (uint256[] memory point, uint256 claim, uint256 weight) {
         Structure memory st;
         st.tr = x.tr;
         st.p = x.p;
         _folds(st, x);
         _sumchecks(st, x);
         uint256[] memory zeta = Transcript.powSampleVec(st.tr, Calldata.nonce(st.p), 3, 3 * LOW);
-        x.p = st.p + 8;
-        return _bitClaims(st, zeta);
+        st.p += 8;
+        (uint256[][] memory points, uint256[] memory values) = _bitClaims(st, zeta);
+        (point, claim, weight) = _batch(st, points, values);
+        x.p = st.p;
     }
 
-    /// Turns the claims on the committed bytes' bits into the opening they need: reads, per claim,
-    /// the square roots of its point, seven deep, and the bytes' values at the point and at the
-    /// roots, checks the roots and the claim's value, and returns the points and values of the
-    /// bytes with the cursor after them.
-    function conjugates(uint256[][] memory claims, uint256[] memory claimed, uint256 p)
+    /// The sumcheck of `Σ_k lambda^k·values[k]` over the claims at `points`: its point, its last
+    /// claim and `Σ_k lambda^k·eq(points[k], point)`.
+    function _batch(Structure memory st, uint256[][] memory points, uint256[] memory values)
+        private
+        pure
+        returns (uint256[] memory point, uint256 claim, uint256 weight)
+    {
+        uint256 lambda = Transcript.sample(st.tr);
+        for (uint256 k = values.length; k > 0; --k) {
+            claim = F.mul(claim, lambda) ^ values[k - 1];
+        }
+        (claim, point) = sumcheck(st, 2, 3 + WrapKey.STRUCT_N, claim);
+        for (uint256 k = points.length; k > 0; --k) {
+            weight = F.mul(weight, lambda) ^ K.eqProduct(W.ptr(points[k - 1]), W.ptr(point), point.length);
+        }
+    }
+
+    /// Turns the claim on the committed bytes' bits at `point` into the opening it needs: reads
+    /// the square roots of the point over the bytes, seven deep, and the bytes' values at the
+    /// point and at the roots, checks the roots and that the bits' value times `weight` is `claim`,
+    /// and returns the points and values of the bytes with the cursor after them.
+    function conjugates(uint256[] memory point, uint256 claim, uint256 weight, uint256 p)
         internal
         pure
         returns (uint256[][] memory points, uint256[] memory values, uint256)
     {
         uint256 n = WrapKey.STRUCT_N;
-        points = new uint256[][](8 * claims.length);
-        values = new uint256[](8 * claims.length);
-        bytes memory dual = WrapKey.DUAL;
-        for (uint256 k = 0; k < claims.length; ++k) {
-            uint256[] memory previous = _slice(claims[k], 3, n);
-            points[8 * k] = previous;
-            for (uint256 j = 1; j < 8; ++j) {
-                uint256[] memory root = new uint256[](n);
-                if (!K.roots(W.ptr(root), p, W.ptr(previous), n)) revert Roots();
-                p += 16 * n;
-                points[8 * k + j] = root;
-                previous = root;
-            }
-            if (_bitValue(claims[k], p, dual) != claimed[k]) revert Bits();
-            for (uint256 j = 0; j < 8; ++j) {
-                values[8 * k + j] = Calldata.f128(p + 16 * j);
-            }
-            p += 128;
+        points = new uint256[][](8);
+        values = new uint256[](8);
+        uint256[] memory previous = _slice(point, 3, n);
+        points[0] = previous;
+        for (uint256 j = 1; j < 8; ++j) {
+            uint256[] memory root = new uint256[](n);
+            if (!K.roots(W.ptr(root), p, W.ptr(previous), n)) revert Roots();
+            p += 16 * n;
+            points[j] = root;
+            previous = root;
         }
-        return (points, values, p);
+        if (F.mul(weight, _bitValue(point, p, WrapKey.DUAL)) != claim) revert Bits();
+        for (uint256 j = 0; j < 8; ++j) {
+            values[j] = Calldata.f128(p + 16 * j);
+        }
+        return (points, values, p + 128);
     }
 }

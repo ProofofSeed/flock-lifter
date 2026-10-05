@@ -128,8 +128,14 @@ library WrapPiop {
         x.capAt = p;
         W.appendCalldata(tr, p, capLen);
         W.append(tr, WrapKey.BIND_CIRCUIT);
-        W.appendCalldata(tr, p + capLen, 32);
-        x.p = p + capLen + 32;
+        uint256 numPublic = WrapKey.NUM_PUBLIC;
+        // The commitment to the public words that the statement binding absorbs.
+        assembly ("memory-safe") {
+            let len := mload(add(tr, 0x20))
+            mstore(add(add(tr, 0x40), len), keccak256(img, mul(16, numPublic)))
+            mstore(add(tr, 0x20), add(len, 32))
+        }
+        x.p = p + capLen;
         child = W.fork(tr, "flock-par-wiring-v1", 1 << 14);
         // The public words stay where they are: the transcript continues in a fresh region.
         uint256 next;
@@ -419,9 +425,17 @@ library WrapPiop {
         uint256[] memory low = W.eqTable(point, 0, 6, 1);
         uint256[] memory top = W.eqTable(point, 6, high, seed);
         uint256[] memory inner = new uint256[](blocks);
+        // A block equal to the one before it, as the rows that pad a chunk are, has its value.
+        bytes32 previous;
         for (uint256 b = 0; b < blocks; ++b) {
             uint256 len = n - 64 * b < 64 ? n - 64 * b : 64;
-            inner[b] = K.dotPacked(W.ptr(low), img + 16 * 64 * b, len);
+            uint256 at = img + 16 * 64 * b;
+            bytes32 h;
+            assembly ("memory-safe") {
+                h := keccak256(at, shl(4, len))
+            }
+            inner[b] = b > 0 && h == previous ? inner[b - 1] : K.dotPacked(W.ptr(low), at, len);
+            previous = h;
         }
         return K.dot(W.ptr(top), W.ptr(inner), blocks);
     }

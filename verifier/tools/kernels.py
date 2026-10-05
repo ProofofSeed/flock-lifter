@@ -303,14 +303,15 @@ KERNELS.append(kernel(
     BASE + [MUL],
     """for { let i := 0 } lt(i, count) { i := add(i, 1) } {
     let rec := mload(add(runs, mul(i, 12)))
-    let v := 1
+    let v := 0
     for { let h := 0 } lt(h, 2) { h := add(h, 1) } {
         // A height's low byte, middle byte and the rest, each into its table.
         let t := and(shr(sub(224, shl(5, h)), rec), 0xffffffff)
         let tp := add(tables, mul(h, 0x60))
-        v := gm(v, mload(add(mload(tp), shl(5, and(t, 255)))))
-        v := gm(v, mload(add(mload(add(tp, 0x20)), shl(5, and(shr(8, t), 255)))))
-        v := gm(v, mload(add(mload(add(tp, 0x40)), shl(5, shr(16, t)))))
+        let w := gm(gm(mload(add(mload(tp), shl(5, and(t, 255)))), mload(add(mload(add(tp, 0x20)), shl(5, and(shr(8, t), 255))))), mload(add(mload(add(tp, 0x40)), shl(5, shr(16, t)))))
+        switch h
+        case 0 { v := w }
+        default { v := gm(v, w) }
     }
     mstore(add(out, shl(5, i)), v)
 }""",
@@ -339,17 +340,12 @@ r := red(acc)""",
 ))
 
 KERNELS.append(kernel(
-    "The layout's branching program at the `2·layers` coordinates at memory `sigma`, for the `nu`\nrow coordinates at memory `row` and the `m` dense-index coordinates at memory `index`, both\nzero beyond their lengths. The program reads, per layer, a bit of the row, of the dense index\nand of each of a column's two cumulative heights, carrying the sum of row and first height into\nthe dense index and comparing the dense index with the second height; a state is the carry and\nwhether the index is below the height so far.",
-    "boundary(uint256 row, uint256 nu, uint256 index, uint256 m, uint256 sigma, uint256 layers) returns (uint256 r)",
+    "Runs the layout's branching program down the layers `to .. from` at the coordinates at memory\n`sigma`, two per layer, over the four words of state at memory `g`, for the `nu` row coordinates\nat memory `row` and the `m` dense-index coordinates at memory `index`, both zero beyond their\nlengths. The program reads, per layer, a bit of the row, of the dense index and of each of a\ncolumn's two cumulative heights, carrying the sum of row and first height into the dense index\nand comparing the dense index with the second height; a state is the carry and whether the\nindex is below the height so far, at `0x40·carry + 0x20·below`, and the program starts from\nthe state `(0, 1, 0, 0)` above the top layer and ends in the first word.",
+    "boundary(uint256 row, uint256 nu, uint256 index, uint256 m, uint256 sigma, uint256 from, uint256 to, uint256 g)",
     BASE + [MUL],
-    """// Scratch: g[carry][below] at 0x40·carry + 0x20·below, the weight of ending below with no carry
-// from the layers above; then h[carry][bit][below] at 0x80 + 0x80·carry + 0x40·bit + 0x20·below.
-let g := mload(0x40)
-mstore(g, 0)
-mstore(add(g, 0x20), 1)
-mstore(add(g, 0x40), 0)
-mstore(add(g, 0x60), 0)
-for { let layer := layers } gt(layer, 0) { layer := sub(layer, 1) } {
+    """// Scratch: h[carry][bit][below] at 0x80·carry + 0x40·bit + 0x20·below.
+let hs := mload(0x40)
+for { let layer := from } gt(layer, to) { layer := sub(layer, 1) } {
     let l := sub(layer, 1)
     {
         // Per next carry: the index bit 0 or 1 against the height's bit, keeping or setting the comparison.
@@ -358,7 +354,7 @@ for { let layer := layers } gt(layer, 0) { layer := sub(layer, 1) } {
         let d := mload(add(sigma, add(shl(6, l), 0x20)))
         for { let k := 0 } lt(k, 2) { k := add(k, 1) } {
             let gp := add(g, shl(6, k))
-            let hp := add(add(g, 0x80), shl(7, k))
+            let hp := add(hs, shl(7, k))
             let g0 := mload(gp)
             let g1 := mload(add(gp, 0x20))
             let s := xor(g0, gm(d, xor(g0, g1)))
@@ -371,20 +367,75 @@ for { let layer := layers } gt(layer, 0) { layer := sub(layer, 1) } {
     }
     {
         // The row bit and the first height's bit: both zero, exactly one, both one.
-        let a := 0
-        if lt(l, nu) { a := mload(add(row, shl(5, l))) }
         let c := mload(add(sigma, shl(6, l)))
-        let both := gm(a, c)
-        let none := xor(xor(1, a), xor(c, both))
-        let one := xor(a, c)
-        for { let k := 0 } lt(k, 4) { k := add(k, 1) } {
-            // The state (carry, below) = (k >> 1, k & 1) reads h at 0x40·carry + 0x20·below onwards.
-            let hp := add(add(g, 0x80), shl(5, k))
-            mstore(add(g, shl(5, k)), xor(xor(gm(none, mload(hp)), gm(one, mload(add(hp, 0x40)))), gm(both, mload(add(hp, 0x80)))))
+        switch lt(l, nu)
+        case 0 {
+            // No row bit: neither is one with weight 1 + c, exactly one with weight c.
+            for { let k := 0 } lt(k, 4) { k := add(k, 1) } {
+                let hp := add(hs, shl(5, k))
+                let h0 := mload(hp)
+                mstore(add(g, shl(5, k)), xor(h0, gm(c, xor(h0, mload(add(hp, 0x40))))))
+            }
+        }
+        default {
+            let a := mload(add(row, shl(5, l)))
+            let both := gm(a, c)
+            let none := xor(xor(1, a), xor(c, both))
+            let one := xor(a, c)
+            for { let k := 0 } lt(k, 4) { k := add(k, 1) } {
+                // The state (carry, below) = (k >> 1, k & 1) reads h at 0x40·carry + 0x20·below onwards.
+                let hp := add(hs, shl(5, k))
+                mstore(add(g, shl(5, k)), xor(xor(gm(none, mload(hp)), gm(one, mload(add(hp, 0x40)))), gm(both, mload(add(hp, 0x80)))))
+            }
         }
     }
+}""",
+))
+
+KERNELS.append(kernel(
+    "Writes at memory `out`, for each column of the `count` twelve-byte run records at memory `runs`,\nthe word of its run at memory `at`.",
+    "spreadRuns(uint256 out, uint256 runs, uint256 count, uint256 at)",
+    [],
+    """for { let i := 0 } lt(i, count) { i := add(i, 1) } {
+    let rec := mload(add(runs, mul(i, 12)))
+    let v := mload(add(at, shl(5, i)))
+    let p := add(out, shl(5, and(shr(176, rec), 0xffff)))
+    for { let q := add(p, shl(5, and(shr(160, rec), 0xffff))) } lt(p, q) { p := add(p, 0x20) } {
+        mstore(p, v)
+    }
+}""",
+))
+
+KERNELS.append(kernel(
+    "The multilinear extension of the `2^n` words at memory `v` at the `n` coordinates at memory\n`point`, lowest first; the words are left as they are.",
+    "extension(uint256 v, uint256 n, uint256 point) returns (uint256 r)",
+    BASE + [MUL],
+    """// Scratch: the words, folded in place; a pair of equal words folds without a product.
+let s := mload(0x40)
+mcopy(s, v, shl(add(n, 5), 1))
+for { let j := 0 } lt(j, n) { j := add(j, 1) } {
+    let x := mload(add(point, shl(5, j)))
+    let half := shl(sub(sub(n, j), 1), 1)
+    for { let k := 0 } lt(k, half) { k := add(k, 1) } {
+        let src := add(s, shl(6, k))
+        let lo := mload(src)
+        let d := xor(lo, mload(add(src, 0x20)))
+        if d { lo := xor(lo, gm(x, d)) }
+        mstore(add(s, shl(5, k)), lo)
+    }
 }
-r := mload(g)""",
+r := mload(s)""",
+))
+
+KERNELS.append(kernel(
+    "`Σ_i a[i]·b[index_i]` over the `n` words at memory `a` and the words at memory `b` that the\n`n` two-byte indices at memory `indices` select.",
+    "dotIndexed(uint256 a, uint256 b, uint256 indices, uint256 n) returns (uint256 r)",
+    BASE,
+    """let acc := 0
+for { let i := 0 } lt(i, n) { i := add(i, 1) } {
+    acc := xor(acc, cl(mload(add(a, shl(5, i))), mload(add(b, shl(5, shr(240, mload(add(indices, shl(1, i)))))))))
+}
+r := red(acc)""",
 ))
 
 KERNELS.append(kernel(
@@ -428,82 +479,116 @@ KERNELS.append(kernel(
 ))
 
 
+def low_part() -> str:
+    """The multilinear polynomial with the values `w_t` at the corners `t` of three coordinates,
+    from the coordinates and their products, unreduced: constants of degree at most six."""
+    w = [0b1000011, 0b100001, 0b10000, 0b1000, 0b100, 0b10, 0b1, 0]
+    names = {1: "s0", 2: "s1", 4: "s2", 3: "m01", 5: "m02", 6: "m12", 7: "m012"}
+    terms = [f"0x{w[0]:x}"]
+    for subset in range(1, 8):
+        c = 0
+        for t in range(8):
+            if t & subset == t:
+                c ^= w[t]
+        terms += [f"shl({b}, {names[subset]})" if b else names[subset] for b in range(7) if c >> b & 1]
+    expr = terms[0]
+    for t in terms[1:]:
+        expr = f"xor({expr}, {t})"
+    return expr
+
+
 KERNELS.append(kernel(
-    "`Σ_j c_j·v_j^(2^j)` for the coefficients `c_j` with `Σ_t bit_t(w)·gamma·eq(r, t) = Σ_j c_j·w^(2^j)`,\nover the 128 sixteen-byte values `v_j` at calldata `values`, as a chain of squarings over\n`c_j^(2^-j)·v_j`: calldata `chains` holds 127 levels of eight sixteen-byte values, level `j` the\n`2^j`-th roots of the seven coordinates at memory `r` and of `gamma`, each of which must square\ninto the level before; `d0` is `(x^6 + 1)^-1`. Returns the sum and whether the roots hold.",
-    "rootedSum(uint256 gamma, uint256 r, uint256 chains, uint256 values, uint256 d0) returns (uint256 acc, bool ok)",
+    "`Σ_j c_j·v_j^(2^j)` for the coefficients `c_j` with `Σ_t bit_t(w)·gamma·eq(r, t) = Σ_j c_j·w^(2^j)`,\nover the 128 sixteen-byte values `v_j` at calldata `values`, as `gamma` times a chain of\nsquarings over `c_j^(2^-j)·v_j / gamma^(2^-j)`, which has the closed form of `c_0 / gamma` at the\n`2^j`-th roots of the seven coordinates at memory `r`: their `2^(128−j)`-th powers, met in the\norder repeated squaring gives them. `d0` is `(x^6 + 1)^-1`.",
+    "rootedSum(uint256 gamma, uint256 r, uint256 values, uint256 d0) returns (uint256 acc)",
     BASE + [MUL, SQ],
-    """// Scratch: this level's eight roots, the equality table of three of them, then the arguments.
+    f"""// Scratch: the seven coordinates' current powers.
 let s := mload(0x40)
-mstore(add(s, 0x200), gamma)
-mstore(add(s, 0x220), r)
-mstore(add(s, 0x240), chains)
-mstore(add(s, 0x260), values)
-mstore(add(s, 0x280), d0)
-mstore(add(s, 0x2a0), 1)
-mstore(add(s, 0x2c0), 0)
-for { let level := 128 } gt(level, 0) { level := sub(level, 1) } {
-    // This level's roots, checked against the level before.
-    switch level
-    case 1 {
-        mcopy(s, mload(add(s, 0x220)), 0xe0)
-        mstore(add(s, 0xe0), mload(add(s, 0x200)))
-    }
-    default {
-        let at := add(mload(add(s, 0x240)), shl(7, sub(level, 2)))
-        for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
-            let v := shr(128, calldataload(add(at, shl(4, i))))
-            let prev := mload(add(s, 0x200))
-            switch level
-            case 2 { if lt(i, 7) { prev := mload(add(mload(add(s, 0x220)), shl(5, i))) } }
-            default { prev := shr(128, calldataload(add(sub(at, 128), shl(4, i)))) }
-            if iszero(eq(sq(v), prev)) { mstore(add(s, 0x2a0), 0) }
-            mstore(add(s, shl(5, i)), v)
-        }
-    }
-    // Π_i (s_i + (1 + s_i)·x^(2^i)), kept in scratch.
-    {
-        let top := 1
-        for { let i := 0 } lt(i, 7) { i := add(i, 1) } {
-            let si := mload(add(s, shl(5, i)))
-            top := gm(top, xor(si, red(shl(shl(i, 1), xor(1, si)))))
-        }
-        mstore(add(s, 0x2e0), top)
-    }
-    // The equality table of the three low coordinates, scaled by the others' weight at zero.
-    {
-        let e := add(s, 0x100)
-        mstore(e, gm(gm(xor(1, mload(add(s, 0x60))), xor(1, mload(add(s, 0x80)))), gm(xor(1, mload(add(s, 0xa0))), xor(1, mload(add(s, 0xc0))))))
-        for { let i := 0 } lt(i, 3) { i := add(i, 1) } {
-            let xi := mload(add(s, shl(5, i)))
-            let half := shl(add(i, 5), 1)
-            for { let p := e let end := add(e, half) } lt(p, end) { p := add(p, 0x20) } {
-                let lo := mload(p)
-                let hi := gm(lo, xi)
-                mstore(add(p, half), hi)
-                mstore(p, xor(lo, hi))
-            }
-        }
-    }
-    {
-        let e := add(s, 0x100)
-        let e0 := mload(e)
-        let low := xor(xor(shl(1, e0), e0), mload(add(e, 0x20)))
-        for { let t := 0 } lt(t, 7) { t := add(t, 1) } {
-            low := xor(low, shl(sub(6, t), mload(add(e, shl(5, t)))))
-        }
-        let u := gm(gm(mload(add(s, 0x280)), mload(add(s, 0xe0))), xor(mload(add(s, 0x2e0)), red(low)))
-        let v := shr(128, calldataload(add(mload(add(s, 0x260)), shl(4, sub(level, 1)))))
-        mstore(add(s, 0x2c0), xor(sq(mload(add(s, 0x2c0))), gm(u, v)))
-    }
+mcopy(s, r, 0xe0)
+let m01 := gm(mload(s), mload(add(s, 0x20)))
+let m02 := gm(mload(s), mload(add(s, 0x40)))
+let m12 := gm(mload(add(s, 0x20)), mload(add(s, 0x40)))
+let m012 := gm(m01, mload(add(s, 0x40)))
+let high := gm(gm(xor(1, mload(add(s, 0x60))), xor(1, mload(add(s, 0x80)))), gm(xor(1, mload(add(s, 0xa0))), xor(1, mload(add(s, 0xc0)))))
+for {{ let level := 128 }} gt(level, 0) {{ level := sub(level, 1) }} {{
+    // Π_i (s_i + (1 + s_i)·x^(2^i)) over the squared coordinates.
+    let top := 1
+    for {{ let i := 0 }} lt(i, 7) {{ i := add(i, 1) }} {{
+        let si := sq(mload(add(s, shl(5, i))))
+        mstore(add(s, shl(5, i)), si)
+        top := gm(top, xor(si, red(shl(shl(i, 1), xor(1, si)))))
+    }}
+    m01 := sq(m01)
+    m02 := sq(m02)
+    m12 := sq(m12)
+    m012 := sq(m012)
+    high := sq(high)
+    let low := 0
+    {{
+        let s0 := mload(s)
+        let s1 := mload(add(s, 0x20))
+        let s2 := mload(add(s, 0x40))
+        low := gm(high, red({low_part()}))
+    }}
+    acc := xor(sq(acc), gm(gm(d0, xor(top, low)), shr(128, calldataload(add(values, shl(4, sub(level, 1)))))))
+}}
+acc := gm(gamma, acc)""",
+))
+
+INV = """function sqn(ka, kn) -> ko {
+    ko := ka
+    for { } kn { kn := sub(kn, 1) } { ko := sq(ko) }
 }
-acc := mload(add(s, 0x2c0))
-ok := mload(add(s, 0x2a0))""",
+function finv(ka) -> ko {
+    let b3 := gm(sq(gm(sq(ka), ka)), ka)
+    let b7 := gm(sq(gm(sqn(b3, 3), b3)), ka)
+    let b15 := gm(sq(gm(sqn(b7, 7), b7)), ka)
+    let b31 := gm(sq(gm(sqn(b15, 15), b15)), ka)
+    let b63 := gm(sq(gm(sqn(b31, 31), b31)), ka)
+    ko := sq(gm(sq(gm(sqn(b63, 63), b63)), ka))
+}"""
+
+KERNELS.append(kernel(
+    "Writes at memory `out`, for the `m` extension challenges `y_i = y0 + y1·u` at memory `y`, the\nconstants that turn a factor `1 + y_i·w`, `w` in the base field, into `kappa_i·(u + t)` with\n`t = tau_i + beta_i·(1 + w)`: `m` words of `tau_i`, then of `beta_i`, then of `kappa_i`, where\n`N = y0² + y0·y1 + x^-1·y1²` is the norm, `beta = N/y1`, `tau = 1 + y0/y1 + beta` and\n`kappa = y·y1/N`. Returns whether every `y1` and norm is invertible.",
+    "shiftConstants(uint256 out, uint256 y, uint256 m) returns (bool ok)",
+    BASE + [MUL, SQ, MUL256, INV],
+    f"""// Scratch: per challenge, `y1` and the norm, then the products of everything before each.
+let s := mload(0x40)
+let pre := add(s, shl(6, m))
+let acc := 1
+for {{ let i := 0 }} lt(i, m) {{ i := add(i, 1) }} {{
+    let w := mload(add(y, shl(5, i)))
+    let y0 := and(w, {M128})
+    let y1 := shr(128, w)
+    let norm := xor(xor(sq(y0), gm(y0, y1)), xinv(sq(y1)))
+    mstore(add(s, shl(6, i)), y1)
+    mstore(add(s, add(shl(6, i), 0x20)), norm)
+    mstore(add(pre, shl(6, i)), acc)
+    acc := gm(acc, y1)
+    mstore(add(pre, add(shl(6, i), 0x20)), acc)
+    acc := gm(acc, norm)
+}}
+ok := iszero(iszero(acc))
+acc := finv(acc)
+for {{ let j := m }} gt(j, 0) {{ j := sub(j, 1) }} {{
+    let i := sub(j, 1)
+    let norm := mload(add(s, add(shl(6, i), 0x20)))
+    let normInv := gm(acc, mload(add(pre, add(shl(6, i), 0x20))))
+    acc := gm(acc, norm)
+    let y1 := mload(add(s, shl(6, i)))
+    let y1Inv := gm(acc, mload(add(pre, shl(6, i))))
+    acc := gm(acc, y1)
+    let w := mload(add(y, shl(5, i)))
+    let beta := gm(norm, y1Inv)
+    mstore(add(out, shl(5, i)), xor(xor(1, gm(and(w, {M128}), y1Inv)), beta))
+    mstore(add(out, shl(5, add(m, i))), beta)
+    mstore(add(out, shl(5, add(shl(1, m), i))), gm21(w, gm(y1, normInv)))
+}}""",
 ))
 
 KERNELS.append(kernel(
-    "Writes at memory `nt` the windowed sums of the products `y_i·Ŵ_i(x^j)`: for the variable `i` in\n`0..vars` and the window `k` in `0..windows` of four bits of a position, sixteen extension words\nat `16·(i·windows + k)`, entry `v` the sum over the bits `b` of `v` of the product at\n`j = 4k + b`, which is zero below `i` and from `logDomain` on. `y` holds the extension challenges\nand `space` the subspace polynomials' sixteen-byte values at `32·i + j`.",
-    "shiftWindows(uint256 nt, uint256 y, uint256 space, uint256 vars, uint256 logDomain, uint256 windows)",
-    BASE + [MUL256],
+    "Writes at memory `nt` the windowed sums of the products `beta_i·Ŵ_i(x^j)`: for the variable `i`\nin `0..vars` and the window `k` in `0..windows` of four bits of a position, sixteen words at\n`16·(i·windows + k)`, entry `v` the sum over the bits `b` of `v` of the product at `j = 4k + b`,\nwhich is zero below `i` and from `logDomain` on. `beta` holds the variables' constants and\n`space` the subspace polynomials' sixteen-byte values at `32·i + j`.",
+    "shiftWindows(uint256 nt, uint256 beta, uint256 space, uint256 vars, uint256 logDomain, uint256 windows)",
+    BASE + [MUL],
     """for { let i := 0 } lt(i, vars) { i := add(i, 1) } {
     for { let k := 0 } lt(k, windows) { k := add(k, 1) } {
         let base := add(nt, shl(9, add(mul(i, windows), k)))
@@ -513,8 +598,8 @@ KERNELS.append(kernel(
             {
                 let j := add(shl(2, k), b)
                 if and(iszero(lt(j, i)), lt(j, logDomain)) {
-                    val := mload(add(y, shl(5, i)))
-                    if gt(j, i) { val := gm21(val, shr(128, mload(add(space, shl(4, add(shl(5, i), j)))))) }
+                    val := mload(add(beta, shl(5, i)))
+                    if gt(j, i) { val := gm(val, shr(128, mload(add(space, shl(4, add(shl(5, i), j)))))) }
                 }
             }
             let half := shl(add(b, 5), 1)
@@ -527,17 +612,20 @@ KERNELS.append(kernel(
 ))
 
 KERNELS.append(kernel(
-    "`coeff·Π_i (1 + y_i + Σ_{j ≥ i, bit j of pos} y_i·Ŵ_i(x^j))` over `vars` variables, from the\nwindowed sums `shiftWindows` wrote at memory `nt`.",
-    "shiftProduct(uint256 coeff, uint256 pos, uint256 y, uint256 nt, uint256 vars, uint256 windows) returns (uint256 r)",
+    "`coeff·Π_i (u + tau_i + Σ_{j ≥ i, bit j of pos} beta_i·Ŵ_i(x^j))` over `vars` variables, from the\n`vars` words at memory `tau` and the windowed sums `shiftWindows` wrote at memory `nt`.",
+    "shiftProduct(uint256 coeff, uint256 pos, uint256 tau, uint256 nt, uint256 vars, uint256 windows) returns (uint256 r)",
     BASE + [MUL256],
-    """r := coeff
-for { let i := 0 } lt(i, vars) { i := add(i, 1) } {
-    let u := xor(1, mload(add(y, shl(5, i))))
-    for { let k := shr(2, i) } lt(k, windows) { k := add(k, 1) } {
-        u := xor(u, mload(add(nt, shl(5, add(shl(4, add(mul(i, windows), k)), and(shr(shl(2, k), pos), 15))))))
-    }
-    r := gm2(r, u)
-}""",
+    f"""r := coeff
+for {{ let i := 0 }} lt(i, vars) {{ i := add(i, 1) }} {{
+    let t := mload(add(tau, shl(5, i)))
+    for {{ let k := shr(2, i) }} lt(k, windows) {{ k := add(k, 1) }} {{
+        t := xor(t, mload(add(nt, shl(5, add(shl(4, add(mul(i, windows), k)), and(shr(shl(2, k), pos), 15))))))
+    }}
+    // (a0 + a1·u)·(u + t) with u² = u + x^-1.
+    let a0 := and(r, {M128})
+    let a1 := shr(128, r)
+    r := or(shl(128, xor(xor(a0, a1), red(cl(a1, t)))), xor(red(cl(a0, t)), xinv(a1)))
+}}""",
 ))
 
 
