@@ -403,17 +403,27 @@ library WrapPiop {
     }
 
     /// The multilinear extension of the `n` sixteen-byte words at memory `img`, zero-padded, at
-    /// the first `vars` coordinates of `point`, by folding its low variable first.
-    function publicEval(uint256 img, uint256 n, uint256[] memory point, uint256 vars) internal pure returns (uint256) {
-        uint256 len = (n + 1) / 2;
-        uint256[] memory v = new uint256[](len + 1);
-        K.foldPacked(img, W.ptr(v), n, point[0]);
-        for (uint256 j = 1; j < vars; ++j) {
-            v[len] = 0;
-            len = (len + 1) / 2;
-            K.fold(W.ptr(v), len, point[j]);
+    /// the first `vars` coordinates of `point`.
+    function publicEval(uint256 img, uint256 n, uint256[] memory point, uint256 vars) internal pure returns (uint256 acc) {
+        // Blocks of 64 words against the six low coordinates, then the blocks against the rest:
+        // the coordinates beyond the blocks' index weigh their zero side.
+        uint256 blocks = (n + 63) / 64;
+        uint256 high;
+        while ((1 << high) < blocks) {
+            ++high;
         }
-        return v[0];
+        uint256 seed = 1;
+        for (uint256 i = 6 + high; i < vars; ++i) {
+            seed = F.mul(seed, 1 ^ point[i]);
+        }
+        uint256[] memory low = W.eqTable(point, 0, 6, 1);
+        uint256[] memory top = W.eqTable(point, 6, high, seed);
+        uint256[] memory inner = new uint256[](blocks);
+        for (uint256 b = 0; b < blocks; ++b) {
+            uint256 len = n - 64 * b < 64 ? n - 64 * b : 64;
+            inner[b] = K.dotPacked(W.ptr(low), img + 16 * 64 * b, len);
+        }
+        return K.dot(W.ptr(top), W.ptr(inner), blocks);
     }
 
     /// `Σ_i eq[i]·v[i]` for the sparse vector at byte `at` of `data`.

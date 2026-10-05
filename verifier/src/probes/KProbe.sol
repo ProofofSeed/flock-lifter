@@ -51,4 +51,25 @@ contract KProbe {
         gasUsed = g - gasleft();
         slow = F.frob(a, k);
     }
+
+    /// The gas of an equality product over `n` extension factors, and of `n` window lookups.
+    function products(uint256 n) external view returns (uint256 eqGas, uint256 shiftGas) {
+        uint256[] memory z = new uint256[](n);
+        uint256[] memory y = new uint256[](n);
+        for (uint256 i = 0; i < n; ++i) {
+            z[i] = uint256(keccak256(abi.encode(i)));
+            y[i] = uint256(keccak256(abi.encode(i, 1)));
+        }
+        uint256 g = gasleft();
+        uint256 r = K.eqProduct256(z[0], _ptr(z), _ptr(y), n);
+        eqGas = g - gasleft();
+        uint256 windows = 7;
+        uint256[] memory nt = new uint256[](16 * n * windows);
+        for (uint256 i = 0; i < nt.length; i += 5) {
+            nt[i] = r ^ i;
+        }
+        g = gasleft();
+        r = K.shiftProduct(r, 0x5a5a5a5, _ptr(y), _ptr(nt), n, windows);
+        shiftGas = g - gasleft();
+    }
 }

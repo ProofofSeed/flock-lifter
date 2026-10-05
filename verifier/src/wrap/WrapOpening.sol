@@ -232,9 +232,8 @@ library WrapOpening {
     /// values.
     function rooted(Assist memory a, uint256[] memory gammas, uint256[][2] memory r) internal pure returns (uint256 weight) {
         weight = Calldata.f128(a.valuesAt + 256 * 16) ^ Calldata.f128(a.valuesAt + 257 * 16);
-        uint256 d0 = W.entry(WrapKey.DINV, 0, 16);
         for (uint256 i = 0; i < 2; ++i) {
-            (uint256 sum, bool ok) = K.rootedSum(gammas[i], W.ptr(r[i]), a.p, a.valuesAt + 128 * 16 * i, d0);
+            (uint256 sum, bool ok) = K.rootedSum(gammas[i], W.ptr(r[i]), a.p, a.valuesAt + 128 * 16 * i, WrapKey.D0);
             if (!ok) revert Roots();
             weight ^= sum;
             a.p += 127 * 128;
@@ -269,12 +268,8 @@ library WrapOpening {
 
     /// The branching program's value over the boundary bits at `sigma`, for the row point
     /// `row[from .. from + NU)` and the dense index `index`.
-    function _boundary(uint256[] memory row, uint256 from, uint256[] memory index, uint256[] memory sigma, bytes memory trans)
-        private
-        pure
-        returns (uint256)
-    {
-        return K.boundary(W.ptr(row) + 32 * from, WrapKey.NU, W.ptr(index), index.length, W.ptr(sigma), sigma.length / 2, W.data(trans));
+    function _boundary(uint256[] memory row, uint256 from, uint256[] memory index, uint256[] memory sigma) private pure returns (uint256) {
+        return K.boundary(W.ptr(row) + 32 * from, WrapKey.NU, W.ptr(index), index.length, W.ptr(sigma), sigma.length / 2);
     }
 
     /// The two sums of the anchor's last equation: over the claims on the committed bits, each
@@ -285,21 +280,20 @@ library WrapOpening {
         pure
         returns (uint256 bits, uint256 words)
     {
-        bytes memory trans = WrapKey.TRANSITIONS;
         uint256[] memory at = _atRuns(a.sigma, runs);
         uint256 nu = WrapKey.NU;
         uint256 low = WrapKey.M_BOOL - nu - 7;
         uint256 g128 = K.frob(a.gamma, 7);
         uint256 g256 = F.sq(g128);
         // The two claims on the committed bits: their column points end in zeros.
-        bits = F.mul(_weigh(W.eqTable(x.rr, 1, low, 1), 0, runs, at), _boundary(x.mlv, 1, a.point, a.sigma, trans))
-            ^ F.mul(g128, F.mul(_weigh(W.eqTable(x.rRest, 1 + nu, low, 1), 0, runs, at), _boundary(x.rRest, 1, a.point, a.sigma, trans)));
+        bits = F.mul(_weigh(W.eqTable(x.rr, 1, low, 1), 0, runs, at), _boundary(x.mlv, 1, a.point, a.sigma))
+            ^ F.mul(g128, F.mul(_weigh(W.eqTable(x.rRest, 1 + nu, low, 1), 0, runs, at), _boundary(x.rRest, 1, a.point, a.sigma)));
         // The element class's two claims share their rows; their column points end in the region's frozen bits.
         {
             uint256 cols = x.ecol.length;
             uint256 base = WrapKey.ELEM_FROZEN << cols;
             uint256 w = _weigh(W.eqTable(x.er, nu, cols, gammas[2]), base, runs, at) ^ _weigh(W.eqTable(x.ecol, 0, cols, gammas[3]), base, runs, at);
-            words = F.mul(g256, F.mul(w, _boundary(x.er, 0, a.point, a.sigma, trans)));
+            words = F.mul(g256, F.mul(w, _boundary(x.er, 0, a.point, a.sigma)));
         }
         // The gathered cell slots share the wiring point's rows; each reads one column.
         {
@@ -308,7 +302,7 @@ library WrapOpening {
                 hot[W.entry(gateRuns, i, 2)] ^= gammas[4 + i];
             }
             uint256 w = K.dot(W.ptr(hot), W.ptr(at), at.length);
-            words ^= F.mul(F.mul(g256, a.gamma), F.mul(w, _boundary(x.rho, 0, a.point, a.sigma, trans)));
+            words ^= F.mul(F.mul(g256, a.gamma), F.mul(w, _boundary(x.rho, 0, a.point, a.sigma)));
         }
     }
 

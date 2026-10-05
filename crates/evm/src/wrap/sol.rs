@@ -110,25 +110,20 @@ pub fn key_source(vk: &Vk) -> String {
     s.push_str("/// The constants of one wrapped lift's verifier: the wrap circuit's shape, its commitment's\n/// schedule, and the commitment to one statement's fixed tables.\nlibrary WrapKey {\n");
     constant(&mut s, "log2 of the circuit's rows.", "NU", vk.nu);
     constant(&mut s, "Variables of the Boolean region.", "M_BOOL", vk.m_bool);
-    constant(&mut s, "Variables of the whole address space.", "M_TOTAL", vk.m_total);
     constant(&mut s, "Variables of the element region.", "M_ELEM", vk.m_elem);
     constant(&mut s, "log2 of the committed stack's words.", "DENSE_LOG", vk.dense_log);
-    constant(&mut s, "log2 of the layout's columns.", "K_COLS", vk.k_cols);
     constant(&mut s, "log2 of the cells.", "MU", vk.mu);
     constant(&mut s, "Proof-of-work bits before the wiring argument's fingerprint challenge.", "GKR_BITS", vk.gkr_bits as usize);
     constant(&mut s, "Gate cell slots.", "N_GATE", vk.gate_cols.len());
     constant(&mut s, "Words of the public segment.", "NUM_PUBLIC", vk.num_public);
     constant(&mut s, "Fixed words opening the public segment.", "N_FIXED", vk.fixed.len());
     constant(&mut s, "Boolean table types.", "N_BOOL", vk.bools.len());
-    constant(&mut s, "Boolean table types with a pinned column.", "N_PINS", vk.bools.iter().filter(|t| t.pin.is_some()).count());
     constant(&mut s, "Element table types.", "N_ELEM", vk.elems.len());
     constant(&mut s, "Committed tables.", "N_TABLES", vk.n_tables);
     constant(&mut s, "Frozen high coordinates of the element region, as a bit pattern.", "ELEM_FROZEN", vk.elem_frozen.iter().enumerate().fold(0, |acc, (i, &b)| acc | (b as usize) << i));
-    constant(&mut s, "Frozen high coordinates of the element region.", "ELEM_FROZEN_BITS", vk.elem_frozen.len());
     constant(&mut s, "Responses per lift.", "RESPONSES", vk.responses);
     constant(&mut s, "Responses per chunk.", "CHUNK", vk.chunk);
     constant(&mut s, "Published words per response.", "N_IO", vk.n_io);
-    constant(&mut s, "Boundary runs of the layout.", "N_RUNS", vk.runs.len());
 
     let mut prefix = op(1, 0, WRAP_DOMAIN.len() as u64, WRAP_DOMAIN);
     prefix.extend(label(b"pofseed-flock-lift-wrap-public"));
@@ -244,13 +239,9 @@ pub fn key_source(vk: &Vk) -> String {
 
     label_words(&mut s, "L_STRUCTURE", b"pofseed-flock-lift-structure-v1");
     label_words(&mut s, "L_FOLD", b"flock-matrix-fold-v0");
-    let (beta, d) = frobenius_constants();
-    blob(&mut s, "`x^(2^k)` for `k` in `0..128`, sixteen bytes each.", "BETA", &beta.iter().flat_map(|&v| f128(v)).collect::<Vec<u8>>());
-    blob(&mut s, "`(x^6 + 1)^(-2^k)` for `k` in `0..128`, sixteen bytes each.", "DINV", &d.iter().flat_map(|&v| f128(v)).collect::<Vec<u8>>());
+    let (_, d) = frobenius_constants();
+    writeln!(s, "    /// `(x^6 + 1)^-1`.\n    uint256 internal constant D0 = 0x{};", hex::encode(f128(d[0]))).unwrap();
     blob(&mut s, "`δ_i^(2^j)` at `8·i + j` for the basis of GF(2^8) dual to the bits', sixteen bytes each.", "DUAL", &dual().iter().flatten().flat_map(|&v| f128(v)).collect::<Vec<u8>>());
-    let sparse = flock_prover::pcs::jagged::assist_sparse_transitions();
-    let transitions: Vec<u8> = sparse.iter().flatten().flatten().flat_map(|&(i, o)| [i as u8, o as u8]).collect();
-    blob(&mut s, "The layout's branching program: for the boundary bits `cd` and the state `s`, at `4·(4·cd + s)`, its two transitions as an index into the row and dense bits' equality table and the next state.", "TRANSITIONS", &transitions);
     let domain = Domain::new(32);
     let table = domain.table();
     let mut sub = Vec::new();

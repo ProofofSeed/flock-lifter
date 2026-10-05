@@ -93,4 +93,10 @@ fn kernels_agree_with_the_library() {
     let out = evm.call(probe, encode("frob(uint256,uint256)", |x| x.uint(u(v)).uint(U256::from(127))));
     assert_eq!(out.word(0), out.word(1), "frob");
     eprintln!("gas per squaring: {:.1}", U256::from_be_bytes(out.word(2)).to::<u64>() as f64 / 127.0);
+    let out = evm.call(probe, encode("products(uint256)", |x| x.uint(U256::from(23))));
+    eprintln!(
+        "gas per factor of an equality product over the extension {:.1}, of a shift product {:.1}",
+        U256::from_be_bytes(out.word(0)).to::<u64>() as f64 / 23.0,
+        U256::from_be_bytes(out.word(1)).to::<u64>() as f64 / 23.0
+    );
 }
