@@ -131,11 +131,6 @@ impl KeccakChallenger {
 }
 
 impl Challenger for KeccakChallenger {
-    fn publics_commitment(&self, public: &[F128]) -> Option<[u8; 32]> {
-        let bytes: Vec<u8> = public.iter().flat_map(|&v| f128_bytes(v)).collect();
-        return Some(keccak(&[&bytes]));
-    }
-
     fn observe_label(&mut self, label: &[u8]) {
         self.header(OP_LABEL, 0, label.len() as u64);
         self.padded(label);

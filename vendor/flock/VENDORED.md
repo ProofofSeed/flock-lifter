@@ -33,7 +33,6 @@ A copy of the crates of [Flock](https://github.com/succinctlabs/flock) at revisi
 - `flock-core/src/verifier.rs`, `flock-core/src/pcs.rs`: under `mul-count`, the deferred circuit verifier and the merged opening print their multiplications by phase.
 - `flock-prover/src/tower/head_env.rs`: `EnvKey::verify_deferred`, the deferred verification of a proof under an envelope key on a given transcript.
 - `flock-prover/src/tower/head_env.rs`, `flock-prover/src/tower/rowmajor.rs`: `prove_env_on`, `EnvKey::verify_on` and `prove_wrap_on` make and check the outer proof on a caller's transcript, which the caller may extend with the public segment; `RowMajorChild::publish_rows` adds a chunk's published words to the wrap's public segment.
-- `flock-transcript/src/challenger.rs`, `flock-core/src/union.rs`: `Challenger::publics_commitment` lets a transcript commit to a statement's public words under its own hash, which `bind_statement_circuit` then absorbs in place of the BLAKE3 chain; the default keeps the chain.
 
 ## Known upstream failures
 

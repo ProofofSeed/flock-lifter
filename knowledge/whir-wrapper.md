@@ -2,8 +2,8 @@
 
 Status: built, validated and measured, 2026-10-05; gas reduced by a further fifth the same day.
 A wrapped lift is one Flock proof that the lift's chunk proofs verify, opened with WHIR, plus a proof that the fixed structure this wrap proof refers to is the committed one.
-Verifying it on chain for the 219-response hardened-child lift takes **68.64 M gas in 7 transactions**, each under the 2^24-gas cap (EIP-7825), with every contract under the 24,576-byte limit (EIP-170).
-The same checks in one call, with both limits lifted, cost 65.86 M.
+Verifying it on chain for the 219-response hardened-child lift takes **68.62 M gas in 7 transactions**, each under the 2^24-gas cap (EIP-7825), with every contract under the 24,576-byte limit (EIP-170).
+The same checks in one call, with both limits lifted, cost 65.85 M.
 The staged direct route it sits beside takes 889.04 M gas in 106 transactions (`staged-verification.md`), so the wrapper costs a thirteenth of it.
 Record: `fixtures/wrap-bench-2026-10-05-after-savings.summary.log`.
 The first measurement was 88.08 M staged and 85.06 M in one call (`fixtures/wrap-bench-2026-10-05.summary.log`); "What changed" below lists what took it down.
@@ -17,7 +17,6 @@ Nothing here is audited, and the soundness accounting of the structure proof is 
 **Wrap proof.** A Flock union circuit verifies every chunk proof (`crates/lift/src/wrap.rs`).
 Its public segment holds the words the responses publish, so the native Fiat-Shamir gate reads them from the wrap proof.
 It is proved on a Keccak-256 transcript and opened with WHIR over GF(2^128), with challenges in GF(2^256), folding factor 4, a final polynomial of 3 variables, the Johnson regime, 22 grinding bits and Keccak-256 Merkle trees (`crates/whir`).
-The transcript commits to the public words under Keccak-256 where Flock's own binding uses a BLAKE3 chain (`Challenger::publics_commitment` in the vendored Flock), so the contract derives that commitment itself.
 Chunk domains are static, so one wrap key serves every statement of a shape.
 
 **Structure proof.** Flock's deferred verifier leaves three kinds of prover-supplied values undischarged: the Boolean tables' and the element tables' matrix evaluations, and one wiring evaluation.
@@ -34,7 +33,7 @@ What the contract does, in order, with the single call's gas at 219 responses:
 
 | step                                             | gas (M) |
 | ------------------------------------------------ | ------: |
-| Fiat-Shamir gate and binding the published words |    2.29 |
+| Fiat-Shamir gate and binding the published words |    2.28 |
 | Boolean zerocheck                                |    0.54 |
 | union lincheck                                   |    0.54 |
 | wiring product argument                          |    5.60 |
@@ -49,7 +48,7 @@ What the contract does, in order, with the single call's gas at 219 responses:
 | bit claim's conjugates                           |    0.19 |
 | tables' WHIR opening                             |    6.02 |
 | tables' opening's last equation                  |    8.71 |
-| calldata (432,056 B) and base cost               |    6.65 |
+| calldata (432,088 B) and base cost               |    6.65 |
 
 What keeps these small:
 - **Field arithmetic.** A GF(2^128) product is 25 integer multiplications on operands split every fifth bit, about 590 gas inlined with lazy reduction, against 2,090 for the earlier routine. A GF(2^256) product costs about 2,250. The kernels are generated assembly (`verifier/tools/kernels.py` writes `K.sol`). No arrangement with fewer than 25 multiplications was found: five-bit spacing is what a 256-bit product can hold.
@@ -68,12 +67,12 @@ The last stage sets `accepted[digest]`.
 
 | transaction | gas        | of the cap | work                                                          |
 | ----------: | ---------: | ---------: | ------------------------------------------------------------- |
-|           1 | 10,652,076 |      63.5% | gate, binding, zerocheck, lincheck, wiring                    |
-|           2 | 10,344,728 |      61.7% | element class, ring switches, assist sumchecks, claim weights |
-|           3 | 11,025,475 |      65.7% | layout equation                                               |
-|           4 | 11,430,938 |      68.1% | outer opening                                                 |
-|           5 |  6,601,656 |      39.3% | table folds and sumchecks, bit claims' batching               |
-|           6 |  9,492,842 |      56.6% | bit claim's conjugates, tables' opening                       |
+|           1 | 10,637,207 |      63.4% | gate, binding, zerocheck, lincheck, wiring                    |
+|           2 | 10,344,848 |      61.7% | element class, ring switches, assist sumchecks, claim weights |
+|           3 | 11,025,691 |      65.7% | layout equation                                               |
+|           4 | 11,430,696 |      68.1% | outer opening                                                 |
+|           5 |  6,601,500 |      39.3% | table folds and sumchecks, bit claims' batching               |
+|           6 |  9,490,087 |      56.6% | bit claim's conjugates, tables' opening                       |
 |           7 |  9,094,200 |      54.2% | tables' opening's last equation                               |
 
 Deployment is 35.2 M gas over twelve contracts, the largest 23,164 B.
@@ -85,24 +84,24 @@ Measured on the M4 Max, 219 responses, outer rate 2^-6, tables' rate 2^-4:
 
 | phase                 | seconds |
 | --------------------- | ------: |
-| chunks                |    11.6 |
-| wrap proof            |    16.7 |
+| chunks                |    11.5 |
+| wrap proof            |    16.9 |
 | committing the tables |    10.5 |
-| structure proof       |    36.0 |
-| whole lift            |    75.0 |
+| structure proof       |    33.1 |
+| whole lift            |    72.2 |
 
-Peak resident memory is 123.3 GB on a 137 GB machine, against 74.6 GB for the unwrapped lift at 13.4 s.
+Peak resident memory is 123.1 GB on a 137 GB machine, against 74.6 GB for the unwrapped lift at 13.4 s.
 The tables' commitment is recomputed in every lift here, although it is fixed per shape.
 At rate 2^-6 the tables' commitment was killed for memory, so the tables stay at 2^-4.
-With both rates at 2^-1 the lift takes 30.1 s and 88.2 GB and is 815,659 B (`fixtures/acceptance-wrap-both-2026-10-05-after-savings.summary.log`); that shape was not measured on chain.
+With both rates at 2^-1 the lift takes 29.6 s and 88.2 GB and is 815,659 B (`fixtures/acceptance-wrap-both-2026-10-05-after-savings.summary.log`); that shape was not measured on chain.
 
 Two parameters trade proving time for gas:
-- **Outer rate 2^-8.** 64.62 M in one call and 67.32 M staged, for a lift of 106.6 s (`fixtures/wrap-bench-2026-10-05-after-savings-outer-rate-8.summary.log`). That is 1.3 M for 32 s.
+- **Outer rate 2^-8.** 64.62 M in one call and 67.32 M staged, for a lift of 106.6 s (`fixtures/wrap-bench-2026-10-05-after-savings-outer-rate-8.summary.log`). That is 1.3 M for about 32 s. It was measured while the contract derived the public words' commitment (see Caveats), which differs by about 16,000 gas.
 - **Grinding.** 26 bits in place of 22 saved about 0.8 M for about 24 s more, measured once on an 8-response lift together with the rate above and not kept.
 
 ## What changed after the first measurement
 
-Single-call gas at 219 responses went from 85.06 M to 65.86 M.
+Single-call gas at 219 responses went from 85.06 M to 65.85 M.
 The steps were measured one at a time on an 8-response lift, whose single call went from 76.95 M to 59.45 M:
 
 | change                                                        | saved (M) |
@@ -122,14 +121,14 @@ Skipping repeated blocks of public words saved a further 0.24 M at 219 responses
 - **Native acceptance.** `acceptance-wrap both`: the reject matrix R1 to R8, nine wrap cases, four structure cases, a key reused across lifts, and a 219-response lift through the relying-party gate. All pass, before and after the gas savings.
 - **Mirror.** `wrap-check` compares the Rust mirror with the native verifier; `wrap-bench` compares the contract with the mirror stage by stage, at 8 and at 219 responses.
 - **Tampering.** 23 flipped bits across a lift are refused by the single call and 11 by the staged verifier.
-- **Deletion.** Four checks can be singled out by one flipped bit: a WHIR opening's last equation, a Merkle path, the Fiat-Shamir gate, and the session's state comparison. For each, a case built to fail only that check is refused, and is accepted once the check is deleted, with every other case still refused (`fixtures/deletion-validation-2026-10-05-wrap-after-savings.summary.log`).
+- **Deletion.** Four checks can be singled out by one flipped bit: a WHIR opening's last equation, a Merkle path, the Fiat-Shamir gate, and the session's state comparison. For each, a case built to fail only that check is refused, and is accepted once the check is deleted, with every other case still refused (`fixtures/deletion-validation-2026-10-05-wrap-after-savings.summary.log`). That run predates the return to Flock's own binding of the public words, which touches none of the four checks.
 - **Limit of that method.** A flip anywhere else in a lift changes the transcript and fails a grinding check first, so the remaining contract checks are not individually validated by deletion. They are covered by agreement with the mirror and, natively, by the reject matrix and the structure crate's tests.
 
 ## Caveats
 
 - **Not audited.** Neither the contracts nor the structure proof's soundness analysis.
 - **Batch inversion.** The contract refuses an opening in which a challenge's upper half or norm is zero, which the native verifier would accept. Either has probability about 2^-128 per challenge.
-- **Vendored Flock.** The wrap's transcript differs from upstream Flock's in how it commits to the public words, so an upstream verifier does not accept a wrap proof made here.
+- **Publics digest.** Flock absorbs a BLAKE3 digest of the public words. The contract takes that digest from calldata without recomputing it. The public words themselves are absorbed by the wrap's Keccak binding beforehand, so the digest adds nothing the transcript does not already hold, and a prover who varies it gains only what varying any other absorbed message gains. That argument has not been reviewed. A variant in which the transcript committed to the words under Keccak-256, so that the contract could derive the commitment for about 4,000 gas, was built and then withdrawn, because upstream Flock would no longer verify the wrap proof. Recomputing the BLAKE3 chain on chain is estimated at about 15 M gas for the 83 KB of public words and was not built.
 - **Security level.** The WHIR parameters target 128 bits including 22 bits of grinding in the Johnson regime. 219 responses is classical 128-bit in the forgery-work-ratio sense only. No post-quantum claim is made.
 - **Lift fidelity.** Unchanged from the lifter: the block is a compilation of the ZKBoo verifier, checked differentially.
 - **Shape.** Gas was measured for one statement at one size. The contracts compile and pass at 8 responses too.
