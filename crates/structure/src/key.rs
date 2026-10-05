@@ -303,7 +303,7 @@ pub fn config(n: usize, log_inv_rate: usize) -> Config {
         folding: 4,
         log_inv_rate,
         security_bits: 128,
-        pow_bits: 16,
+        pow_bits: 22,
         final_vars: 6.min(n - 1),
         regime: Regime::Johnson,
         merkle: MerkleHash::Keccak,

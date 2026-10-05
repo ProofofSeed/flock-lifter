@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Calldata} from "../Calldata.sol";
 import {Transcript} from "../Transcript.sol";
-import {F} from "./F.sol";
+import {K} from "./K.sol";
 import {W} from "./W.sol";
 import {WrapKey} from "./WrapKey.sol";
 
@@ -94,7 +94,7 @@ library Whir {
             W.observe256(tr, e1);
             W.observe256(tr, einf);
             uint256 r = W.sample256(tr);
-            claim = claim ^ e1 ^ F.mul256(claim ^ einf ^ F.mul256(einf, r), r);
+            claim = K.nextClaim256(claim, e1, einf, r);
             alpha[i] = r;
             st.challenges[st.count++] = r;
         }
@@ -104,19 +104,8 @@ library Whir {
 
     /// The equality table of extension elements `point`, lowest coordinate first.
     function _eqTable256(uint256[] memory point) private pure returns (uint256[] memory t) {
-        uint256 d = point.length;
-        t = new uint256[](1 << d);
-        t[0] = 1;
-        for (uint256 j = 0; j < d; ++j) {
-            uint256 half = 1 << j;
-            uint256 x = point[j];
-            for (uint256 i = 0; i < half; ++i) {
-                uint256 lo = t[i];
-                uint256 hi = F.mul256(lo, x);
-                t[i + half] = hi;
-                t[i] = lo ^ hi;
-            }
-        }
+        t = new uint256[](1 << point.length);
+        K.eqTable256(W.ptr(t), W.ptr(point), point.length);
     }
 
     /// Reads the opened rows of committed function `index` at the positions `words` select, checks
@@ -140,18 +129,7 @@ library Whir {
             positions[q] = pos;
             uint256 rowAt = rowsAt + q * rowBytes;
             if (_root(rowAt, rowBytes, pathsAt + 32 * depth * q, depth, pos) != _capEntry(st.cap, pos >> depth)) revert MerklePath();
-            uint256 acc;
-            if (index == 0) {
-                for (uint256 l = 0; l < eq.length; ++l) {
-                    acc ^= F.mul256By128(eq[l], Calldata.f128(rowAt + 16 * l));
-                }
-            } else {
-                for (uint256 l = 0; l < eq.length; ++l) {
-                    uint256 v = Calldata.f256(rowAt + 32 * l);
-                    acc ^= F.mul256(eq[l], (v << 128) | (v >> 128));
-                }
-            }
-            folded[q] = acc;
+            folded[q] = K.rowFold(W.ptr(eq), rowAt, eq.length, index == 0);
         }
         st.p = pathsAt + 32 * depth * queries;
     }
@@ -205,7 +183,7 @@ library Whir {
 
     /// Verifies the opening at calldata `p` of the claim `c`, on the transcript `tr` that has
     /// absorbed the commitment; returns the cursor after it.
-    function verify(uint256 tr, WhirClaim memory c, uint256 p) internal pure returns (uint256) {
+    function verify(uint256 tr, WhirClaim memory c, uint256 p) internal returns (uint256) {
         WhirState memory st;
         st.tr = tr;
         st.p = p;
@@ -226,8 +204,10 @@ library Whir {
         _samplePoints(st, ood, m);
         _start(st, c, ood);
         st.alpha = _sumcheck(st, W.read(c.rounds, 1, 1));
+        W.mark(90, tr);
         for (uint256 i = 1; i < n; ++i) {
             _fold(st, c, i);
+            W.mark(90 + i, tr);
         }
         _finish(st, c, n);
         return st.p;
@@ -262,8 +242,8 @@ library Whir {
         uint256 claim;
         for (uint256 k = 0; k < ood + np; ++k) {
             st.eqCoeffs[k] = power;
-            claim ^= k < ood ? F.mul256(power, Calldata.f256(oodAt + 32 * k)) : F.mul256By128(power, c.values[k - ood]);
-            power = F.mul256(power, gamma);
+            claim ^= k < ood ? K.mul256(power, Calldata.f256(oodAt + 32 * k)) : K.mul256By128(power, c.values[k - ood]);
+            power = K.mul256(power, gamma);
         }
         st.claim = claim;
     }
@@ -298,14 +278,14 @@ library Whir {
         uint256 claim = st.claim;
         for (uint256 k = 0; k < ood; ++k) {
             st.eqCoeffs[first + k] = power;
-            claim ^= F.mul256(power, Calldata.f256(oodAt + 32 * k));
-            power = F.mul256(power, gamma);
+            claim ^= K.mul256(power, Calldata.f256(oodAt + 32 * k));
+            power = K.mul256(power, gamma);
         }
         uint256[] memory coeffs = new uint256[](folded.length);
         for (uint256 q = 0; q < folded.length; ++q) {
             coeffs[q] = power;
-            claim ^= F.mul256(power, folded[q]);
-            power = F.mul256(power, gamma);
+            claim ^= K.mul256(power, folded[q]);
+            power = K.mul256(power, gamma);
         }
         st.positions[i - 1] = positions;
         st.coeffs[i - 1] = coeffs;
@@ -315,7 +295,7 @@ library Whir {
 
     /// The final polynomial, the last function's queries against it, the last sumcheck rounds and
     /// the last equation.
-    function _finish(WhirState memory st, WhirClaim memory c, uint256 n) private pure {
+    function _finish(WhirState memory st, WhirClaim memory c, uint256 n) private {
         uint256 tr = st.tr;
         uint256 size = 1 << c.finalVars;
         uint256[] memory poly = new uint256[](size);
@@ -336,23 +316,21 @@ library Whir {
             }
             uint256 len = size;
             for (uint256 i = 0; i < c.finalVars; ++i) {
-                uint256 w = _coordinate(sub, positions[q], i, logDomain);
                 len >>= 1;
-                for (uint256 k = 0; k < len; ++k) {
-                    v[k] = v[2 * k] ^ F.mul256By128(v[2 * k + 1], w);
-                }
+                K.foldShift256(W.ptr(v), len, _coordinate(sub, positions[q], i, logDomain));
             }
             if (v[0] != folded[q]) revert FinalPolynomial();
         }
+        W.mark(98, tr);
         uint256[] memory r = _sumcheck(st, c.finalVars);
         uint256 len2 = size;
         for (uint256 i = 0; i < c.finalVars; ++i) {
             len2 >>= 1;
-            for (uint256 k = 0; k < len2; ++k) {
-                poly[k] = poly[2 * k] ^ F.mul256(r[i], poly[2 * k] ^ poly[2 * k + 1]);
-            }
+            K.fold256(W.ptr(poly), len2, r[i]);
         }
-        if (st.claim != F.mul256(poly[0], _weight(st, c, sub, n))) revert Sumcheck();
+        uint256 weight = _weight(st, c, sub, n);
+        W.mark(99, tr);
+        if (st.claim != K.mul256(poly[0], weight)) revert Sumcheck();
     }
 
     /// The novel-basis coordinate `Ŵ_i` of the domain's point `pos`.
@@ -365,42 +343,30 @@ library Whir {
 
     /// The final weight at the sumcheck's point: every equality term, and every queried position's
     /// term `Π_i (1 + y_i·(1 + Ŵ_i(position)))`.
-    function _weight(WhirState memory st, WhirClaim memory c, bytes memory sub, uint256 n) private pure returns (uint256 weight) {
+    function _weight(WhirState memory st, WhirClaim memory c, bytes memory sub, uint256 n) private returns (uint256 weight) {
         uint256 m = st.challenges.length;
+        uint256 y = W.ptr(st.challenges);
         for (uint256 k = 0; k < st.eqCount; ++k) {
             uint256[] memory z = st.eqPoints[k];
-            uint256 from = m - z.length;
-            uint256 acc = st.eqCoeffs[k];
-            for (uint256 i = 0; i < z.length; ++i) {
-                acc = F.mul256(acc, 1 ^ z[i] ^ st.challenges[from + i]);
-            }
-            weight ^= acc;
+            weight ^= K.eqProduct256(st.eqCoeffs[k], W.ptr(z), y + 32 * (m - z.length), z.length);
         }
+        W.mark(990, st.tr);
+        uint256 size;
+        for (uint256 r = 0; r + 1 < n; ++r) {
+            uint256 words = W.read(c.rounds, 7 * (r + 1), 1) * ((W.read(c.rounds, 7 * r + 2, 1) + 3) / 4);
+            if (words > size) size = words;
+        }
+        uint256[] memory windowed = new uint256[](16 * size);
         for (uint256 r = 0; r + 1 < n; ++r) {
             uint256 vars = W.read(c.rounds, 7 * (r + 1), 1);
             uint256 logDomain = W.read(c.rounds, 7 * r + 2, 1);
-            // `y_i·Ŵ_i(x^j)` at `[i·logDomain + j]`, for `j ≥ i`.
-            uint256[] memory table = new uint256[](vars * logDomain);
-            for (uint256 i = 0; i < vars; ++i) {
-                uint256 y = st.challenges[m - vars + i];
-                table[i * logDomain + i] = y;
-                for (uint256 j = i + 1; j < logDomain; ++j) {
-                    table[i * logDomain + j] = F.mul256By128(y, W.entry(sub, 32 * i + j, 16));
-                }
-            }
+            uint256 windows = (logDomain + 3) / 4;
+            K.shiftWindows(W.ptr(windowed), y + 32 * (m - vars), W.data(sub), vars, logDomain, windows);
+            W.mark(991 + r, st.tr);
             uint256[] memory positions = st.positions[r];
             uint256[] memory coeffs = st.coeffs[r];
             for (uint256 q = 0; q < positions.length; ++q) {
-                uint256 pos = positions[q];
-                uint256 acc = coeffs[q];
-                for (uint256 i = 0; i < vars; ++i) {
-                    uint256 u = 1 ^ st.challenges[m - vars + i];
-                    for (uint256 j = i; j < logDomain; ++j) {
-                        if ((pos >> j) & 1 == 1) u ^= table[i * logDomain + j];
-                    }
-                    acc = F.mul256(acc, u);
-                }
-                weight ^= acc;
+                weight ^= K.shiftProduct(coeffs[q], positions[q], y + 32 * (m - vars), W.ptr(windowed), vars, windows);
             }
         }
     }

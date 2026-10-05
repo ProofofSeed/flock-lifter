@@ -5,6 +5,7 @@ import {Calldata} from "../Calldata.sol";
 import {Constants} from "../Constants.sol";
 import {Transcript} from "../Transcript.sol";
 import {F} from "./F.sol";
+import {K} from "./K.sol";
 import {W} from "./W.sol";
 import {WrapKey} from "./WrapKey.sol";
 
@@ -245,12 +246,8 @@ library WrapPiop {
     /// round-one messages at `abAt`.
     function _roundOne(bytes memory phi, uint256 abAt, uint256 z) private pure returns (uint256 num, uint256 cEval) {
         (uint256[] memory loo,) = W.leaveOneOut(phi, 64, z);
-        uint256 combined;
-        for (uint256 i = 0; i < 64; ++i) {
-            uint256 ci = Calldata.f128(abAt + 16 * (64 + i));
-            cEval ^= F.mul(loo[i], ci);
-            combined ^= F.mul(loo[i], ci ^ Calldata.f128(abAt + 16 * i));
-        }
+        cEval = K.dotCalldata(W.ptr(loo), abAt + 16 * 64, 64);
+        uint256 combined = cEval ^ K.dotCalldata(W.ptr(loo), abAt, 64);
         cEval = F.mul(cEval, Constants.DEN6_INV);
         uint256 zS = 1;
         for (uint256 i = 0; i < 64; ++i) {
@@ -295,9 +292,7 @@ library WrapPiop {
         x.lcZ = Transcript.powSample(tr, Calldata.nonce(p), K_SKIP);
         p += 8;
         x.skipAb = W.lagrange(x.phi, x.lcZ);
-        for (uint256 i = 0; i < 64; ++i) {
-            x.lcValue ^= F.mul(x.skipAb[i], Calldata.f128(x.zPartialAt + 16 * i));
-        }
+        x.lcValue = K.dotCalldata(W.ptr(x.skipAb), x.zPartialAt, 64);
         x.evalsAt = p;
         x.p = p + 32 * WrapKey.N_BOOL;
         if (_reported(x, bools, betas, alpha, rounds) != target) revert Lincheck();
@@ -365,10 +360,8 @@ library WrapPiop {
         x.gatherAt = p;
         x.p = p + 16 * WrapKey.N_GATE;
         uint256[] memory eqSlot = W.eqTable(x.rho, WrapKey.NU, WrapKey.MU - WrapKey.NU, 1);
-        uint256 acc = F.mul(eqSlot[WrapKey.N_GATE], publicEval(x.pub, WrapKey.NUM_PUBLIC, x.rho, WrapKey.NU));
-        for (uint256 i = 0; i < WrapKey.N_GATE; ++i) {
-            acc ^= F.mul(eqSlot[i], Calldata.f128(p + 16 * i));
-        }
+        uint256 acc = F.mul(eqSlot[WrapKey.N_GATE], publicEval(x.pub, WrapKey.NUM_PUBLIC, x.rho, WrapKey.NU))
+            ^ K.dotCalldata(W.ptr(eqSlot), p, WrapKey.N_GATE);
         if (acc != f) revert WiringRecombination();
     }
 
@@ -414,24 +407,11 @@ library WrapPiop {
     function publicEval(uint256 img, uint256 n, uint256[] memory point, uint256 vars) internal pure returns (uint256) {
         uint256 len = (n + 1) / 2;
         uint256[] memory v = new uint256[](len + 1);
-        uint256 r = point[0];
-        for (uint256 k = 0; k < len; ++k) {
-            uint256 w;
-            assembly ("memory-safe") {
-                w := mload(add(img, shl(5, k)))
-            }
-            uint256 lo = w >> 128;
-            uint256 hi = 2 * k + 1 < n ? w & W.M128 : 0;
-            v[k] = lo ^ F.mul(r, lo ^ hi);
-        }
+        K.foldPacked(img, W.ptr(v), n, point[0]);
         for (uint256 j = 1; j < vars; ++j) {
-            r = point[j];
             v[len] = 0;
             len = (len + 1) / 2;
-            for (uint256 k = 0; k < len; ++k) {
-                uint256 lo = v[2 * k];
-                v[k] = lo ^ F.mul(r, lo ^ v[2 * k + 1]);
-            }
+            K.fold(W.ptr(v), len, point[j]);
         }
         return v[0];
     }

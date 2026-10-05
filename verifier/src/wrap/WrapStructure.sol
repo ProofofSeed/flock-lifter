@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Calldata} from "../Calldata.sol";
 import {Transcript} from "../Transcript.sol";
 import {F} from "./F.sol";
+import {K} from "./K.sol";
 import {W} from "./W.sol";
 import {Whir, WhirClaim} from "./Whir.sol";
 import {WrapKey} from "./WrapKey.sol";
@@ -83,14 +84,7 @@ library WrapStructure {
         for (uint256 i = 0; i < vars; ++i) {
             Transcript.observeSliceFromCalldata(tr, p, degree);
             uint256 r = Transcript.powSample(tr, Calldata.nonce(p + 16 * degree), bits);
-            uint256 linear = claim;
-            uint256 acc;
-            for (uint256 k = degree - 1; k > 0; --k) {
-                uint256 c = Calldata.f128(p + 16 * k);
-                linear ^= c;
-                acc = F.mul(acc, r) ^ c;
-            }
-            claim = F.mul(F.mul(acc, r) ^ linear, r) ^ Calldata.f128(p);
+            claim = K.roundEval(p, degree, r, claim);
             point[i] = r;
             p += 16 * degree + 8;
         }
@@ -99,11 +93,8 @@ library WrapStructure {
     }
 
     /// `Π_i (1 + p[pi + i] + v[vi + i])` over `n` coordinates.
-    function eq(uint256[] memory p, uint256 pi, uint256[] memory v, uint256 vi, uint256 n) internal pure returns (uint256 acc) {
-        acc = 1;
-        for (uint256 i = 0; i < n; ++i) {
-            acc = F.mul(acc, 1 ^ p[pi + i] ^ v[vi + i]);
-        }
+    function eq(uint256[] memory p, uint256 pi, uint256[] memory v, uint256 vi, uint256 n) internal pure returns (uint256) {
+        return K.eqProduct(W.ptr(p) + 32 * pi, W.ptr(v) + 32 * vi, n);
     }
 
     /// `Σ_{t,u} eq(x, t)·eq(y, u)·eq(b, (t + u) mod 64)` over six coordinates each, `y` starting
@@ -215,23 +206,16 @@ library WrapStructure {
     /// The multilinear extension of a weight `low ⊗ eq(point)` at `rho`: `low` has 64 entries and
     /// `point` is `point[0 .. n)`.
     function _weightEval(uint256[] memory low, uint256[] memory point, uint256 n, uint256[] memory rho) private pure returns (uint256 acc) {
-        uint256[] memory v = new uint256[](32);
-        uint256 r = rho[0];
-        for (uint256 k = 0; k < 32; ++k) {
-            v[k] = low[2 * k] ^ F.mul(r, low[2 * k] ^ low[2 * k + 1]);
+        uint256[] memory v = new uint256[](64);
+        for (uint256 k = 0; k < 64; ++k) {
+            v[k] = low[k];
         }
-        uint256 len = 32;
-        for (uint256 j = 1; j < LOW; ++j) {
-            r = rho[j];
+        uint256 len = 64;
+        for (uint256 j = 0; j < LOW; ++j) {
             len >>= 1;
-            for (uint256 k = 0; k < len; ++k) {
-                v[k] = v[2 * k] ^ F.mul(r, v[2 * k] ^ v[2 * k + 1]);
-            }
+            K.fold(W.ptr(v), len, rho[j]);
         }
-        acc = v[0];
-        for (uint256 i = 0; i < n; ++i) {
-            acc = F.mul(acc, 1 ^ point[i] ^ rho[LOW + i]);
-        }
+        acc = F.mul(v[0], K.eqProduct(W.ptr(point), W.ptr(rho) + 32 * LOW, n));
     }
 
     /// One fold of the claims on a side of a committed table of `2^k` rows: the table types
@@ -530,10 +514,7 @@ library WrapStructure {
 
     /// `Σ_i eq(zeta[from .. from + 6), i)·bits[i]` over the `n` values at calldata `at`.
     function _batched(uint256[] memory zeta, uint256 from, uint256 at, uint256 n) private pure returns (uint256 acc) {
-        uint256[] memory e = W.eqTable(zeta, from, LOW, 1);
-        for (uint256 i = 0; i < n; ++i) {
-            acc ^= F.mul(e[i], Calldata.f128(at + 16 * i));
-        }
+        acc = K.dotCalldata(W.ptr(W.eqTable(zeta, from, LOW, 1)), at, n);
     }
 
     function _slice(uint256[] memory v, uint256 from, uint256 n) private pure returns (uint256[] memory s) {
@@ -618,10 +599,7 @@ library WrapStructure {
             c.points[8 * k] = previous;
             for (uint256 j = 1; j < 8; ++j) {
                 uint256[] memory root = new uint256[](n);
-                for (uint256 i = 0; i < n; ++i) {
-                    root[i] = Calldata.f128(p + 16 * i);
-                    if (F.sq(root[i]) != previous[i]) revert Roots();
-                }
+                if (!K.roots(W.ptr(root), p, W.ptr(previous), n)) revert Roots();
                 p += 16 * n;
                 c.points[8 * k + j] = root;
                 previous = root;

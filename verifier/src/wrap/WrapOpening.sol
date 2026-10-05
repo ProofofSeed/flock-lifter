@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Calldata} from "../Calldata.sol";
 import {Transcript} from "../Transcript.sol";
 import {F} from "./F.sol";
+import {K} from "./K.sol";
 import {W} from "./W.sol";
 import {WrapKey} from "./WrapKey.sol";
 import {Run} from "./WrapPiop.sol";
@@ -47,6 +48,7 @@ library WrapOpening {
     error RowPoints();
     error Layout();
     error Multipoint();
+    error Roots();
 
     // "flock-merged-open-v1"
     uint256 internal constant L_MERGED_0 = 0x02000000000000000000000000000014666c6f636b2d6d65726765642d6f7065;
@@ -94,12 +96,7 @@ library WrapOpening {
     {
         Transcript.label(tr, L_RING_0, L_RING_1, 48);
         Transcript.observeSliceFromCalldata(tr, p, 128);
-        uint256 acc;
-        for (uint256 i = 0; i < 64; ++i) {
-            uint256 lo = Calldata.f128(p + 16 * i);
-            acc ^= F.mul(skip[i], lo ^ F.mul(x0, lo ^ Calldata.f128(p + 16 * (64 + i))));
-        }
-        if (acc != value) revert RingSwitchClaim();
+        if (K.sliceCheck(W.ptr(skip), x0, p) != value) revert RingSwitchClaim();
         s.r = Transcript.powSampleVec(tr, Calldata.nonce(p + 128 * 16), 3, 7);
         s.eq = W.eqTable(s.r, 0, 7, 1);
         uint256[] memory table = bitTable(s.eq);
@@ -111,59 +108,15 @@ library WrapOpening {
         s.sum = sum;
     }
 
-    /// The coefficients `c_j` with `Σ_t bit_t(v)·gamma·eq(r, t) = Σ_j c_j·v^(2^j)` for every word
-    /// `v`, from the trace-dual of the polynomial basis.
-    function coefficients(uint256 gamma, uint256[] memory r, uint256[] memory eq) internal pure returns (uint256[] memory c) {
-        bytes memory beta = WrapKey.BETA;
-        bytes memory dinv = WrapKey.DINV;
-        c = new uint256[](128);
-        uint256 tail = eq[0] ^ eq[1];
-        for (uint256 j = 0; j < 128; ++j) {
-            uint256 top = gamma;
-            for (uint256 i = 0; i < 7; ++i) {
-                top = F.mul(top, r[i] ^ F.mul(1 ^ r[i], W.entry(beta, (j + i) & 127, 16)));
-            }
-            uint256 b = W.entry(beta, j, 16);
-            uint256 low = eq[0];
-            for (uint256 t = 1; t < 7; ++t) {
-                low = F.mul(low, b) ^ eq[t];
-            }
-            c[j] = F.mul(W.entry(dinv, j, 16), top ^ F.mul(gamma, low ^ F.mul(eq[0], b) ^ tail));
-        }
-    }
-
     /// `Σ_j gamma^j·eq(rho^(2^-j), x)` over the 128 inverse Frobenius powers of `rho`, as the
     /// square of a chain of squarings over `Π_i (1 + rho_i + x_i^(2^j))`.
-    function twistedEq(uint256 gamma, uint256[] memory rho, uint256[] memory x) internal pure returns (uint256 acc) {
+    function twistedEq(uint256 gamma, uint256[] memory rho, uint256[] memory x) internal pure returns (uint256) {
         uint256 n = rho.length;
         uint256[] memory powers = new uint256[](n);
         for (uint256 i = 0; i < n; ++i) {
             powers[i] = x[i];
         }
-        uint256 g = gamma;
-        uint256 e = 1;
-        for (uint256 j = 0; j < 128; ++j) {
-            if (j > 0) {
-                for (uint256 i = 0; i < n; ++i) {
-                    powers[i] = F.sq(powers[i]);
-                }
-                g = F.sq(g);
-                e = F.mul(F.sq(e), g);
-            }
-            uint256 eq = 1;
-            for (uint256 i = 0; i < n; ++i) {
-                eq = F.mul(eq, 1 ^ rho[i] ^ powers[i]);
-            }
-            acc = F.sq(acc) ^ F.mul(e, eq);
-        }
-        acc = F.sq(acc);
-    }
-
-    /// `Σ_j c[j]·v_j^(2^j)` over the 128 values at calldata `at`.
-    function frobeniusSum(uint256[] memory c, uint256 at) internal pure returns (uint256 acc) {
-        for (uint256 j = 0; j < 128; ++j) {
-            acc ^= F.mul(c[j], F.frob(Calldata.f128(at + 16 * j), j));
-        }
+        return K.twistedEq(gamma, W.ptr(rho), W.ptr(powers), n);
     }
 
     function _differ(uint256[] memory a, uint256 ai, uint256[] memory b, uint256 bi, uint256 n) private pure returns (bool) {
@@ -193,9 +146,7 @@ library WrapOpening {
         uint256[] memory gammas = Transcript.powSampleVec(tr, Calldata.nonce(p), 6, 4 + WrapKey.N_GATE);
         p += 8;
         uint256 running = F.mul(gammas[0], sw[0].sum) ^ F.mul(gammas[1], sw[1].sum) ^ F.mul(gammas[2], x.ec) ^ F.mul(gammas[3], x.zEval);
-        for (uint256 i = 0; i < WrapKey.N_GATE; ++i) {
-            running ^= F.mul(gammas[4 + i], Calldata.f128(x.gatherAt + 16 * i));
-        }
+        running ^= K.dotCalldata(W.ptr(gammas) + 4 * 32, x.gatherAt, WrapKey.N_GATE);
         o.rho = new uint256[](WrapKey.DENSE_LOG);
         for (uint256 i = 0; i < WrapKey.DENSE_LOG; ++i) {
             uint256 g1 = Calldata.f128(p);
@@ -224,12 +175,20 @@ library WrapOpening {
         _anchor(a);
         W.mark(8, a.ch);
         _layout(x, a, o.rho, gammas);
+        W.mark(81, a.ch);
         if (a.claim != a.v) revert Multipoint();
-        o.weight = frobeniusSum(coefficients(gammas[0], sw[0].r, sw[0].eq), a.valuesAt)
-            ^ frobeniusSum(coefficients(gammas[1], sw[1].r, sw[1].eq), a.valuesAt + 128 * 16)
-            ^ Calldata.f128(a.valuesAt + 256 * 16) ^ Calldata.f128(a.valuesAt + 257 * 16);
+        W.mark(820, a.ch);
+        o.weight = Calldata.f128(a.valuesAt + 256 * 16) ^ Calldata.f128(a.valuesAt + 257 * 16);
+        for (uint256 i = 0; i < 2; ++i) {
+            (uint256 sum, bool ok) =
+                K.rootedSum(gammas[i], W.ptr(sw[i].r), a.p, a.valuesAt + 128 * 16 * i, W.entry(WrapKey.DINV, 0, 16));
+            if (!ok) revert Roots();
+            o.weight ^= sum;
+            a.p += 127 * 128;
+        }
         o.child = a.ch;
         x.p = a.p;
+        W.mark(82, a.ch);
     }
 
     /// The multipoint reduction of the dual values: their batching and its sumcheck.
@@ -245,16 +204,11 @@ library WrapOpening {
         p += 258 * 16;
         a.gamma = Transcript.powSample(ch, Calldata.nonce(p), 9);
         p += 8;
-        uint256 power = 1;
-        uint256 claim;
-        for (uint256 i = 0; i < 258; ++i) {
-            if (i == 0) a.gpow[0] = power;
-            if (i == 128) a.gpow[1] = power;
-            if (i == 256) a.gpow[2] = power;
-            if (i == 257) a.gpow[3] = power;
-            claim ^= F.mul(power, Calldata.f128(a.valuesAt + 16 * i));
-            power = F.mul(power, a.gamma);
-        }
+        a.gpow[0] = 1;
+        a.gpow[1] = K.frob(a.gamma, 7);
+        a.gpow[2] = F.sq(a.gpow[1]);
+        a.gpow[3] = F.mul(a.gpow[2], a.gamma);
+        uint256 claim = K.horner(a.valuesAt, 258, a.gamma);
         a.point = new uint256[](m);
         for (uint256 i = 0; i < m; ++i) {
             uint256 g1 = Calldata.f128(p);
@@ -313,33 +267,18 @@ library WrapOpening {
         }
         uint256 count = runs.length / 12;
         at = new uint256[](count);
-        for (uint256 r = 0; r < count; ++r) {
-            uint256 t0 = W.read(runs, 12 * r, 4);
-            uint256 t1 = W.read(runs, 12 * r + 4, 4);
-            at[r] = F.mul(
-                F.mul(F.mul(tp[0][t0 & 255], tp[1][(t0 >> 8) & 255]), tp[2][t0 >> 16]),
-                F.mul(F.mul(tq[0][t1 & 255], tq[1][(t1 >> 8) & 255]), tq[2][t1 >> 16])
-            );
+        uint256[] memory tables = new uint256[](6);
+        for (uint256 c = 0; c < 3; ++c) {
+            tables[c] = W.ptr(tp[c]);
+            tables[3 + c] = W.ptr(tq[c]);
         }
+        K.atRuns(W.ptr(at), W.data(runs), count, W.ptr(tables));
     }
 
     /// `Σ_runs at[run]·Σ_{columns of the run} table[column − base]`, the table taken as zero
     /// outside `[base, base + table.length)`.
-    function _weigh(uint256[] memory table, uint256 base, bytes memory runs, uint256[] memory at) private pure returns (uint256 acc) {
-        uint256 count = at.length;
-        uint256 end = base + table.length;
-        for (uint256 r = 0; r < count; ++r) {
-            uint256 start = W.read(runs, 12 * r + 8, 2);
-            uint256 stop = start + W.read(runs, 12 * r + 10, 2);
-            if (stop <= base || start >= end) continue;
-            if (start < base) start = base;
-            if (stop > end) stop = end;
-            uint256 sum;
-            for (uint256 y = start; y < stop; ++y) {
-                sum ^= table[y - base];
-            }
-            acc ^= F.mul(sum, at[r]);
-        }
+    function _weigh(uint256[] memory table, uint256 base, bytes memory runs, uint256[] memory at) private pure returns (uint256) {
+        return K.weigh(W.ptr(table), base, table.length, W.data(runs), at.length, W.ptr(at));
     }
 
     /// The branching program's value over the boundary bits at `sigma`, for the row point
@@ -349,54 +288,19 @@ library WrapOpening {
         pure
         returns (uint256)
     {
-        uint256 layers = sigma.length / 2;
-        uint256[4] memory g;
-        g[2] = 1;
-        uint256[16] memory prod;
-        for (uint256 layer = layers; layer > 0; --layer) {
-            uint256 l = layer - 1;
-            uint256[4] memory eq4 = _pair(l < WrapKey.NU ? row[from + l] : 0, l < index.length ? index[l] : 0);
-            uint256[4] memory e = _pair(sigma[2 * l], sigma[2 * l + 1]);
-            for (uint256 i = 0; i < 4; ++i) {
-                for (uint256 s = 0; s < 4; ++s) {
-                    prod[4 * i + s] = F.mul(eq4[i], g[s]);
-                }
-            }
-            uint256[4] memory prev;
-            for (uint256 cd = 0; cd < 4; ++cd) {
-                for (uint256 s = 0; s < 4; ++s) {
-                    uint256 t = 4 * (4 * cd + s);
-                    prev[s] ^= F.mul(
-                        e[cd],
-                        prod[4 * W.read(tx, t, 1) + W.read(tx, t + 1, 1)] ^ prod[4 * W.read(tx, t + 2, 1) + W.read(tx, t + 3, 1)]
-                    );
-                }
-            }
-            g = prev;
-        }
-        return g[0];
-    }
-
-    /// `[(1 + a)(1 + b), a(1 + b), (1 + a)b, ab]`.
-    function _pair(uint256 a, uint256 b) private pure returns (uint256[4] memory t) {
-        uint256 ab = F.mul(a, b);
-        t[0] = 1 ^ a ^ b ^ ab;
-        t[1] = a ^ ab;
-        t[2] = b ^ ab;
-        t[3] = ab;
+        return K.boundary(W.ptr(row) + 32 * from, WrapKey.NU, W.ptr(index), index.length, W.ptr(sigma), sigma.length / 2, W.data(tx));
     }
 
     /// Checks the anchor's last equation: every statement's layout weight and boundary value at
     /// the anchor's point.
-    function _layout(Run memory x, Assist memory a, uint256[] memory rho, uint256[] memory gammas) private pure {
+    function _layout(Run memory x, Assist memory a, uint256[] memory rho, uint256[] memory gammas) private {
         bytes memory runs = WrapKey.RUNS;
         bytes memory tx = WrapKey.TRANSITIONS;
         uint256[] memory at = _atRuns(a.sigma, runs);
+        W.mark(810, a.ch);
         uint256 gAt = twistedEq(a.gamma, rho, a.point);
-        uint256 eAt = 1;
-        for (uint256 i = 0; i < rho.length; ++i) {
-            eAt = F.mul(eAt, 1 ^ rho[i] ^ a.point[i]);
-        }
+        W.mark(811, a.ch);
+        uint256 eAt = K.eqProduct(W.ptr(rho), W.ptr(a.point), rho.length);
         uint256 nu = WrapKey.NU;
         uint256 low = WrapKey.M_BOOL - nu - 7;
         // The two claims on the committed bits: their column points end in zeros.
@@ -407,6 +311,7 @@ library WrapOpening {
             F.mul(a.gpow[1], gAt),
             F.mul(_weigh(W.eqTable(x.rRest, 1 + nu, low, 1), 0, runs, at), _boundary(x.rRest, 1, a.point, a.sigma, tx))
         );
+        W.mark(812, a.ch);
         // The element class's two claims share their rows; their column points end in the region's frozen bits.
         {
             uint256 cols = x.ecol.length;
@@ -414,6 +319,7 @@ library WrapOpening {
             uint256 w = _weigh(W.eqTable(x.er, nu, cols, gammas[2]), base, runs, at) ^ _weigh(W.eqTable(x.ecol, 0, cols, gammas[3]), base, runs, at);
             expect ^= F.mul(F.mul(a.gpow[2], eAt), F.mul(w, _boundary(x.er, 0, a.point, a.sigma, tx)));
         }
+        W.mark(813, a.ch);
         // The gathered cell slots share the wiring point's rows; each reads one column.
         {
             bytes memory gateRuns = WrapKey.GATE_RUNS;

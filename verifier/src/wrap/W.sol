@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Constants} from "../Constants.sol";
 import {Transcript} from "../Transcript.sol";
 import {F} from "./F.sol";
+import {K} from "./K.sol";
 
 /// What the wrap verifier's stages share: transcript forks and extension-field operations on top
 /// of `Transcript`, and small kernels over vectors of field elements.
@@ -106,16 +107,20 @@ library W {
     /// scaled by `seed`.
     function eqTable(uint256[] memory point, uint256 from, uint256 n, uint256 seed) internal pure returns (uint256[] memory t) {
         t = new uint256[](1 << n);
-        t[0] = seed;
-        for (uint256 j = 0; j < n; ++j) {
-            uint256 half = 1 << j;
-            uint256 x = point[from + j];
-            for (uint256 i = 0; i < half; ++i) {
-                uint256 lo = t[i];
-                uint256 hi = F.mul(lo, x);
-                t[i + half] = hi;
-                t[i] = lo ^ hi;
-            }
+        K.eqTable(ptr(t), ptr(point) + 32 * from, n, seed);
+    }
+
+    /// Where the entries of `v` sit in memory.
+    function ptr(uint256[] memory v) internal pure returns (uint256 p) {
+        assembly ("memory-safe") {
+            p := add(v, 0x20)
+        }
+    }
+
+    /// Where the bytes of `b` sit in memory.
+    function data(bytes memory b) internal pure returns (uint256 p) {
+        assembly ("memory-safe") {
+            p := add(b, 0x20)
         }
     }
 

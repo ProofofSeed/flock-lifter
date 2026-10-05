@@ -95,6 +95,60 @@ pub fn frobenius_sum(c: &[F128], v: &[F128]) -> F128 {
     });
 }
 
+/// The square root `v^(2^127)`.
+fn sqrt(v: F128) -> F128 {
+    let mut p = v;
+    for _ in 0..WORD - 1 {
+        p = p * p;
+    }
+    return p;
+}
+
+/// Where a transport's square-root chains come from.
+pub enum Roots<'a> {
+    /// Computed, and appended to the encoding being made.
+    Derive(&'a mut Vec<u8>),
+    /// Read from the encoding.
+    Read,
+}
+
+/// `Σ_j c_j·v_j^(2^j)` for the coefficients `c` of [`coefficients`] at `gamma` and `r`, without the
+/// coefficients: `c_j^(2^-j)` has the closed form of `c_0` at the `2^j`-th roots of `gamma` and
+/// `r`, so the sum is a chain of squarings over `c_j^(2^-j)·v_j`. The roots, 127 levels of the
+/// seven coordinates' then `gamma`'s, are checked by squaring each level into the one before.
+pub fn rooted_sum(gamma: F128, r: &[F128], v: &[F128], rd: &mut Reader, roots: &mut Roots) -> Result<F128> {
+    let (beta, d) = frobenius_constants();
+    let x = beta[0];
+    let mut levels: Vec<Vec<F128>> = vec![r.iter().copied().chain([gamma]).collect()];
+    for j in 1..WORD {
+        let level: Vec<F128> = match roots {
+            Roots::Derive(out) => {
+                let level: Vec<F128> = levels[j - 1].iter().map(|&s| sqrt(s)).collect();
+                for &s in &level {
+                    out.extend_from_slice(&(((s.hi as u128) << 64) | s.lo as u128).to_be_bytes());
+                }
+                level
+            }
+            Roots::Read => read_n(rd, 8)?,
+        };
+        if level.iter().zip(&levels[j - 1]).any(|(&s, &prev)| s * s != prev) {
+            return Err(Reject("square roots"));
+        }
+        levels.push(level);
+    }
+    let mut acc = F128::ZERO;
+    for j in (0..WORD).rev() {
+        let (s, g) = (&levels[j][..7], levels[j][7]);
+        let top = (0..7).fold(F128::ONE, |a, i| a * (s[i] + (F128::ONE + s[i]) * beta[i]));
+        let high = (3..7).fold(F128::ONE, |a, i| a * (F128::ONE + s[i]));
+        let e = build_eq_table(&s[..3]);
+        let low7 = (0..7).fold(F128::ZERO, |a, t| a * x + e[t]);
+        let low = high * (low7 + e[0] * x + e[1] + e[0]);
+        acc = acc * acc + d[0] * g * (top + low) * v[j];
+    }
+    return Ok(acc);
+}
+
 /// `Π_l eq(bit_l(t), point[stride·l + offset])` over `layers` layers.
 fn eq_at_integer(t: u64, point: &[F128], offset: usize, layers: usize) -> F128 {
     return (0..layers).fold(F128::ONE, |acc, l| {
@@ -170,7 +224,7 @@ fn run_sums(vk: &Vk, table: &[F128]) -> Vec<F128> {
 
 /// The merged transport of the claims `p` leaves, up to the opening of the committed stack; the
 /// assist runs on a fork of `tr`, which is returned for merging after that opening.
-pub fn transport(vk: &Vk, rd: &mut Reader, tr: &mut KeccakChallenger, p: &Piops) -> Result<(Opened, KeccakChallenger)> {
+pub fn transport(vk: &Vk, rd: &mut Reader, tr: &mut KeccakChallenger, p: &Piops, roots: &mut Roots) -> Result<(Opened, KeccakChallenger)> {
     let m = vk.dense_log;
     tr.observe_label(b"flock-merged-open-v1");
     let mut switched = Vec::with_capacity(2);
@@ -201,7 +255,6 @@ pub fn transport(vk: &Vk, rd: &mut Reader, tr: &mut KeccakChallenger, p: &Piops)
     }
     let q_eval = rd.f128()?;
     trace::mark(6, tr);
-    let coeffs: Vec<Vec<F128>> = switched.iter().zip(g_bits).map(|((r, eq, _), &g)| coefficients(g, r, eq)).collect();
     // The statements' rows must differ: Flock merges equal ones, which this verifier does not.
     let rows = [&p.bits[0].row, &p.bits[1].row, &p.words[0].row, &p.gather_row];
     if (0..4).any(|i| (0..i).any(|j| rows[i] == rows[j])) || p.words[0].row != p.words[1].row {
@@ -274,7 +327,12 @@ pub fn transport(vk: &Vk, rd: &mut Reader, tr: &mut KeccakChallenger, p: &Piops)
     if claim != v {
         return Err(Reject("multipoint assist"));
     }
-    let weight = frobenius_sum(&coeffs[0], &values[0]) + frobenius_sum(&coeffs[1], &values[1]) + groups[0] + groups[1];
+    let mut weight = groups[0] + groups[1];
+    for ((r, eq, _), (&g, v)) in switched.iter().zip(g_bits.iter().zip(&values)) {
+        let sum = rooted_sum(g, r, v, rd, roots)?;
+        debug_assert_eq!(sum, frobenius_sum(&coefficients(g, r, eq), v));
+        weight += sum;
+    }
     return Ok((
         Opened {
             point: rho,

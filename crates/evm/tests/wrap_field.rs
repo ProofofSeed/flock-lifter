@@ -57,3 +57,40 @@ fn field_operations_agree_with_flock() {
     let gas = |i: usize| U256::from_be_bytes(out.word(i)).to::<u64>() as f64 / 1000.0;
     eprintln!("gas per multiplication {:.1}, per squaring {:.1}, per extension multiplication {:.1}", gas(0), gas(1), gas(2));
 }
+
+#[test]
+fn kernels_agree_with_the_library() {
+    let mut evm = Evm::new();
+    let (probe, _) = evm.deploy(artifact("KProbe.sol", "KProbe"));
+    let mut rng = Rng(0x1234_5678_9abc_def1);
+    let n = 512;
+    let a: Vec<F128> = (0..n).map(|_| rng.f128()).collect();
+    let b: Vec<F128> = (0..n).map(|_| rng.f128()).collect();
+    let (ua, ub): (Vec<U256>, Vec<U256>) = (a.iter().map(|&v| u(v)).collect(), b.iter().map(|&v| u(v)).collect());
+    let out = evm.call(probe, encode("dot(uint256[],uint256[])", |x| x.uints(&ua).uints(&ub)));
+    let expect = a.iter().zip(&b).fold(F128::ZERO, |acc, (&x, &y)| acc + x * y);
+    assert_eq!(U256::from_be_bytes(out.word(0)), u(expect), "dot kernel");
+    assert_eq!(U256::from_be_bytes(out.word(1)), u(expect), "dot library");
+    eprintln!("gas per term of a dot product: {:.1}", U256::from_be_bytes(out.word(2)).to::<u64>() as f64 / n as f64);
+    let point: Vec<F128> = (0..9).map(|_| rng.f128()).collect();
+    let args: Vec<U256> = point.iter().map(|&p| u(p)).collect();
+    let out = evm.call(probe, encode("eqTable(uint256[])", |x| x.uints(&args)));
+    let table = flock_prover::lincheck::build_eq_table(&point);
+    for (i, &t) in table.iter().enumerate() {
+        assert_eq!(U256::from_be_bytes(out.word(3 + i)), u(t), "eq table entry {i}");
+    }
+    eprintln!("gas per entry of an equality table: {:.1}", U256::from_be_bytes(out.word(1)).to::<u64>() as f64 / 512.0);
+    for _ in 0..32 {
+        let (c, d) = (F256::new(rng.f128(), rng.f128()), F256::new(rng.f128(), rng.f128()));
+        let out = evm.call(probe, encode("mul256(uint256,uint256,uint256)", |x| x.uint(u256(c)).uint(u256(d)).uint(U256::from(100))));
+        assert_eq!(U256::from_be_bytes(out.word(0)), u256(c * d), "mul256 kernel");
+        assert_eq!(U256::from_be_bytes(out.word(1)), u256(c * d), "mul256 library");
+        if c.c0.lo & 31 == 0 {
+            eprintln!("gas per extension multiplication: {:.1}", U256::from_be_bytes(out.word(2)).to::<u64>() as f64 / 100.0);
+        }
+    }
+    let v = rng.f128();
+    let out = evm.call(probe, encode("frob(uint256,uint256)", |x| x.uint(u(v)).uint(U256::from(127))));
+    assert_eq!(out.word(0), out.word(1), "frob");
+    eprintln!("gas per squaring: {:.1}", U256::from_be_bytes(out.word(2)).to::<u64>() as f64 / 127.0);
+}

@@ -4,7 +4,8 @@
 //! the wrap contract on the lift in an in-process EVM, checks it stage by stage against the
 //! mirror, and reports the gas of every stage.
 //!
-//! Usage: `wrap-bench [responses] [chunk] [log inverse rate] [stop]` (default 8, 4, 1, none).
+//! Usage: `wrap-bench [responses] [chunk] [outer log inverse rate] [tables' log inverse rate] [stop]`
+//! (default 8, 4, 1, 1, none).
 //! A lift is kept under `target/wrap-cache` and reused; `POFSEED_WRAP_FRESH` makes a new one.
 
 use std::{env, fs, path::PathBuf, sync::Arc, time::Instant};
@@ -35,8 +36,8 @@ struct Case {
     marks: Vec<(u32, [u8; 32])>,
 }
 
-fn cache(n: usize, chunk: usize, rate: usize) -> PathBuf {
-    return PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/wrap-cache/{n}-{chunk}-{rate}"));
+fn cache(n: usize, chunk: usize, rate: usize, tables: usize) -> PathBuf {
+    return PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/wrap-cache/{n}-{chunk}-{rate}-{tables}"));
 }
 
 fn load(dir: &PathBuf) -> Option<Case> {
@@ -51,8 +52,8 @@ fn load(dir: &PathBuf) -> Option<Case> {
     });
 }
 
-fn make(n: usize, chunk: usize, rate: usize, dir: &PathBuf) -> Case {
-    let whir = WhirOuter::new(4, rate, Regime::Johnson, 6, 16, 128).with_merkle(MerkleHash::Keccak);
+fn make(n: usize, chunk: usize, rate: usize, tables: usize, dir: &PathBuf) -> Case {
+    let whir = WhirOuter::new(4, rate, Regime::Johnson, 6, 22, 128).with_merkle(MerkleHash::Keccak);
     let (_, chain_code) = bip32_vector_1();
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code.clone(), HARDENED_OFFSET)));
     let (_, output, proof) = vector_1_proof(n, b"flock-lifter wrap bench entropy", BINDING);
@@ -63,7 +64,7 @@ fn make(n: usize, chunk: usize, rate: usize, dir: &PathBuf) -> Case {
         binding: BINDING.to_vec(),
     };
     let t = Instant::now();
-    let (key, lifted, tm) = wrapped::prove(&program, &statement, &proof, chunk, &whir, None, rate).expect("a lift");
+    let (key, lifted, tm) = wrapped::prove(&program, &statement, &proof, chunk, &whir, None, tables).expect("a lift");
     println!(
         "lifted {n} responses in {:.1} s: chunks {:.1} s, wrap {:.1} s, tables committed in {:.1} s, structure proof {:.1} s",
         t.elapsed().as_secs_f64(),
@@ -98,18 +99,18 @@ fn make(n: usize, chunk: usize, rate: usize, dir: &PathBuf) -> Case {
 
 fn main() {
     let arg = |i: usize, d: usize| env::args().nth(i).map(|a| a.parse().expect("a number")).unwrap_or(d);
-    let (n, chunk, rate) = (arg(1, 8), arg(2, 4), arg(3, 1));
-    let stop = env::args().nth(4).map(|a| a.parse::<u64>().expect("a stage"));
-    let dir = cache(n, chunk, rate);
+    let (n, chunk, rate, tables) = (arg(1, 8), arg(2, 4), arg(3, 1), arg(4, 1));
+    let stop = env::args().nth(5).map(|a| a.parse::<u64>().expect("a stage"));
+    let dir = cache(n, chunk, rate, tables);
     let case = match load(&dir) {
         Some(case) if env::var_os("POFSEED_WRAP_FRESH").is_none() => case,
-        _ => make(n, chunk, rate, &dir),
+        _ => make(n, chunk, rate, tables, &dir),
     };
     let key_path = project().join("src/wrap/WrapKey.sol");
     if fs::read_to_string(&key_path).ok().as_deref() != Some(case.key.as_str()) {
         fs::write(&key_path, &case.key).expect("write the constants");
     }
-    println!("lift of {n} responses in chunks of {chunk} at rate 2^-{rate}: {} B of calldata", case.lift.len());
+    println!("lift of {n} responses in chunks of {chunk}, outer rate 2^-{rate}, tables' rate 2^-{tables}: {} B of calldata", case.lift.len());
     let mut evm = Evm::new();
     let (contract, name) = if stop.is_some() { ("WrapProbe.sol", "WrapProbe") } else { ("FlockWrap.sol", "FlockWrap") };
     let (address, deploy) = evm.deploy(artifact(contract, name));

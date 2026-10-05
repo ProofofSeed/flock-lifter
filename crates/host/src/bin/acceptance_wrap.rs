@@ -99,7 +99,7 @@ fn main() {
     let full = matches!(mode.as_str(), "full" | "both");
     let rejects = matches!(mode.as_str(), "rejects" | "both");
     assert!(full || rejects, "usage: acceptance-wrap [rejects|full|both] [responses] [log inverse rate]");
-    let outer = WhirOuter::new(4, rate, Regime::Johnson, 6, 16, 128).with_merkle(MerkleHash::Keccak);
+    let outer = WhirOuter::new(4, rate, Regime::Johnson, 6, 22, 128).with_merkle(MerkleHash::Keccak);
     let (_, chain_code) = bip32_vector_1();
     let t = Instant::now();
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code.clone(), HARDENED_OFFSET)));

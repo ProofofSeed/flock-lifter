@@ -1,0 +1,40 @@
+lift of 219 responses in chunks of 128, outer rate 2^-4, tables' rate 2^-4: 485608 B of calldata
+FlockWrap: runtime 125789 B, deployment 27070221 gas
+ran in 0.08 s: success true, gas 120220031 (execution 112764047, calldata and base 7455984)
+  stage   1:      1296702 gas ✓
+  stage   2:       579824 gas ✓
+  stage   3:       557796 gas ✓
+  stage   4:      7912250 gas ✓
+  stage   5:      3283334 gas ✓
+  stage   6:      2981825 gas ✓
+  stage   7:       619267 gas ✓
+  stage   8:       137299 gas ✓
+  stage  81:     20152008 gas 
+  stage  82:     11133617 gas 
+  stage  90:        73552 gas 
+  stage  91:      2214183 gas 
+  stage  92:      1668978 gas 
+  stage  93:      1187492 gas 
+  stage  94:       925722 gas 
+  stage  98:      2824912 gas 
+  stage  99:     12946703 gas 
+  stage   9:         4247 gas ✓
+  stage  10:         3291 gas ✓
+  stage  11:      2918975 gas 
+  stage  12:        39327 gas 
+  stage  13:      1235719 gas 
+  stage  14:       215573 gas 
+  stage  15:       598298 gas 
+  stage  16:       651785 gas 
+  stage  17:      2392550 gas 
+  stage  90:       739456 gas 
+  stage  91:      2275854 gas 
+  stage  92:      1704677 gas 
+  stage  93:      1213688 gas 
+  stage  94:       960914 gas 
+  stage  95:       796552 gas 
+  stage  98:      2467266 gas 
+  stage  99:     22736399 gas 
+  stage  20:         4311 gas ✓
+  stage  21:      1307503 gas 
+tampering: 23 flipped bits refused

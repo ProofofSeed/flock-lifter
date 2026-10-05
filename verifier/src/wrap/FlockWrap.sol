@@ -89,7 +89,7 @@ contract FlockWrap {
     }
 
     /// The outer commitment's opening at the transport's point.
-    function _open(Run memory x, Opened memory o) private pure {
+    function _open(Run memory x, Opened memory o) private {
         WhirClaim memory c;
         c.rounds = WrapKey.OUTER_ROUNDS;
         c.finalVars = WrapKey.OUTER_FINAL;

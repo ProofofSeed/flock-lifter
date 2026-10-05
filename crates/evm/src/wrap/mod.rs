@@ -17,10 +17,20 @@ use pofseed_flock_lift::wrapped::WrappedLift;
 
 use crate::mirror::{Reader, Reject, Result};
 
-/// Encodes a wrapped lift's proofs: the outer proof with the two evaluations of the wiring's
-/// tables its verifier is given, the outer commitment's opening, and the structure proof.
-pub fn encode_proofs(vk: &vk::Vk, lifted: &WrappedLift, live: flock_prover::field::F128, masked: flock_prover::field::F128) -> Vec<u8> {
+/// Encodes a wrapped lift's proofs over the responses' published `words`: the outer proof with the
+/// two evaluations of the wiring's tables and the square-root chains its verifier is given, the
+/// outer commitment's opening, and the structure proof.
+pub fn encode_proofs(vk: &vk::Vk, lifted: &WrappedLift, words: &[Vec<flock_prover::field::F128>], live: flock_prover::field::F128, masked: flock_prover::field::F128) -> Vec<u8> {
     let (mut data, opening) = encode::encode_outer(vk, &lifted.wrap, live, masked);
+    let mut chains = Vec::new();
+    {
+        let mut rd = Reader::new(&data);
+        let public = outer::read_public(vk, &mut rd, words).expect("the public segment");
+        let (p, mut tr, _) = outer::piops(vk, &mut rd, &public).expect("the outer proof's interactive proofs");
+        opening::transport(vk, &mut rd, &mut tr, &p, &mut opening::Roots::Derive(&mut chains)).expect("the outer proof's transport");
+        trace::take();
+    }
+    data.extend(chains);
     let opening: pofseed_flock_lift_whir::whir::Proof = bincode::deserialize(&opening).expect("a WHIR opening");
     data.extend(whir::encode(&vk.whir, &opening));
     data.extend(structure::encode(&vk.structure, &lifted.structure));
@@ -36,7 +46,7 @@ pub fn encode_lift(vk: &vk::Vk, lifted: &WrappedLift, words: &[Vec<flock_prover:
         row.iter().for_each(|&v| w.f128_native(v));
     }
     lifted.unopened.iter().for_each(|d| w.hash(d));
-    w.raw(&encode_proofs(vk, lifted, live, masked));
+    w.raw(&encode_proofs(vk, lifted, words, live, masked));
     return w.bytes;
 }
 
@@ -53,7 +63,7 @@ pub fn verify_proofs(vk: &vk::Vk, rd: &mut Reader, words: &[Vec<flock_prover::fi
     let public = outer::read_public(vk, rd, words)?;
     let (p, mut tr, cap) = outer::piops(vk, rd, &public)?;
     trace::mark(5, &tr);
-    let (opened, child) = opening::transport(vk, rd, &mut tr, &p)?;
+    let (opened, child) = opening::transport(vk, rd, &mut tr, &p, &mut opening::Roots::Read)?;
     trace::mark(8, &child);
     whir::verify(&vk.whir, &cap, &[opened.point.clone()], &[opened.value], rd, &mut tr)?;
     trace::mark(9, &tr);
