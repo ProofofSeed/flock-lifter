@@ -1,0 +1,69 @@
+# Deletion validation of the wrap contracts, 2026-10-05, on wrap-bench 8 4 6 4.
+# Each section removes one check from the contracts, runs the bench, and restores the source.
+# The case built to fail only that check must read ACCEPTED, and every other case refused.
+# Only these four checks can be singled out by a flipped bit; a flip elsewhere in a lift moves the transcript and fails a grinding check first.
+## deleted: the last equation of a WHIR opening (Whir.weigh)
+ verifier/src/wrap/Whir.sol | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+staged verification: 80164173 gas in 7 transactions, each under the cap; the statement is accepted
+staged tampering: 11 flipped bits refused
+  staged, a lift failing only the last opening's last equation: ACCEPTED
+  staged, a lift failing only a Merkle path: refused at stage 6
+  staged, a lift failing only the Fiat-Shamir gate: refused at stage 1
+  staged, a state other than the session's: a tampered state refused, another session's state refused
+tampering: 23 flipped bits refused
+  a lift failing only the last opening's last equation: ACCEPTED
+  a lift failing only a Merkle path: refused
+  a lift failing only the Fiat-Shamir gate: refused
+## deleted: the Merkle path comparison (Whir._openings)
+ verifier/src/wrap/Whir.sol | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+staged verification: 80071308 gas in 7 transactions, each under the cap; the statement is accepted
+  a flipped bit at byte 148236 is ACCEPTED by the staged verifier
+  a flipped bit at byte 259413 is ACCEPTED by the staged verifier
+  a flipped bit at byte 370590 is ACCEPTED by the staged verifier
+staged tampering: 8 flipped bits refused
+  staged, a lift failing only the last opening's last equation: refused at stage 7
+  staged, a lift failing only a Merkle path: ACCEPTED
+  staged, a lift failing only the Fiat-Shamir gate: refused at stage 1
+  staged, a state other than the session's: a tampered state refused, another session's state refused
+  a flipped bit at byte 88620 is ACCEPTED
+  a flipped bit at byte 106344 is ACCEPTED
+  a flipped bit at byte 124068 is ACCEPTED
+  a flipped bit at byte 265860 is ACCEPTED
+  a flipped bit at byte 283584 is ACCEPTED
+  a flipped bit at byte 319032 is ACCEPTED
+  a flipped bit at byte 354480 is ACCEPTED
+  a flipped bit at byte 372204 is ACCEPTED
+  a flipped bit at byte 389928 is ACCEPTED
+tampering: 14 flipped bits refused
+  a lift failing only the last opening's last equation: refused
+  a lift failing only a Merkle path: ACCEPTED
+  a lift failing only the Fiat-Shamir gate: refused
+## deleted: the Fiat-Shamir gate (FlockWrap and the first stage)
+ verifier/src/wrap/FlockWrap.sol         | 2 +-
+ verifier/src/wrap/staged/WrapStages.sol | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+staged verification: 80122165 gas in 7 transactions, each under the cap; the statement is accepted
+staged tampering: 11 flipped bits refused
+  staged, a lift failing only the last opening's last equation: refused at stage 7
+  staged, a lift failing only a Merkle path: refused at stage 6
+  staged, a lift failing only the Fiat-Shamir gate: ACCEPTED
+  staged, a state other than the session's: a tampered state refused, another session's state refused
+tampering: 23 flipped bits refused
+  a lift failing only the last opening's last equation: refused
+  a lift failing only a Merkle path: refused
+  a lift failing only the Fiat-Shamir gate: ACCEPTED
+## deleted: the session's state comparison (WrapSessions)
+ verifier/src/wrap/staged/WrapSessions.sol | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+staged verification: 80062214 gas in 7 transactions, each under the cap; the statement is accepted
+staged tampering: 11 flipped bits refused
+  staged, a lift failing only the last opening's last equation: refused at stage 7
+  staged, a lift failing only a Merkle path: refused at stage 6
+  staged, a lift failing only the Fiat-Shamir gate: refused at stage 1
+  staged, a state other than the session's: a state under another digest ACCEPTED, another session's state ACCEPTED
+tampering: 23 flipped bits refused
+  a lift failing only the last opening's last equation: refused
+  a lift failing only a Merkle path: refused
+  a lift failing only the Fiat-Shamir gate: refused

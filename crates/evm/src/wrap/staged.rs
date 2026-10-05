@@ -192,21 +192,27 @@ pub fn accepted(evm: &mut Evm, sessions: Address, digest: &[u8; 32]) -> bool {
     return out.success && U256::from_be_slice(&out.output) == U256::from(1);
 }
 
-/// Starts a session on `lift`, then advances it with a state one bit away from the one its first
-/// stage returned, and with the state of another caller's session; says what the session contract
-/// did with each.
+/// Starts a session on `lift`, then advances it with its state under another digest, which no
+/// stage reads before the last, and with the state of another caller's session; says what the
+/// session contract did with each.
 pub fn stale_state(chain: &mut Evm, probe: &mut Evm, sessions: Address, output: &[u8], counts: u64, binding: &[u8], lift: &[u8]) -> String {
     let salt = U256::from(7);
     let learned = probe.simulate(sessions, start(salt, output, counts, binding, lift));
     let (_, _, _, cursor) = state_of(&learned.output);
-    let out = chain.call(sessions, start(salt, output, counts, binding, &lift[..cursor]));
+    let call = start(salt, output, counts, binding, &lift[..cursor]);
+    assert!(probe.call(sessions, call.clone()).success, "the probe follows the chain");
+    let out = chain.call(sessions, call);
     assert!(out.success, "the first stage accepts");
     let (state, _, _, _) = state_of(&out.output);
+    let learned = probe.simulate(sessions, advance(salt, &state, &lift[cursor..]));
+    assert!(learned.success, "the second stage accepts");
+    let (_, _, _, next) = state_of(&learned.output);
+    let data = &lift[cursor..next];
+    assert!(chain.simulate(sessions, advance(salt, &state, data)).success, "the session's own state advances it");
     let mut bad = state.clone();
-    let at = bad.len() - 1;
-    bad[at] ^= 1;
-    let tampered = chain.simulate(sessions, advance(salt, &bad, &lift[cursor..]));
-    let other = chain.simulate(sessions, advance(U256::from(8), &state, &lift[cursor..]));
+    bad[95] ^= 1;
+    let tampered = chain.simulate(sessions, advance(salt, &bad, data));
+    let other = chain.simulate(sessions, advance(U256::from(8), &state, data));
     let verdict = |o: &crate::evm::Outcome| if o.success { "ACCEPTED" } else { "refused" };
-    return format!("a tampered state {}, another session's state {}", verdict(&tampered), verdict(&other));
+    return format!("a state under another digest {}, another session's state {}", verdict(&tampered), verdict(&other));
 }
