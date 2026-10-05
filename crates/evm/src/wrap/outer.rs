@@ -112,7 +112,7 @@ pub fn quadratic(claim: F128, e1: F128, einf: F128, r: F128) -> F128 {
 }
 
 /// Starts the outer transcript: the public segment, then Flock's statement binding.
-fn bind(vk: &Vk, public: &[F128], cap: &[[u8; 32]]) -> KeccakChallenger {
+fn bind(vk: &Vk, public: &[F128], cap: &[[u8; 32]], publics_digest: &[u8; 32]) -> KeccakChallenger {
     let mut tr = KeccakChallenger::new(WRAP_DOMAIN);
     tr.observe_label(b"pofseed-flock-lift-wrap-public");
     tr.observe_f128_slice(public);
@@ -122,7 +122,7 @@ fn bind(vk: &Vk, public: &[F128], cap: &[[u8; 32]]) -> KeccakChallenger {
     tr.observe_bytes(cap.as_flattened());
     tr.observe_label(b"flock-circuit-stmt-v2");
     tr.observe_bytes(&vk.circuit_digest);
-    tr.observe_bytes(&tr.publics_commitment(public).expect("a Keccak commitment"));
+    tr.observe_bytes(publics_digest);
     return tr;
 }
 
@@ -385,7 +385,8 @@ pub fn piops(vk: &Vk, rd: &mut Reader, public: &[F128]) -> Result<(Piops, Keccak
         vk.whir.schedule().map_err(|_| Reject("configuration"))?.rounds[0].queries,
     );
     let cap: Vec<[u8; 32]> = (0..cap_len).map(|_| rd.hash()).collect::<Result<_>>()?;
-    let mut tr = bind(vk, public, &cap);
+    let digest = rd.hash()?;
+    let mut tr = bind(vk, public, &cap, &digest);
     let mut child = tr.fork(b"flock-par-wiring-v1");
     trace::mark(1, &tr);
     let zc = zerocheck(vk.m_bool, rd, &mut tr)?;

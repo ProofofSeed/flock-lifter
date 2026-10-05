@@ -25,6 +25,7 @@ pub fn encode_outer(vk: &Vk, proof: &WrapProof, live: flock_prover::field::F128,
         }
     }
     proof.commitment.cap.iter().for_each(|h| w.hash(h));
+    w.hash(&flock_prover::union::publics_digest(&proof.public));
     let p = &proof.proof;
     let b = p.boolean.as_ref().expect("a Boolean class");
     let zc = &b.zerocheck;

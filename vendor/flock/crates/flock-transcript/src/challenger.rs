@@ -45,13 +45,6 @@ pub trait Challenger: Send {
         false
     }
 
-    /// A 32-byte commitment to a statement's public words under the
-    /// transcript's own hash, for a transcript that prefers it to the
-    /// default BLAKE3 chain; `None` keeps the default.
-    fn publics_commitment(&self, _public: &[F128]) -> Option<[u8; 32]> {
-        None
-    }
-
     /// Absorb a domain-separation label (e.g. `b"flock-zerocheck-v0"`). Each
     /// protocol entry should call this once on entry so a transcript from
     /// one protocol cannot be replayed as another.

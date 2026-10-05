@@ -1,4 +1,4 @@
-block built in 0.55 s (k_log 28)
+block built in 0.52 s (k_log 28)
 ── reject matrix (n=8) ──
   control (n=8, two chunks, matching expectation): accepted ✓
   R1 tampered proof: refused (FiatShamir) ✓
@@ -9,12 +9,12 @@ block built in 0.55 s (k_log 28)
   R6 wrong statement: refused by check_journal (StatementMismatch) ✓
   R7 malformed response: refused by the prover (Witness(5, AndMsgShape)) ✓
   R8 wrong proof format: refused by check_journal (ProofFormatMismatch) ✓
-  W1 tampered published word: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
+  W1 tampered published word: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"skip\" })"))) ✓
   W2 tampered unopened digest: refused (FiatShamir) ✓
   W3 swapped responses: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
   W4 another statement's tables: refused (Wrap(Structure(Opening))) ✓
   W5 truncated lift: refused (Shape) ✓
-  W6 tampered matrix claim: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"skip\" })"))) ✓
+  W6 tampered matrix claim: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
   W7 tampered commitment: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
   W8 another lift's unopened digests: refused (FiatShamir) ✓
   W9 a key of another shape: refused (Shape) ✓
@@ -26,17 +26,17 @@ block built in 0.55 s (k_log 28)
 reject matrix: PASS
 ── full-scale positive run (n=219) ──
   zkboo proof of 219 responses in 0.07 s
-  wrapped lift in 30.12 s: chunks 11.49 s, wrap 10.23 s, tables committed in 2.33 s, structure proof 8.40 s
+  wrapped lift in 29.64 s: chunks 11.37 s, wrap 10.14 s, tables committed in 2.30 s, structure proof 8.13 s
   parts: wrap proof 328555 B, structure proof 397344 B, tables over 2^27 bytes
   wrapped lift: 815659 B
   verified in 0.010 s
   journal passes the relying-party gate: 219 responses ✓
-      151.23 real      1182.90 user       186.41 sys
-         88185339904  maximum resident set size
+      149.82 real      1182.97 user       186.50 sys
+         88189894656  maximum resident set size
                    0  average shared memory size
                    0  average unshared data size
                    0  average unshared stack size
-            89250216  page reclaims
+            89243368  page reclaims
                    0  page faults
                    0  swaps
                    0  block input operations
@@ -45,7 +45,7 @@ reject matrix: PASS
                    0  messages received
                    0  signals received
                    0  voluntary context switches
-             1447507  involuntary context switches
-      20442107070979  instructions retired
-       4965381689134  cycles elapsed
-         87526537808  peak memory footprint
+             1454687  involuntary context switches
+      20458054725952  instructions retired
+       4972427742526  cycles elapsed
+         87526242896  peak memory footprint
