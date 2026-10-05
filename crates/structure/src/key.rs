@@ -173,6 +173,11 @@ fn cells(parts: &Parts) -> Vec<u64> {
 }
 
 impl Layout {
+    /// The layout of the tables of `parts`, without their bytes.
+    pub fn of(parts: &Parts) -> Layout {
+        return Layout::new(parts, &Kernel::new()).0;
+    }
+
     fn new(parts: &Parts, kernel: &Kernel) -> (Layout, Vec<u64>, Vec<u64>) {
         assert!(parts.k_log <= WORD_BITS + 6, "the descriptors hold blocks of at most 2^28 bits");
         let cell_list = cells(parts);
