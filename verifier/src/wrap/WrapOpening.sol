@@ -290,16 +290,10 @@ library WrapOpening {
         }
     }
 
-    /// Adds the table `t` to the words of `columns` from `base` on.
-    function _add(uint256[] memory columns, uint256 base, uint256[] memory t) private pure {
-        K.addInto(W.ptr(columns) + 32 * base, W.ptr(t), t.length);
-    }
-
     /// Checks the anchor's last equation: the claims on the committed bits weigh the twisted
     /// equality of the stack's point `rho` at the multipoint sumcheck's point, and the claims on
     /// the committed words the plain one; each claim then weighs its statement's batching power,
-    /// its boundary value at the anchor's point and its layout weight, which are summed over the
-    /// layout's runs in one pass. `runs` and `gateRuns` are the layout's tables.
+    /// its boundary value at the anchor's point and its layout weight. `runs` and `gateRuns` are the layout's tables.
     function layout(Run memory x, Assist memory a, uint256[] memory rho, uint256[] memory gammas, bytes memory runs, bytes memory gateRuns)
         internal
         pure
@@ -320,14 +314,17 @@ library WrapOpening {
         uint256 low = WrapKey.M_BOOL - nu - 7;
         uint256 cols = x.ecol.length;
         uint256 base = WrapKey.ELEM_FROZEN << cols;
-        uint256[] memory columns = new uint256[]((1 << low) > base + (1 << cols) ? (1 << low) : base + (1 << cols));
+        // The layout weight of a claim is the extension, at its column point, of the runs' weights
+        // spread over their columns.
+        uint256 columns = W.ptr(new uint256[](W.read(runs, runs.length - 4, 2) + W.read(runs, runs.length - 2, 2)));
+        K.spreadRuns(columns, W.data(runs), at.length, W.ptr(at));
         // The two claims on the committed bits: their column points end in zeros.
-        _add(columns, 0, W.eqTable(x.rr, 1, low, k[0]));
-        _add(columns, 0, W.eqTable(x.rRest, 1 + nu, low, k[1]));
+        uint256 sum = F.mul(k[0], K.extension(columns, low, W.ptr(x.rr) + 32)) ^ F.mul(k[1], K.extension(columns, low, W.ptr(x.rRest) + 32 * (1 + nu)));
         // The element class's two claims share their rows; their column points end in the region's frozen bits.
-        _add(columns, base, W.eqTable(x.er, nu, cols, F.mul(gammas[2], k[2])));
-        _add(columns, base, W.eqTable(x.ecol, 0, cols, F.mul(gammas[3], k[2])));
-        uint256 sum = K.weigh(W.ptr(columns), 0, columns.length, W.data(runs), at.length, W.ptr(at));
+        sum ^= F.mul(
+            k[2],
+            F.mul(gammas[2], K.extension(columns + 32 * base, cols, W.ptr(x.er) + 32 * nu)) ^ F.mul(gammas[3], K.extension(columns + 32 * base, cols, W.ptr(x.ecol)))
+        );
         // The gathered cell slots share the wiring point's rows; each reads one column.
         sum ^= F.mul(k[3], K.dotIndexed(W.ptr(gammas) + 32 * 4, W.ptr(at), W.data(gateRuns), WrapKey.N_GATE));
         if (a.anchor != sum) revert Layout();

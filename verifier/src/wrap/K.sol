@@ -855,13 +855,67 @@ library K {
         }
     }
 
-    /// Adds the `n` words at memory `src` to those at memory `dst`.
-    function addInto(uint256 dst, uint256 src, uint256 n) internal pure {
+    /// Writes at memory `out`, for each column of the `count` twelve-byte run records at memory `runs`,
+    /// the word of its run at memory `at`.
+    function spreadRuns(uint256 out, uint256 runs, uint256 count, uint256 at) internal pure {
         assembly ("memory-safe") {
 
-            for { let end := add(src, shl(5, n)) } lt(src, end) { src := add(src, 0x20) dst := add(dst, 0x20) } {
-                mstore(dst, xor(mload(dst), mload(src)))
+            for { let i := 0 } lt(i, count) { i := add(i, 1) } {
+                let rec := mload(add(runs, mul(i, 12)))
+                let v := mload(add(at, shl(5, i)))
+                let p := add(out, shl(5, and(shr(176, rec), 0xffff)))
+                for { let q := add(p, shl(5, and(shr(160, rec), 0xffff))) } lt(p, q) { p := add(p, 0x20) } {
+                    mstore(p, v)
+                }
             }
+        }
+    }
+
+    /// The multilinear extension of the `2^n` words at memory `v` at the `n` coordinates at memory
+    /// `point`, lowest first; the words are left as they are.
+    function extension(uint256 v, uint256 n, uint256 point) internal pure returns (uint256 r) {
+        assembly ("memory-safe") {
+            function cl(ka, kb) -> ko {
+                let a0 := and(ka, 0x21084210842108421084210842108421)
+                let a1 := and(ka, 0x42108421084210842108421084210842)
+                let a2 := and(ka, 0x84210842108421084210842108421084)
+                let a3 := and(ka, 0x08421084210842108421084210842108)
+                let a4 := and(ka, 0x10842108421084210842108421084210)
+                let b0 := and(kb, 0x21084210842108421084210842108421)
+                let b1 := and(kb, 0x42108421084210842108421084210842)
+                let b2 := and(kb, 0x84210842108421084210842108421084)
+                let b3 := and(kb, 0x08421084210842108421084210842108)
+                let b4 := and(kb, 0x10842108421084210842108421084210)
+                ko := and(xor(xor(mul(a0, b0), mul(a1, b4)), xor(xor(mul(a2, b3), mul(a3, b2)), mul(a4, b1))), 0x8421084210842108421084210842108421084210842108421084210842108421)
+                ko := xor(ko, and(xor(xor(mul(a0, b1), mul(a1, b0)), xor(xor(mul(a2, b4), mul(a3, b3)), mul(a4, b2))), 0x0842108421084210842108421084210842108421084210842108421084210842))
+                ko := xor(ko, and(xor(xor(mul(a0, b2), mul(a1, b1)), xor(xor(mul(a2, b0), mul(a3, b4)), mul(a4, b3))), 0x1084210842108421084210842108421084210842108421084210842108421084))
+                ko := xor(ko, and(xor(xor(mul(a0, b3), mul(a1, b2)), xor(xor(mul(a2, b1), mul(a3, b0)), mul(a4, b4))), 0x2108421084210842108421084210842108421084210842108421084210842108))
+                ko := xor(ko, and(xor(xor(mul(a0, b4), mul(a1, b3)), xor(xor(mul(a2, b2), mul(a3, b1)), mul(a4, b0))), 0x4210842108421084210842108421084210842108421084210842108421084210))
+            }
+            function red(kv) -> ko {
+                let h := shr(128, kv)
+                ko := xor(and(kv, 0xffffffffffffffffffffffffffffffff), xor(xor(h, shl(1, h)), xor(shl(2, h), shl(7, h))))
+                h := shr(128, ko)
+                ko := xor(and(ko, 0xffffffffffffffffffffffffffffffff), xor(xor(h, shl(1, h)), xor(shl(2, h), shl(7, h))))
+            }
+            function gm(ka, kb) -> ko {
+                ko := red(cl(ka, kb))
+            }
+            // Scratch: the words, folded in place; a pair of equal words folds without a product.
+            let s := mload(0x40)
+            mcopy(s, v, shl(add(n, 5), 1))
+            for { let j := 0 } lt(j, n) { j := add(j, 1) } {
+                let x := mload(add(point, shl(5, j)))
+                let half := shl(sub(sub(n, j), 1), 1)
+                for { let k := 0 } lt(k, half) { k := add(k, 1) } {
+                    let src := add(s, shl(6, k))
+                    let lo := mload(src)
+                    let d := xor(lo, mload(add(src, 0x20)))
+                    if d { lo := xor(lo, gm(x, d)) }
+                    mstore(add(s, shl(5, k)), lo)
+                }
+            }
+            r := mload(s)
         }
     }
 

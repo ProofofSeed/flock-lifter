@@ -48,10 +48,11 @@ contract FlockWrap {
         Run memory x;
         x.phi = Constants.PHI8;
         x.p = g.unopenedAt + 32 * WrapKey.RESPONSES;
+        uint256 free = W.top();
+        FiatShamir.gate(s, g);
+        W.release(free);
         if (!_proofs(x, g.wordsAt, stop)) return bytes32(0);
         if (x.p != g.wordsAt + lift.length) revert Shape();
-        FiatShamir.gate(s, g);
-        W.mark(21, x.tr);
         return W.state(x.tr);
     }
 

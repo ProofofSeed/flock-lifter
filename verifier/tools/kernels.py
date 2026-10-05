@@ -393,12 +393,38 @@ for { let layer := from } gt(layer, to) { layer := sub(layer, 1) } {
 ))
 
 KERNELS.append(kernel(
-    "Adds the `n` words at memory `src` to those at memory `dst`.",
-    "addInto(uint256 dst, uint256 src, uint256 n)",
+    "Writes at memory `out`, for each column of the `count` twelve-byte run records at memory `runs`,\nthe word of its run at memory `at`.",
+    "spreadRuns(uint256 out, uint256 runs, uint256 count, uint256 at)",
     [],
-    """for { let end := add(src, shl(5, n)) } lt(src, end) { src := add(src, 0x20) dst := add(dst, 0x20) } {
-    mstore(dst, xor(mload(dst), mload(src)))
+    """for { let i := 0 } lt(i, count) { i := add(i, 1) } {
+    let rec := mload(add(runs, mul(i, 12)))
+    let v := mload(add(at, shl(5, i)))
+    let p := add(out, shl(5, and(shr(176, rec), 0xffff)))
+    for { let q := add(p, shl(5, and(shr(160, rec), 0xffff))) } lt(p, q) { p := add(p, 0x20) } {
+        mstore(p, v)
+    }
 }""",
+))
+
+KERNELS.append(kernel(
+    "The multilinear extension of the `2^n` words at memory `v` at the `n` coordinates at memory\n`point`, lowest first; the words are left as they are.",
+    "extension(uint256 v, uint256 n, uint256 point) returns (uint256 r)",
+    BASE + [MUL],
+    """// Scratch: the words, folded in place; a pair of equal words folds without a product.
+let s := mload(0x40)
+mcopy(s, v, shl(add(n, 5), 1))
+for { let j := 0 } lt(j, n) { j := add(j, 1) } {
+    let x := mload(add(point, shl(5, j)))
+    let half := shl(sub(sub(n, j), 1), 1)
+    for { let k := 0 } lt(k, half) { k := add(k, 1) } {
+        let src := add(s, shl(6, k))
+        let lo := mload(src)
+        let d := xor(lo, mload(add(src, 0x20)))
+        if d { lo := xor(lo, gm(x, d)) }
+        mstore(add(s, shl(5, k)), lo)
+    }
+}
+r := mload(s)""",
 ))
 
 KERNELS.append(kernel(
