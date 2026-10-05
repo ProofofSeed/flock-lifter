@@ -31,5 +31,31 @@ fn main() {
         "nonzeros per row       {:.2} on A, {:.2} on B",
         nnz_a as f64 / program.explicit_rows() as f64,
         nnz_b as f64 / program.explicit_rows() as f64
-    );    println!("committed entries      {}", entries(&program).len());
+    );
+    let list = entries(&program);
+    println!("committed entries      {}", list.len());
+    let (mut full, mut fixed, mut b_side, mut absolute_words) = (0usize, 0usize, 0usize, std::collections::BTreeSet::new());
+    for &e in &list {
+        let address = (e >> 45) as usize;
+        let (u, j) = (address / 128, address % 128);
+        full += usize::from(j == 64);
+        fixed += usize::from(u >= 64);
+        b_side += (e & 1) as usize;
+        if u >= 64 {
+            absolute_words.insert((e >> 23) & ((1 << 22) - 1));
+        }
+    }
+    let ops = pofseed_flock_lift_block::committed::operations(&program);
+    println!(
+        "operations             {} ({} at a fixed column bit, {} on B, {} over all 64 rows)",
+        ops.len(),
+        ops.iter().filter(|o| o.fixed).count(),
+        ops.iter().filter(|o| o.side == 1).count(),
+        ops.iter().filter(|o| o.mask == u64::MAX).count()
+    );
+    println!(
+        "entries by kind       {full} full runs, {} partial; {fixed} at a fixed column bit ({} column words); {b_side} on B",
+        list.len() - full,
+        absolute_words.len()
+    );
 }

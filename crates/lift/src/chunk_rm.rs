@@ -77,7 +77,7 @@ fn row_log(count: usize) -> usize {
     return (count.next_power_of_two().trailing_zeros() as usize).max(3);
 }
 
-fn r1cs_for(program: &Program, nu: usize) -> BlockR1cs {
+pub(crate) fn r1cs_for(program: &Program, nu: usize) -> BlockR1cs {
     let stub = || SparseBinaryMatrix::new(0, 0, Vec::new());
     let k_log = program.geometry().k_log();
     return BlockR1cs {

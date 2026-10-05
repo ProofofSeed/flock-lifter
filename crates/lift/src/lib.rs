@@ -4,6 +4,10 @@
 
 pub mod chunk;
 pub mod chunk_rm;
+pub mod chunk_wrap;
 pub mod lift;
 pub mod matrix;
+pub mod root;
 pub mod transcript;
+pub mod wrap;
+pub mod wrapped;

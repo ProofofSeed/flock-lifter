@@ -10,6 +10,8 @@ publish = false
 flock-prover = { workspace = true }
 pofseed-flock-lift = { path = "../lift" }
 pofseed-flock-lift-block = { path = "../block" }
+pofseed-flock-lift-structure = { path = "../structure" }
+pofseed-flock-lift-whir = { path = "../whir" }
 pofseed-flock-lift-statement = { path = "../statement" }
 revm = { version = "43", features = ["dev"] }
 serde_json = { version = "1" }
@@ -39,3 +41,11 @@ path = "src/bin/run_classes.rs"
 [[bin]]
 name = "layout-probe"
 path = "src/bin/layout_probe.rs"
+
+[[bin]]
+name = "wrap-check"
+path = "src/bin/wrap_check.rs"
+
+[[bin]]
+name = "wrap-bench"
+path = "src/bin/wrap_bench.rs"

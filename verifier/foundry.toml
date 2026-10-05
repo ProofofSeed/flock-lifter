@@ -12,6 +12,10 @@ evm_version = "prague"
 optimizer = true
 optimizer_runs = 1
 via_ir = false
+# The wrap verifier is compiled for cheap execution: its field arithmetic leans on wide constants,
+# which the size-minded default would rebuild at run time.
+additional_compiler_profiles = [{ name = "wrap", optimizer_runs = 20000, via_ir = true }]
+compilation_restrictions = [{ paths = "src/wrap/**", optimizer_runs = 20000, via_ir = true }]
 
 [profile.default.optimizer_details]
 inliner = false

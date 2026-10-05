@@ -115,6 +115,8 @@ pub enum LiftError {
     FiatShamir,
     /// The matrix proof was refused.
     Matrix(MatrixError),
+    /// The wrap was refused.
+    Wrap(crate::wrap::WrapError),
 }
 
 impl Statement {
@@ -247,12 +249,35 @@ pub fn verify(key: &VerifyingKey, statement: &Statement, lifted: &LiftedProof) -
         }
         _ => return Err(LiftError::Shape),
     }
+    gate(program, statement, &lifted.words, &lifted.unopened)?;
+    return Ok(journal(statement, n));
+}
+
+/// The journal a verified lift of `n` responses attests.
+pub fn journal(statement: &Statement, n: usize) -> LiftJournal {
+    return LiftJournal {
+        version: LIFT_JOURNAL_VERSION,
+        valid: true,
+        fingerprint: hash_circuit::<_, H>(&statement.circuit()),
+        chain_code: statement.chain_code.clone(),
+        index: statement.index,
+        expected_output: statement.expected_output.clone(),
+        binding: statement.binding.clone(),
+        num_responses: n as u32,
+        proof_format_id: zkboo::PROOF_FORMAT_ID,
+    };
+}
+
+/// The global Fiat-Shamir gate: the published challenges are the ones ZKBoo's transcript derives
+/// from the binding, the published digests and output shares, and the unopened digests.
+pub fn gate(program: &Program, statement: &Statement, words: &[Vec<F128>], unopened: &[[u8; 32]]) -> Result<(), LiftError> {
+    let n = words.len();
     let ow = program.geometry().out_words();
     let y = &statement.expected_output;
     let mut hasher = H::new();
     absorb_framed(&mut hasher, TAG_CHALLENGE, &statement.binding);
     let mut challenges = Vec::with_capacity(n);
-    for (i, w) in lifted.words.iter().enumerate() {
+    for (i, w) in words.iter().enumerate() {
         let c = match (w[0].lo, w[0].hi) {
             (1, 0) => 0,
             (2, 0) => 1,
@@ -275,7 +300,7 @@ pub fn verify(key: &VerifyingKey, statement: &Statement, lifted: &LiftedProof) -
             let (d, o) = match (p + 3 - c) % 3 {
                 0 => (&digests[0], &shares[0]),
                 1 => (&digests[1], &shares[1]),
-                _ => (&lifted.unopened[i], &third),
+                _ => (&unopened[i], &third),
             };
             hasher.update(d);
             o.update_hasher(&mut hasher);
@@ -289,15 +314,5 @@ pub fn verify(key: &VerifyingKey, statement: &Statement, lifted: &LiftedProof) -
             return Err(LiftError::FiatShamir);
         }
     }
-    return Ok(LiftJournal {
-        version: LIFT_JOURNAL_VERSION,
-        valid: true,
-        fingerprint: hash_circuit::<_, H>(&statement.circuit()),
-        chain_code: statement.chain_code.clone(),
-        index: statement.index,
-        expected_output: y.clone(),
-        binding: statement.binding.clone(),
-        num_responses: n as u32,
-        proof_format_id: zkboo::PROOF_FORMAT_ID,
-    });
+    return Ok(());
 }

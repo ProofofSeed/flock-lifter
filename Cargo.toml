@@ -10,7 +10,10 @@ members = [
     "crates/host",
     "crates/evm",
     "crates/optimistic",
+    "crates/whir",
+    "crates/structure",
 ]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -18,7 +21,8 @@ edition = "2024"
 license = "LGPL-3.0-or-later"
 
 [workspace.dependencies]
-flock-prover = { git = "https://github.com/succinctlabs/flock", rev = "b684b1258e4b1f202bec24afd660ace851b09e5e" }
+# Flock at revision b684b12 with the additions listed in vendor/flock/VENDORED.md.
+flock-prover = { path = "vendor/flock/crates/flock-prover" }
 
 # The zkboo crates are yanked from crates.io, so they resolve from the local checkouts.
 [patch.crates-io]

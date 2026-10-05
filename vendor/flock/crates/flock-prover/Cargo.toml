@@ -1,0 +1,160 @@
+[package]
+name = "flock-prover"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Succinct Labs", "Benedikt Bunz", "William Wang"]
+description = "Apple-silicon-optimized end-to-end prover for Flock (R1CS over GF(2))."
+
+[features]
+# Forwarded to flock-core. See that crate's manifest for semantics.
+hash-count = ["flock-core/hash-count"]
+mul-count = ["flock-core/mul-count"]
+unsound-challenger = [
+    "flock-core/unsound-challenger",
+    "flock-transcript/unsound-challenger",
+]
+
+[dependencies]
+flock-core = { path = "../flock-core" }
+flock-field = { path = "../flock-field" }
+flock-hash = { path = "../flock-hash" }
+flock-merkle = { path = "../flock-merkle" }
+flock-multilinear = { path = "../flock-multilinear" }
+flock-transcript = { path = "../flock-transcript" }
+rayon = { version = "1.10" }
+sha2 = { version = "0.10", features = ["asm"] }
+blake3 = { version = "1.5" }
+serde = { version = "1", features = ["derive"] }
+bincode = { version = "1.3" }
+
+[dev-dependencies]
+# Tests, benches, and examples use the insecure `RandomChallenger`, gated in
+# flock-transcript behind its `unsound-challenger` feature. Enabling it dev-only makes
+# it available to test/bench/example builds without leaking into normal builds.
+flock-core = { path = "../flock-core", features = ["unsound-challenger"] }
+flock-transcript = { path = "../flock-transcript", features = ["unsound-challenger"] }
+
+[[bench]]
+name = "ag_breakdown"
+harness = false
+
+[[bench]]
+name = "ag_e2e_zerocheck"
+harness = false
+
+[[bench]]
+name = "genus95_curve_code"
+harness = false
+
+[[bench]]
+name = "ntt"
+harness = false
+
+[[bench]]
+name = "pcs_commit"
+harness = false
+
+[[bench]]
+name = "merkle"
+harness = false
+
+[[bench]]
+name = "field"
+harness = false
+
+[[bench]]
+name = "round1"
+harness = false
+
+[[bench]]
+name = "round2"
+harness = false
+
+[[bench]]
+name = "rounds3plus"
+harness = false
+
+[[bench]]
+name = "e2e_zerocheck"
+harness = false
+
+[[bench]]
+name = "zerocheck_phases"
+harness = false
+
+[[bench]]
+name = "lincheck"
+harness = false
+
+[[bench]]
+name = "blake3_proof"
+harness = false
+
+[[bench]]
+name = "blake3_fast_vs_slim"
+harness = false
+
+[[bench]]
+name = "grinding_sha256"
+harness = false
+
+[[bench]]
+name = "sha2_proof"
+harness = false
+
+[[bench]]
+name = "lincheck_verify"
+harness = false
+
+[[bench]]
+name = "blake3_native_chain"
+harness = false
+
+[[bench]]
+name = "genwitness_phase"
+harness = false
+
+[[bench]]
+name = "profile_prover"
+harness = false
+
+[[bench]]
+name = "fold_1b_rows"
+harness = false
+
+[[bench]]
+name = "native_hash"
+harness = false
+
+[[bench]]
+name = "hash_throughput"
+harness = false
+
+[[bench]]
+name = "verifier_hash_count"
+harness = false
+required-features = ["hash-count"]
+
+[[bench]]
+name = "verifier_mul_count"
+harness = false
+required-features = ["mul-count"]
+
+[lints.clippy]
+needless_range_loop = "allow"
+explicit_counter_loop = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+identity_op = "allow"
+erasing_op = "allow"
+manual_memcpy = "allow"
+assertions_on_constants = "allow"
+doc_lazy_continuation = "allow"
+doc_overindented_list_items = "allow"
+unusual_byte_groupings = "allow"
+wildcard_imports = "deny"
+
+[[bench]]
+name = "fs_challenger"
+harness = false

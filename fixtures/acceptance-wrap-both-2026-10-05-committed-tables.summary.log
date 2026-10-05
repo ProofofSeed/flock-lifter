@@ -1,0 +1,36 @@
+── reject matrix (n=8) ──
+  control (n=8, two chunks, matching expectation): accepted ✓
+  R1 tampered proof: refused (FiatShamir) ✓
+  R2 wrong binding: refused (FiatShamir) ✓
+  R3 wrong fingerprint: refused by check_journal (FingerprintMismatch) ✓
+  R4 too few responses: refused by check_journal (TooFewResponses) ✓
+  R5 empty proof: refused by the prover (Shape) ✓
+  R6 wrong statement: refused by check_journal (StatementMismatch) ✓
+  R7 malformed response: refused by the prover (Witness(5, AndMsgShape)) ✓
+  R8 wrong proof format: refused by check_journal (ProofFormatMismatch) ✓
+  W1 tampered published word: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
+  W2 tampered unopened digest: refused (FiatShamir) ✓
+  W3 swapped responses: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
+  W4 another statement's tables: refused (Wrap(Structure(Opening))) ✓
+  W5 truncated lift: refused (Shape) ✓
+  W6 tampered matrix claim: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
+  W7 tampered commitment: refused (Wrap(Outer("Zerocheck(InvalidGrindingNonce { which: \"initial\" })"))) ✓
+  W8 another lift's unopened digests: refused (FiatShamir) ✓
+  W9 a key of another shape: refused (Shape) ✓
+  a key made by one lift verifies another of the same shape ✓
+  S1 tampered structure proof: refused (Wrap(Structure(Grinding))) ✓
+  S2 tampered wiring evaluation: refused (Wrap(Outer("Wiring(Gkr(InputMismatch))"))) ✓
+  S3 tampered table evaluation: refused (Wrap(Outer("ConsistencyFailed { which: \"matrix-evals\" }"))) ✓
+  S4 another lift's structure proof: refused (Wrap(Structure(Fold))) ✓
+reject matrix: PASS
+
+── full-scale positive run (n=219) ──
+  zkboo proof of 219 responses in 0.07 s
+  wrapped lift in 41.03 s: chunks 11.54 s, wrap 9.81 s, tables committed in 2.32 s, structure proof 19.69 s
+  parts: wrap proof 340675 B, structure proof 423808 B, tables over 2^27 bytes
+  wrapped lift: 854243 B
+  verified in 0.010 s
+  journal passes the relying-party gate: 219 responses ✓
+      217.34 real      1472.28 user       227.65 sys
+         88197464064  maximum resident set size
+         87521229272  peak memory footprint

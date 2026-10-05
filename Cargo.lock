@@ -1297,7 +1297,6 @@ dependencies = [
 [[package]]
 name = "flock-core"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/flock?rev=b684b1258e4b1f202bec24afd660ace851b09e5e#b684b1258e4b1f202bec24afd660ace851b09e5e"
 dependencies = [
  "bincode",
  "blake3",
@@ -1317,7 +1316,6 @@ dependencies = [
 [[package]]
 name = "flock-field"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/flock?rev=b684b1258e4b1f202bec24afd660ace851b09e5e#b684b1258e4b1f202bec24afd660ace851b09e5e"
 dependencies = [
  "serde",
 ]
@@ -1325,7 +1323,6 @@ dependencies = [
 [[package]]
 name = "flock-hash"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/flock?rev=b684b1258e4b1f202bec24afd660ace851b09e5e#b684b1258e4b1f202bec24afd660ace851b09e5e"
 dependencies = [
  "serde",
 ]
@@ -1333,7 +1330,6 @@ dependencies = [
 [[package]]
 name = "flock-merkle"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/flock?rev=b684b1258e4b1f202bec24afd660ace851b09e5e#b684b1258e4b1f202bec24afd660ace851b09e5e"
 dependencies = [
  "blake3",
  "flock-hash",
@@ -1345,7 +1341,6 @@ dependencies = [
 [[package]]
 name = "flock-multilinear"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/flock?rev=b684b1258e4b1f202bec24afd660ace851b09e5e#b684b1258e4b1f202bec24afd660ace851b09e5e"
 dependencies = [
  "rayon",
 ]
@@ -1353,7 +1348,6 @@ dependencies = [
 [[package]]
 name = "flock-parallel"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/flock?rev=b684b1258e4b1f202bec24afd660ace851b09e5e#b684b1258e4b1f202bec24afd660ace851b09e5e"
 dependencies = [
  "rayon",
 ]
@@ -1361,7 +1355,6 @@ dependencies = [
 [[package]]
 name = "flock-prover"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/flock?rev=b684b1258e4b1f202bec24afd660ace851b09e5e#b684b1258e4b1f202bec24afd660ace851b09e5e"
 dependencies = [
  "bincode",
  "blake3",
@@ -1379,7 +1372,6 @@ dependencies = [
 [[package]]
 name = "flock-transcript"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/flock?rev=b684b1258e4b1f202bec24afd660ace851b09e5e#b684b1258e4b1f202bec24afd660ace851b09e5e"
 dependencies = [
  "blake3",
  "flock-field",
@@ -2038,6 +2030,8 @@ dependencies = [
  "flock-prover",
  "pofseed-flock-lift-block",
  "pofseed-flock-lift-statement",
+ "pofseed-flock-lift-structure",
+ "pofseed-flock-lift-whir",
  "rayon",
  "serde",
  "tiny-keccak",
@@ -2068,6 +2062,8 @@ dependencies = [
  "pofseed-flock-lift-block",
  "pofseed-flock-lift-host",
  "pofseed-flock-lift-statement",
+ "pofseed-flock-lift-structure",
+ "pofseed-flock-lift-whir",
  "revm",
  "serde_json",
  "sha2 0.10.9",
@@ -2084,6 +2080,7 @@ dependencies = [
  "pofseed-flock-lift",
  "pofseed-flock-lift-block",
  "pofseed-flock-lift-statement",
+ "pofseed-flock-lift-whir",
  "rayon",
  "serde",
  "zkboo",
@@ -2119,6 +2116,30 @@ dependencies = [
  "zeroize",
  "zkboo",
  "zkboo-bip32",
+]
+
+[[package]]
+name = "pofseed-flock-lift-structure"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "flock-prover",
+ "pofseed-flock-lift-block",
+ "pofseed-flock-lift-statement",
+ "pofseed-flock-lift-whir",
+ "rayon",
+ "serde",
+]
+
+[[package]]
+name = "pofseed-flock-lift-whir"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "flock-prover",
+ "rayon",
+ "serde",
+ "tiny-keccak",
 ]
 
 [[package]]

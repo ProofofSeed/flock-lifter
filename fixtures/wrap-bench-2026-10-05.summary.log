@@ -1,0 +1,58 @@
+# POFSEED_WRAP_FRESH=1 wrap-bench 219 128 6 4, 2026-10-05: 219 responses, outer rate 2^-6, tables' rate 2^-4, 22 grinding bits
+lifted 219 responses in 95.4 s: chunks 12.1 s, wrap 16.5 s, tables committed in 10.4 s, structure proof 56.2 s
+lift of 219 responses in chunks of 128, outer rate 2^-6, tables' rate 2^-4: 478248 B of calldata
+FlockWrap: runtime 111352 B, deployment 23940054 gas
+ran in 0.06 s: success true, gas 85062609 (execution 77722921, calldata and base 7339688)
+  stage   1:      1294729 gas ✓
+  stage   2:       540433 gas ✓
+  stage   3:       536054 gas ✓
+  stage   4:      5835995 gas ✓
+  stage   5:      2911117 gas ✓
+  stage   6:      2702093 gas ✓
+  stage   7:       388271 gas ✓
+  stage   8:       137173 gas ✓
+  stage  81:      5690402 gas 
+  stage  82:     10801489 gas 
+  stage  83:      3705130 gas 
+  stage   9:      5921388 gas ✓
+  stage  91:      6368330 gas 
+  stage  10:         2734 gas ✓
+  stage  11:      5688359 gas 
+  stage  12:      1533304 gas 
+  stage  13:      8199579 gas 
+  stage  20:     14174476 gas ✓
+  stage  21:      1289684 gas 
+staged verifier:
+  table FIXED        runtime  14673 B, deployment   3137477 gas
+  WrapStageA         runtime  23134 B, deployment   5031635 gas
+  table ELEM_DATA    runtime   9304 B, deployment   1996081 gas
+  WrapStageB         runtime  19575 B, deployment   4270363 gas
+  table RUNS         runtime   8065 B, deployment   1771839 gas
+  WrapStageC         runtime  10557 B, deployment   2332398 gas
+  table SUBSPACE     runtime  12289 B, deployment   2636399 gas
+  WrapStageD         runtime  13563 B, deployment   2978531 gas
+  WrapStageE         runtime  23896 B, deployment   5209328 gas
+  WrapStageF         runtime  18281 B, deployment   3998804 gas
+  WrapStageG         runtime   5381 B, deployment   1216176 gas
+  WrapSessions       runtime   2516 B, deployment    738366 gas
+  deployment in all 35317397 gas
+  transaction 1:  10887536 gas ( 64.9% of the cap),  87568 B of the lift,     0 B of state: gate, binding, zerocheck, lincheck, wiring
+  transaction 2:  12974852 gas ( 77.3% of the cap),  46520 B of the lift, 17888 B of state: element class, ring switches, assist sumchecks, claim weights
+  transaction 3:  11066137 gas ( 66.0% of the cap),      0 B of the lift, 27584 B of state: layout weights and boundary values
+  transaction 4:  11843173 gas ( 70.6% of the cap), 110664 B of the lift, 12960 B of state: layout equation, outer opening
+  transaction 5:  12970023 gas ( 77.3% of the cap),  46552 B of the lift, 19232 B of state: outer opening's last equation, table folds and sumchecks
+  transaction 6:  13465468 gas ( 80.3% of the cap), 186944 B of the lift,  9408 B of state: bit claims' conjugates, tables' opening
+  transaction 7:  14871964 gas ( 88.6% of the cap),      0 B of the lift, 41664 B of state: tables' opening's last equation
+staged verification: 88079153 gas in 7 transactions, each under the cap; the statement is accepted
+staged tampering: 11 flipped bits refused
+  staged, a lift failing only the last opening's last equation: refused at stage 7
+  staged, a lift failing only a Merkle path: refused at stage 6
+  staged, a lift failing only the Fiat-Shamir gate: refused at stage 1
+  staged, a state other than the session's: a state under another digest refused, another session's state refused
+tampering: 23 flipped bits refused
+  a lift failing only the last opening's last equation: refused
+  a lift failing only a Merkle path: refused
+  a lift failing only the Fiat-Shamir gate: refused
+      127.08 real       766.10 user       134.65 sys
+        120356487168  maximum resident set size
+        140317167000  peak memory footprint

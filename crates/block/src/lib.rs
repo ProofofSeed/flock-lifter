@@ -6,6 +6,7 @@
 pub mod committed;
 pub mod form;
 pub mod keccak;
+pub mod kernel;
 pub mod layout;
 pub mod native;
 pub mod program;

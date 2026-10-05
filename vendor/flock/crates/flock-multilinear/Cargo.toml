@@ -1,0 +1,24 @@
+[package]
+name = "flock-multilinear"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Succinct Labs", "Benedikt Bunz", "William Wang"]
+description = "Multilinear polynomial primitives for Flock."
+
+[dependencies]
+rayon = { version = "1.10" }
+
+[lints.clippy]
+needless_range_loop = "allow"
+explicit_counter_loop = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+identity_op = "allow"
+erasing_op = "allow"
+manual_memcpy = "allow"
+assertions_on_constants = "allow"
+doc_lazy_continuation = "allow"
+doc_overindented_list_items = "allow"
+unusual_byte_groupings = "allow"
+wildcard_imports = "deny"

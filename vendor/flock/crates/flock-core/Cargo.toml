@@ -1,0 +1,61 @@
+[package]
+name = "flock-core"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Succinct Labs", "Benedikt Bunz", "William Wang"]
+description = "Protocol library and verifier for the Flock R1CS-over-GF(2) PIOP."
+
+[features]
+# Count hash invocations (Merkle leaf/pair compressions, FS transcript
+# absorption and squeezes, PoW evaluations) via global relaxed atomics. Counts
+# whichever hash each component is configured with. See `flock_hash::HashKind`. Off
+# by default; used by flock-prover's benches/verifier_hash_count.rs.
+hash-count = ["flock-merkle/hash-count", "flock-transcript/hash-count"]
+
+# Count F128 multiplications and inversions via global relaxed atomics, so the
+# verifier's arithmetic can be attributed per routine. Reports BOTH the native
+# mul count (inversions are ~255 muls each) and the circuit constraint count
+# (an inversion is one witnessed constraint) -- they rank routines differently.
+# Off by default; used by flock-prover's benches/verifier_mul_count.rs.
+mul-count = ["flock-field/mul-count"]
+
+# Compile the insecure `RandomChallenger` (no Fiat-Shamir binding) into a
+# non-test build. Off by default so real proofs *cannot* reference it — see
+# `flock-transcript::challenger`. This feature supports benchmarks and examples only.
+# flock-prover enables it for development targets. Never use it for real proofs.
+unsound-challenger = ["flock-transcript/unsound-challenger"]
+
+[dependencies]
+flock-field = { path = "../flock-field" }
+flock-merkle = { path = "../flock-merkle" }
+flock-transcript = { path = "../flock-transcript" }
+flock-hash = { path = "../flock-hash" }
+flock-multilinear = { path = "../flock-multilinear" }
+flock-parallel = { path = "../flock-parallel" }
+rayon = { version = "1.10" }
+sha2 = { version = "0.10", features = ["asm"] }
+rand_core = { version = "0.9" }
+blake3 = { version = "1.5" }
+serde = { version = "1", features = ["derive"] }
+bincode = { version = "1.3" }
+toml = { version = "0.8" }
+
+[dev-dependencies]
+# Used by `LigeritoSecurityConfig` serde round-trip tests.
+serde_json = { version = "1" }
+flock-transcript = { path = "../flock-transcript", features = ["unsound-challenger"] }
+
+[lints.clippy]
+needless_range_loop = "allow"
+explicit_counter_loop = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+identity_op = "allow"
+erasing_op = "allow"
+manual_memcpy = "allow"
+assertions_on_constants = "allow"
+doc_lazy_continuation = "allow"
+doc_overindented_list_items = "allow"
+unusual_byte_groupings = "allow"
+wildcard_imports = "deny"

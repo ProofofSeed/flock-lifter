@@ -11,3 +11,4 @@ pub mod mirror;
 pub mod staged;
 pub mod stream;
 pub mod tables;
+pub mod wrap;

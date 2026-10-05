@@ -80,8 +80,26 @@ enum Operand {
     Relative(u8, u32, u8),
 }
 
-/// The entries of `program`'s explicit rows, sorted, with pairs cancelled.
-pub fn entries(program: &Program) -> Vec<Entry> {
+/// One operand of one class of explicit rows: the rows `W·64 + t` for the bits `t` of `mask` read,
+/// on side `side`, the column `col_word·64 + (t + shift) mod 64`, or the column
+/// `col_word·64 + shift` at every row when `fixed`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Operation {
+    /// 0 for `A`, 1 for `B`.
+    pub side: u8,
+    /// Whether the column keeps its bit across the rows.
+    pub fixed: bool,
+    /// The cyclic bit offset, or the fixed column bit.
+    pub shift: u8,
+    /// The rows' word.
+    pub row_word: u32,
+    /// The column's word.
+    pub col_word: u32,
+    /// The rows' bits.
+    pub mask: u64,
+}
+
+fn classes(program: &Program) -> HashMap<(u32, Vec<Operand>), u64> {
     assert!(program.geometry().k_log() <= WORD_BITS + 6, "the entry packing holds blocks of at most 2^28 bits");
     let mut classes: HashMap<(u32, Vec<Operand>), u64> = HashMap::new();
     for r in 0..program.explicit_rows() {
@@ -102,6 +120,41 @@ pub fn entries(program: &Program) -> Vec<Entry> {
         assert_eq!(*mask >> t & 1, 0, "row {r} repeats in its class");
         *mask |= 1 << t;
     }
+    return classes;
+}
+
+/// The operations of `program`'s explicit rows, sorted, with those that cancel merged: operations
+/// agreeing in everything but their rows are one operation over the rows an odd number of them cover.
+pub fn operations(program: &Program) -> Vec<Operation> {
+    let mut merged: HashMap<(u8, bool, u8, u32, u32), u64> = HashMap::new();
+    for ((row_word, ops), mask) in classes(program) {
+        for op in ops {
+            let key = match op {
+                Operand::Absolute(side, c) => (side, true, (c & 63) as u8, row_word, c >> 6),
+                Operand::Relative(side, w, s) => (side, false, s, row_word, w),
+            };
+            *merged.entry(key).or_insert(0) ^= mask;
+        }
+    }
+    let mut out: Vec<Operation> = merged
+        .into_iter()
+        .filter(|&(_, mask)| mask != 0)
+        .map(|((side, fixed, shift, row_word, col_word), mask)| Operation {
+            side,
+            fixed,
+            shift,
+            row_word,
+            col_word,
+            mask,
+        })
+        .collect();
+    out.par_sort_unstable();
+    return out;
+}
+
+/// The entries of `program`'s explicit rows, sorted, with pairs cancelled.
+pub fn entries(program: &Program) -> Vec<Entry> {
+    let classes = classes(program);
     let mut out: Vec<Entry> = classes
         .into_par_iter()
         .flat_map_iter(|((row_word, ops), mask)| {
