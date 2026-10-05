@@ -225,3 +225,67 @@ staged verification: 79650834 gas in 7 transactions, each under the cap; the sta
         135497400440  peak memory footprint
   key: NU=16 M_BOOL=32 DENSE_LOG=24 MU=25 NUM_PUBLIC=8354 STRUCT_N=28
 # Part 3: wrap-bench 16 4 6 4 was killed for memory in the tables' opening, at a peak footprint of 197.7 GB.
+# Part 4: two further whole lifts, run after the model of knowledge/batch-proving.md was written, to test it.
+# The staged run stops at the first transaction, which no longer fits the gas cap.
+## wrap-bench 657 128 6 3
+lifted 657 responses in 132.5 s: chunks 31.8 s, wrap 49.7 s, tables committed in 10.4 s, structure proof 40.2 s
+lift of 657 responses in chunks of 128, outer rate 2^-6, tables' rate 2^-3: 603184 B of calldata
+FlockWrap: runtime 120471 B, deployment 25904399 gas
+ran in 0.05 s: success true, gas 82148580 (execution 73011872, calldata and base 9136708)
+  stage   1:      6313979 gas,  296 KB of memory ✓
+  stage   2:       586195 gas,  304 KB of memory ✓
+  stage   3:       554448 gas,  311 KB of memory ✓
+  stage   4:     10456182 gas,  345 KB of memory ✓
+  stage   5:      2950705 gas,  402 KB of memory ✓
+  stage   6:      2734335 gas,  461 KB of memory ✓
+  stage   7:       406745 gas,  494 KB of memory ✓
+  stage   8:       143224 gas,  496 KB of memory ✓
+  stage  81:      3607740 gas,  496 KB of memory 
+  stage  82:     11276812 gas,  496 KB of memory 
+  stage   9:      4490700 gas,  538 KB of memory ✓
+  stage  91:      5555789 gas,  496 KB of memory 
+  stage  10:         2839 gas,  496 KB of memory ✓
+  stage  11:      5749166 gas,  594 KB of memory 
+  stage  12:       197442 gas,  604 KB of memory 
+  stage  13:      7142691 gas,  665 KB of memory 
+  stage  20:     10840540 gas,  752 KB of memory ✓
+staged verifier:
+  deployment in all 36632558 gas
+
+thread 'main' (3882721) panicked at crates/evm/src/bin/wrap_bench.rs:117:41:
+stage 1 refused: 
+      159.51 real      1221.31 user       212.56 sys
+        122310672384  maximum resident set size
+        131163944152  peak memory footprint
+  key: NU=17 M_BOOL=33 DENSE_LOG=24 MU=26 NUM_PUBLIC=12006 STRUCT_N=28
+## wrap-bench 876 128 6 3
+lifted 876 responses in 149.8 s: chunks 39.2 s, wrap 53.6 s, tables committed in 10.4 s, structure proof 46.2 s
+lift of 876 responses in chunks of 128, outer rate 2^-6, tables' rate 2^-3: 663576 B of calldata
+FlockWrap: runtime 119294 B, deployment 25657057 gas
+ran in 0.05 s: success true, gas 87380495 (execution 77398435, calldata and base 9982060)
+  stage   1:      8440895 gas,  349 KB of memory ✓
+  stage   2:       594765 gas,  358 KB of memory ✓
+  stage   3:       553960 gas,  365 KB of memory ✓
+  stage   4:     12604485 gas,  400 KB of memory ✓
+  stage   5:      2963302 gas,  457 KB of memory ✓
+  stage   6:      2747402 gas,  516 KB of memory ✓
+  stage   7:       414098 gas,  550 KB of memory ✓
+  stage   8:       143576 gas,  551 KB of memory ✓
+  stage  81:      3607789 gas,  551 KB of memory 
+  stage  82:     11315985 gas,  551 KB of memory 
+  stage   9:      4483695 gas,  594 KB of memory ✓
+  stage  91:      5555789 gas,  551 KB of memory 
+  stage  10:         2839 gas,  551 KB of memory ✓
+  stage  11:      5773440 gas,  649 KB of memory 
+  stage  12:       197442 gas,  659 KB of memory 
+  stage  13:      7137606 gas,  721 KB of memory 
+  stage  20:     10859027 gas,  808 KB of memory ✓
+staged verifier:
+  deployment in all 36337812 gas
+
+thread 'main' (3884588) panicked at crates/evm/src/bin/wrap_bench.rs:117:41:
+stage 1 refused: 
+      176.82 real      1354.94 user       238.58 sys
+        122485587968  maximum resident set size
+        133463931968  peak memory footprint
+  key: NU=17 M_BOOL=33 DENSE_LOG=24 MU=26 NUM_PUBLIC=15523 STRUCT_N=28
