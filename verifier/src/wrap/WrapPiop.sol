@@ -91,7 +91,7 @@ library WrapPiop {
     /// Starts the outer transcript over the public segment, which it lays out in memory from the
     /// fixed words, the responses' published words at `wordsAt` and the words at the cursor; binds
     /// the statement; and forks the wiring argument's transcript, which it returns.
-    function bind(Run memory x, uint256 wordsAt) internal pure returns (uint256 child) {
+    function bind(Run memory x, uint256 wordsAt, bytes memory fixedWords) internal pure returns (uint256 child) {
         uint256 capLen = 32 << W.entry(WrapKey.OUTER_ROUNDS, 6, 1);
         uint256 tr;
         {
@@ -109,7 +109,7 @@ library WrapPiop {
             img := add(add(tr, 0x40), mload(add(tr, 0x20)))
         }
         x.pub = img;
-        W.append(tr, WrapKey.FIXED);
+        W.append(tr, fixedWords);
         uint256 at = WrapKey.N_FIXED;
         uint256 p = x.p;
         bytes memory chunks = WrapKey.CHUNKS;
@@ -450,7 +450,7 @@ library WrapPiop {
     }
 
     /// The element class's zerocheck and lincheck, its tables evaluated in place.
-    function element(Run memory x) internal pure {
+    function element(Run memory x, bytes memory elems, bytes memory data) internal pure {
         uint256 tr = x.tr;
         uint256 p = x.p;
         uint256 vars = WrapKey.M_ELEM - 7;
@@ -480,8 +480,6 @@ library WrapPiop {
         Transcript.observe(tr, vb);
         Transcript.observe(tr, x.ec);
         p += 48;
-        bytes memory elems = WrapKey.ELEMS;
-        bytes memory data = WrapKey.ELEM_DATA;
         uint256[][] memory rows = new uint256[][](WrapKey.N_ELEM);
         uint256 cols = vars - WrapKey.NU;
         for (uint256 t = 0; t < WrapKey.N_ELEM; ++t) {

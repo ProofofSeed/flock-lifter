@@ -7,6 +7,7 @@ pub mod encode;
 pub mod opening;
 pub mod outer;
 pub mod sol;
+pub mod staged;
 pub mod structure;
 pub mod trace;
 pub mod vk;

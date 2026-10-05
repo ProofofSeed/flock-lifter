@@ -5,7 +5,6 @@ import {Calldata} from "../Calldata.sol";
 import {Transcript} from "../Transcript.sol";
 import {K} from "./K.sol";
 import {W} from "./W.sol";
-import {WrapKey} from "./WrapKey.sol";
 
 /// What one WHIR opening is verified against: the commitment's schedule and cap, and the claimed
 /// values of the committed polynomial at points over the base field.
@@ -44,6 +43,8 @@ struct WhirState {
     /// The folding challenges of the function being queried, and its cap in memory.
     uint256[] alpha;
     uint256 cap;
+    /// The final polynomial at the last sumcheck challenges.
+    uint256 last;
 }
 
 /// The verifier of a WHIR opening over GF(2^128) with challenges in GF(2^256): codeword rows on
@@ -181,10 +182,10 @@ library Whir {
         st.p = p + len;
     }
 
-    /// Verifies the opening at calldata `p` of the claim `c`, on the transcript `tr` that has
-    /// absorbed the commitment; returns the cursor after it.
-    function verify(uint256 tr, WhirClaim memory c, uint256 p) internal returns (uint256) {
-        WhirState memory st;
+    /// Replays the opening at calldata `p` of the claim `c`, on the transcript `tr` that has
+    /// absorbed the commitment: every check but the last equation, which `weigh` makes from the
+    /// state returned. `space` holds the subspace polynomials' values.
+    function open(uint256 tr, WhirClaim memory c, uint256 p, bytes memory space) internal pure returns (WhirState memory st) {
         st.tr = tr;
         st.p = p;
         uint256 n = c.rounds.length / 7;
@@ -204,13 +205,10 @@ library Whir {
         _samplePoints(st, ood, m);
         _start(st, c, ood);
         st.alpha = _sumcheck(st, W.read(c.rounds, 1, 1));
-        W.mark(90, tr);
         for (uint256 i = 1; i < n; ++i) {
             _fold(st, c, i);
-            W.mark(90 + i, tr);
         }
-        _finish(st, c, n);
-        return st.p;
+        _finish(st, c, n, space);
     }
 
     /// Binds the claims, batches them with the out-of-domain answers, and starts the claim.
@@ -295,7 +293,7 @@ library Whir {
 
     /// The final polynomial, the last function's queries against it, the last sumcheck rounds and
     /// the last equation.
-    function _finish(WhirState memory st, WhirClaim memory c, uint256 n) private {
+    function _finish(WhirState memory st, WhirClaim memory c, uint256 n, bytes memory sub) private pure {
         uint256 tr = st.tr;
         uint256 size = 1 << c.finalVars;
         uint256[] memory poly = new uint256[](size);
@@ -308,7 +306,6 @@ library Whir {
         (,, uint256 logDomain, uint256 queries,,) = _round(c.rounds, n - 1);
         uint256[] memory words = Transcript.powSampleVec(tr, Calldata.nonce(nonceAt), c.powBits, queries);
         (uint256[] memory positions, uint256[] memory folded) = _openings(st, c.rounds, n - 1, words);
-        bytes memory sub = WrapKey.SUBSPACE;
         uint256[] memory v = new uint256[](size);
         for (uint256 q = 0; q < queries; ++q) {
             for (uint256 k = 0; k < size; ++k) {
@@ -321,16 +318,13 @@ library Whir {
             }
             if (v[0] != folded[q]) revert FinalPolynomial();
         }
-        W.mark(98, tr);
         uint256[] memory r = _sumcheck(st, c.finalVars);
         uint256 len2 = size;
         for (uint256 i = 0; i < c.finalVars; ++i) {
             len2 >>= 1;
             K.fold256(W.ptr(poly), len2, r[i]);
         }
-        uint256 weight = _weight(st, c, sub, n);
-        W.mark(99, tr);
-        if (st.claim != K.mul256(poly[0], weight)) revert Sumcheck();
+        st.last = poly[0];
     }
 
     /// The novel-basis coordinate `Ŵ_i` of the domain's point `pos`.
@@ -341,33 +335,35 @@ library Whir {
         }
     }
 
-    /// The final weight at the sumcheck's point: every equality term, and every queried position's
-    /// term `Π_i (1 + y_i·(1 + Ŵ_i(position)))`.
-    function _weight(WhirState memory st, WhirClaim memory c, bytes memory sub, uint256 n) private returns (uint256 weight) {
+    /// Checks an opening's last equation: the final claim against the final polynomial's value
+    /// times the weight at the sumcheck's point, which is every equality term and every queried
+    /// position's term `Π_i (1 + y_i·(1 + Ŵ_i(position)))`.
+    function weigh(WhirState memory st, bytes memory rounds, bytes memory sub) internal pure {
+        uint256 n = rounds.length / 7;
         uint256 m = st.challenges.length;
         uint256 y = W.ptr(st.challenges);
+        uint256 weight;
         for (uint256 k = 0; k < st.eqCount; ++k) {
             uint256[] memory z = st.eqPoints[k];
             weight ^= K.eqProduct256(st.eqCoeffs[k], W.ptr(z), y + 32 * (m - z.length), z.length);
         }
-        W.mark(990, st.tr);
         uint256 size;
         for (uint256 r = 0; r + 1 < n; ++r) {
-            uint256 words = W.read(c.rounds, 7 * (r + 1), 1) * ((W.read(c.rounds, 7 * r + 2, 1) + 3) / 4);
+            uint256 words = W.read(rounds, 7 * (r + 1), 1) * ((W.read(rounds, 7 * r + 2, 1) + 3) / 4);
             if (words > size) size = words;
         }
         uint256[] memory windowed = new uint256[](16 * size);
         for (uint256 r = 0; r + 1 < n; ++r) {
-            uint256 vars = W.read(c.rounds, 7 * (r + 1), 1);
-            uint256 logDomain = W.read(c.rounds, 7 * r + 2, 1);
+            uint256 vars = W.read(rounds, 7 * (r + 1), 1);
+            uint256 logDomain = W.read(rounds, 7 * r + 2, 1);
             uint256 windows = (logDomain + 3) / 4;
             K.shiftWindows(W.ptr(windowed), y + 32 * (m - vars), W.data(sub), vars, logDomain, windows);
-            W.mark(991 + r, st.tr);
             uint256[] memory positions = st.positions[r];
             uint256[] memory coeffs = st.coeffs[r];
             for (uint256 q = 0; q < positions.length; ++q) {
                 weight ^= K.shiftProduct(coeffs[q], positions[q], y + 32 * (m - vars), W.ptr(windowed), vars, windows);
             }
         }
+        if (st.claim != K.mul256(st.last, weight)) revert Sumcheck();
     }
 }

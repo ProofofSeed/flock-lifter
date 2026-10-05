@@ -4,8 +4,8 @@ pragma solidity ^0.8.30;
 import {Constants} from "../Constants.sol";
 import {F} from "./F.sol";
 import {FiatShamir, OutputShape} from "../FiatShamir.sol";
-import {Whir, WhirClaim} from "./Whir.sol";
-import {Opened, WrapOpening} from "./WrapOpening.sol";
+import {Whir, WhirClaim, WhirState} from "./Whir.sol";
+import {Assist, Opened, WrapOpening} from "./WrapOpening.sol";
 import {Run, WrapPiop} from "./WrapPiop.sol";
 import {WrapStructure} from "./WrapStructure.sol";
 import {Transcript} from "../Transcript.sol";
@@ -57,7 +57,7 @@ contract FlockWrap {
 
     /// Verifies the proofs at the cursor; returns whether it ran to the end rather than to `stop`.
     function _proofs(Run memory x, uint256 wordsAt, uint256 stop) private returns (bool) {
-        uint256 child = WrapPiop.bind(x, wordsAt);
+        uint256 child = WrapPiop.bind(x, wordsAt, WrapKey.FIXED);
         W.mark(1, x.tr);
         if (stop == 1) return false;
         (uint256 a, uint256 b) = WrapPiop.zerocheck(x);
@@ -70,26 +70,42 @@ contract FlockWrap {
         W.mark(4, child);
         if (stop == 4) return false;
         W.merge(x.tr, child);
-        WrapPiop.element(x);
+        WrapPiop.element(x, WrapKey.ELEMS, WrapKey.ELEM_DATA);
         W.mark(5, x.tr);
         if (stop == 5) return false;
-        Opened memory o = WrapOpening.transport(x);
-        if (stop == 8) return false;
-        _open(x, o);
-        W.mark(9, x.tr);
-        if (stop == 9) return false;
-        W.merge(x.tr, o.child);
-        if (o.target != F.mul(o.value, o.weight)) revert Transport();
+        child = _transport(x, stop);
+        if (child == 0) return false;
+        W.merge(x.tr, child);
         W.mark(10, x.tr);
         if (stop == 10) return false;
-        WrapStructure.verify(x);
+        _structure(x);
         W.mark(20, x.tr);
-        if (stop == 20) return false;
-        return true;
+        return stop != 20;
     }
 
-    /// The outer commitment's opening at the transport's point.
-    function _open(Run memory x, Opened memory o) private {
+    /// The transport of the outer proof's claims and the outer commitment's opening; returns the
+    /// assist's transcript, or zero if it stopped at `stop`.
+    function _transport(Run memory x, uint256 stop) private returns (uint256) {
+        (Opened memory o, uint256[] memory gammas, uint256[][2] memory r) = WrapOpening.switches(x);
+        W.mark(6, x.tr);
+        if (stop == 6) return 0;
+        Assist memory a;
+        a.ch = W.fork(x.tr, "flock-par-assist-v1", 1 << 15);
+        a.p = x.p;
+        WrapOpening.multipoint(a, o.rho.length);
+        W.mark(7, a.ch);
+        if (stop == 7) return 0;
+        WrapOpening.anchor(a);
+        W.mark(8, a.ch);
+        if (stop == 8) return 0;
+        o.weight = WrapOpening.rooted(a, gammas, r);
+        if (o.target != F.mul(o.value, o.weight)) revert Transport();
+        W.mark(81, a.ch);
+        (uint256 bits, uint256 words) = WrapOpening.layoutSums(x, a, gammas, WrapKey.RUNS, WrapKey.GATE_RUNS);
+        W.mark(82, a.ch);
+        WrapOpening.layoutCheck(a, o.rho, bits, words);
+        W.mark(83, a.ch);
+        x.p = a.p;
         WhirClaim memory c;
         c.rounds = WrapKey.OUTER_ROUNDS;
         c.finalVars = WrapKey.OUTER_FINAL;
@@ -109,7 +125,33 @@ contract FlockWrap {
         c.values[0] = o.value;
         W.append(x.tr, WrapKey.OUTER_START);
         W.appendCalldata(x.tr, capAt, len);
-        x.p = Whir.verify(x.tr, c, x.p);
+        bytes memory space = WrapKey.SUBSPACE;
+        WhirState memory st = Whir.open(x.tr, c, x.p, space);
+        x.p = st.p;
+        W.mark(9, x.tr);
+        if (stop == 9) return 0;
+        Whir.weigh(st, c.rounds, space);
+        W.mark(91, x.tr);
+        return a.ch;
+    }
+
+    /// The proof of what the outer proof leaves about the committed tables.
+    function _structure(Run memory x) private {
+        (uint256[][] memory claims, uint256[] memory claimed) = WrapStructure.reduce(x);
+        W.mark(11, x.tr);
+        WhirClaim memory c;
+        (c.points, c.values, x.p) = WrapStructure.conjugates(claims, claimed, x.p);
+        W.mark(12, x.tr);
+        c.rounds = WrapKey.STRUCT_ROUNDS;
+        c.finalVars = WrapKey.STRUCT_FINAL;
+        c.powBits = WrapKey.STRUCT_POW;
+        c.cap = W.data(WrapKey.STRUCT_CAP);
+        W.append(x.tr, WrapKey.STRUCT_START);
+        bytes memory space = WrapKey.SUBSPACE;
+        WhirState memory st = Whir.open(x.tr, c, x.p, space);
+        x.p = st.p;
+        W.mark(13, x.tr);
+        Whir.weigh(st, c.rounds, space);
     }
 
     function _offset(bytes calldata b) private pure returns (uint256 o) {

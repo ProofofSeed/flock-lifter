@@ -97,6 +97,53 @@ fn make(n: usize, chunk: usize, rate: usize, tables: usize, dir: &PathBuf) -> Ca
     return case;
 }
 
+/// Runs the staged verifier on `case` under mainnet's limits, and reports every transaction.
+fn staged_run(case: &Case) {
+    use pofseed_flock_lift_evm::{evm::TX_CAP, wrap::staged};
+    let (mut chain, mut probe) = (Evm::mainnet(), Evm::new());
+    let dep = staged::deploy(&mut chain, &case.key);
+    let dep_probe = staged::deploy(&mut probe, &case.key);
+    assert_eq!(dep.sessions, dep_probe.sessions, "both chains deploy alike");
+    println!("staged verifier:");
+    let mut deployment = 0;
+    for (name, size, gas) in &dep.contracts {
+        println!("  {name:<18} runtime {size:>6} B, deployment {gas:>9} gas");
+        deployment += gas;
+    }
+    println!("  deployment in all {deployment} gas");
+    let (txs, digest) = staged::verify(&mut chain, &mut probe, dep.sessions, U256::from(1), &case.output, case.counts, BINDING, &case.lift)
+        .unwrap_or_else(|(stage, data)| panic!("stage {stage} refused: {}", hex::encode(&data[..data.len().min(68)])));
+    assert!(staged::accepted(&mut chain, dep.sessions, &digest), "the session accepts the statement");
+    let mut total = 0;
+    for tx in &txs {
+        println!(
+            "  transaction {}: {:>9} gas ({:>5.1}% of the cap), {:>6} B of the lift, {:>5} B of state: {}",
+            tx.stage,
+            tx.gas,
+            100.0 * tx.gas as f64 / TX_CAP as f64,
+            tx.data,
+            tx.state,
+            staged::stage_name(tx.stage)
+        );
+        assert!(tx.gas <= TX_CAP, "a transaction exceeds the cap");
+        total += tx.gas;
+    }
+    println!("staged verification: {total} gas in {} transactions, each under the cap; the statement is accepted", txs.len());
+    let mut refused = 0;
+    for at in (0..case.lift.len()).step_by(case.lift.len() / 11 + 1) {
+        let mut bad = case.lift.clone();
+        bad[at] ^= 1;
+        let (mut chain, mut probe) = (Evm::mainnet(), Evm::new());
+        let dep = staged::deploy(&mut chain, &case.key);
+        staged::deploy(&mut probe, &case.key);
+        match staged::verify(&mut chain, &mut probe, dep.sessions, U256::from(1), &case.output, case.counts, BINDING, &bad) {
+            Ok(_) => println!("  a flipped bit at byte {at} is ACCEPTED by the staged verifier"),
+            Err(_) => refused += 1,
+        }
+    }
+    println!("staged tampering: {refused} flipped bits refused");
+}
+
 fn main() {
     let arg = |i: usize, d: usize| env::args().nth(i).map(|a| a.parse().expect("a number")).unwrap_or(d);
     let (n, chunk, rate, tables) = (arg(1, 8), arg(2, 4), arg(3, 1), arg(4, 1));
@@ -148,6 +195,7 @@ fn main() {
     assert!(ok, "a stage's transcript differs from the mirror's");
     if stop.is_none() {
         assert!(out.success, "the contract refused the lift");
+        staged_run(&case);
         let mut refused = 0;
         for at in (0..case.lift.len()).step_by(case.lift.len() / 23 + 1) {
             let mut bad = case.lift.clone();

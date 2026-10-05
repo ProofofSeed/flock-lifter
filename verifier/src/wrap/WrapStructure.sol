@@ -6,7 +6,6 @@ import {Transcript} from "../Transcript.sol";
 import {F} from "./F.sol";
 import {K} from "./K.sol";
 import {W} from "./W.sol";
-import {Whir, WhirClaim} from "./Whir.sol";
 import {WrapKey} from "./WrapKey.sol";
 import {Run, WrapPiop} from "./WrapPiop.sol";
 
@@ -397,7 +396,7 @@ library WrapStructure {
     }
 
     /// The four sumchecks, from the batching coefficients to the small entries.
-    function _sumchecks(Structure memory st, Run memory x) private {
+    function _sumchecks(Structure memory st, Run memory x) private pure {
         uint256 tr = st.tr;
         uint256 p = st.p;
         bytes memory tables = WrapKey.TABLES;
@@ -414,14 +413,12 @@ library WrapStructure {
         uint256 claim = F.mul(st.coefficients[0], st.sides[0].value ^ F.mul(st.sides[0].weight, kv0))
             ^ F.mul(st.coefficients[1], st.sides[1].value ^ F.mul(st.sides[1].weight, kv1));
         (claim, st.tau) = sumcheck(st, 3, LOW, claim);
-        W.mark(12, tr);
         (claim, st.opsPoint) = sumcheck(st, OP_BITS + 1, W.read(regions, 4, 1) - 3, claim);
         st.maskAt = st.p;
         if (claim != _opsTerm(st, st.p)) revert Operations();
         Transcript.observe(tr, Calldata.f128(st.p));
         Transcript.observeSliceFromCalldata(tr, st.p + 16, OP_BITS);
         st.p += 16 * (1 + OP_BITS);
-        W.mark(13, tr);
 
         claim = F.mul(st.coefficients[2], kv0) ^ F.mul(st.coefficients[3], kv1);
         (claim, st.kernelPoint) = sumcheck(st, 2, KERNEL_LOG, claim);
@@ -429,7 +426,6 @@ library WrapStructure {
         if (claim != F.mul(Calldata.f128(st.p), _kernelWeight(st, st.kernelPoint))) revert Kernel();
         Transcript.observe(tr, Calldata.f128(st.p));
         st.p += 16;
-        W.mark(14, tr);
 
         uint256 mu = WrapKey.MU;
         claim = F.mul(st.coefficients[4], x.live) ^ F.mul(st.coefficients[5], x.masked) ^ F.mul(st.coefficients[6], x.sigma);
@@ -438,10 +434,8 @@ library WrapStructure {
         if (claim != _cellsTerm(st, x, st.p)) revert Cells();
         Transcript.observeSliceFromCalldata(tr, st.p, 1 + 2 * mu);
         st.p += 16 * (1 + 2 * mu);
-        W.mark(15, tr);
 
         _small(st, tables, regions);
-        W.mark(16, tr);
     }
 
     /// The small entries' sumcheck over the folded claims on the tables held as entries.
@@ -577,50 +571,49 @@ library WrapStructure {
         }
     }
 
-    /// Verifies the proof at the cursor of the claims `x` holds.
-    function verify(Run memory x) internal {
+    /// Verifies the proof at the cursor of the claims `x` holds, up to the claims it leaves on the
+    /// committed bytes' bits: the table claims' folds and the four sumchecks. Returns those claims'
+    /// points and values.
+    function reduce(Run memory x) internal pure returns (uint256[][] memory points, uint256[] memory values) {
         Structure memory st;
         st.tr = x.tr;
         st.p = x.p;
         _folds(st, x);
-        W.mark(11, st.tr);
         _sumchecks(st, x);
         uint256[] memory zeta = Transcript.powSampleVec(st.tr, Calldata.nonce(st.p), 3, 3 * LOW);
-        st.p += 8;
-        (uint256[][] memory claims, uint256[] memory claimed) = _bitClaims(st, zeta);
-        WhirClaim memory c;
+        x.p = st.p + 8;
+        return _bitClaims(st, zeta);
+    }
+
+    /// Turns the claims on the committed bytes' bits into the opening they need: reads, per claim,
+    /// the square roots of its point, seven deep, and the bytes' values at the point and at the
+    /// roots, checks the roots and the claim's value, and returns the points and values of the
+    /// bytes with the cursor after them.
+    function conjugates(uint256[][] memory claims, uint256[] memory claimed, uint256 p)
+        internal
+        pure
+        returns (uint256[][] memory points, uint256[] memory values, uint256)
+    {
         uint256 n = WrapKey.STRUCT_N;
-        c.points = new uint256[][](8 * claims.length);
-        c.values = new uint256[](8 * claims.length);
+        points = new uint256[][](8 * claims.length);
+        values = new uint256[](8 * claims.length);
         bytes memory dual = WrapKey.DUAL;
-        uint256 p = st.p;
         for (uint256 k = 0; k < claims.length; ++k) {
             uint256[] memory previous = _slice(claims[k], 3, n);
-            c.points[8 * k] = previous;
+            points[8 * k] = previous;
             for (uint256 j = 1; j < 8; ++j) {
                 uint256[] memory root = new uint256[](n);
                 if (!K.roots(W.ptr(root), p, W.ptr(previous), n)) revert Roots();
                 p += 16 * n;
-                c.points[8 * k + j] = root;
+                points[8 * k + j] = root;
                 previous = root;
             }
             if (_bitValue(claims[k], p, dual) != claimed[k]) revert Bits();
             for (uint256 j = 0; j < 8; ++j) {
-                c.values[8 * k + j] = Calldata.f128(p + 16 * j);
+                values[8 * k + j] = Calldata.f128(p + 16 * j);
             }
             p += 128;
         }
-        W.mark(17, st.tr);
-        c.rounds = WrapKey.STRUCT_ROUNDS;
-        c.finalVars = WrapKey.STRUCT_FINAL;
-        c.powBits = WrapKey.STRUCT_POW;
-        bytes memory cap = WrapKey.STRUCT_CAP;
-        uint256 capAt;
-        assembly ("memory-safe") {
-            capAt := add(cap, 0x20)
-        }
-        c.cap = capAt;
-        W.append(st.tr, WrapKey.STRUCT_START);
-        x.p = Whir.verify(st.tr, c, p);
+        return (points, values, p);
     }
 }
