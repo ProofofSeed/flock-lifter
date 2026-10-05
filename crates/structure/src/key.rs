@@ -304,7 +304,7 @@ pub fn config(n: usize, log_inv_rate: usize) -> Config {
         log_inv_rate,
         security_bits: 128,
         pow_bits: 22,
-        final_vars: 6.min(n - 1),
+        final_vars: 3.min(n - 1),
         regime: Regime::Johnson,
         merkle: MerkleHash::Keccak,
     };

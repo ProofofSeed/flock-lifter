@@ -201,20 +201,17 @@ contract WrapStageC is WrapStageBase, IWrapStage {
     function run(Carry calldata c, bytes calldata data) external view returns (bytes memory) {
         Run memory x = _load(c, data, 3);
         Assist memory a = _assist(c);
-        (uint256 bits, uint256 words) = WrapOpening.layoutSums(x, a, c.a[Stage.GAMMAS], DataStore.read(runs), WrapKey.GATE_RUNS);
+        WrapOpening.layout(x, a, c.a[Stage.STACK_POINT], c.a[Stage.GAMMAS], DataStore.read(runs), WrapKey.GATE_RUNS);
         Carry memory n = Stage.fresh(4, c.digest);
         _keep(c, data, x, n);
         _saveAssist(n, a, c.a[Stage.STACK_POINT], c.v[Stage.VALUE]);
-        n.v[Stage.BITS] = bits;
-        n.v[Stage.WORDS] = words;
         n.a[Stage.SKIP] = c.a[Stage.SKIP];
         n.b[Stage.CAP] = c.b[Stage.CAP];
         return abi.encode(n);
     }
 }
 
-/// The fourth stage: the layout's last equation, and the outer commitment's opening up to its own
-/// last equation.
+/// The fourth stage: the outer commitment's opening.
 contract WrapStageD is WrapStageBase, IWrapStage {
     /// The contract holding the subspace polynomials' values.
     address public immutable subspace;
@@ -227,7 +224,6 @@ contract WrapStageD is WrapStageBase, IWrapStage {
         Run memory x = _load(c, data, 4);
         Assist memory a = _assist(c);
         uint256[] memory rho = c.a[Stage.STACK_POINT];
-        WrapOpening.layoutCheck(a, rho, c.v[Stage.BITS], c.v[Stage.WORDS]);
         WhirClaim memory w;
         w.rounds = WrapKey.OUTER_ROUNDS;
         w.finalVars = WrapKey.OUTER_FINAL;
@@ -240,54 +236,42 @@ contract WrapStageD is WrapStageBase, IWrapStage {
         w.values[0] = c.v[Stage.VALUE];
         W.append(x.tr, WrapKey.OUTER_START);
         W.append(x.tr, cap);
-        WhirState memory st = Whir.open(x.tr, w, x.p, DataStore.read(subspace));
+        bytes memory space = DataStore.read(subspace);
+        WhirState memory st = Whir.open(x.tr, w, x.p, space);
         x.p = st.p;
+        Whir.weigh(st, w.rounds, space);
         W.merge(x.tr, a.ch);
         Carry memory n = Stage.fresh(5, c.digest);
         _keep(c, data, x, n);
         n.a[Stage.SKIP] = c.a[Stage.SKIP];
-        Stage.saveWhir(n, st, W.read(w.rounds, 5, 1), 1, rho.length);
         return abi.encode(n);
     }
 }
 
-/// The fifth stage: the outer opening's last equation, and the proof of the committed tables down
-/// to its claims on the committed bytes' bits.
+/// The fifth stage: the proof of the committed tables down to its one claim on the committed
+/// bytes' bits.
 contract WrapStageE is WrapStageBase, IWrapStage {
-    /// The contract holding the subspace polynomials' values.
-    address public immutable subspace;
-
-    constructor(address subspace_) {
-        subspace = subspace_;
-    }
-
     function run(Carry calldata c, bytes calldata data) external view returns (bytes memory) {
         Run memory x = _load(c, data, 5);
-        Whir.weigh(Stage.loadWhir(c, WrapKey.OUTER_ROUNDS, 1), WrapKey.OUTER_ROUNDS, DataStore.read(subspace));
         x.skipC = c.a[Stage.SKIP];
         // The public segment is carried from its first accumulated claim on.
         bytes memory acc = c.b[Stage.ACC];
         unchecked {
             x.pub = W.data(acc) - 16 * W.entry(WrapKey.ACC, 0, 4);
         }
-        (uint256[][] memory claims, uint256[] memory claimed) = WrapStructure.reduce(x);
+        uint256[] memory claimed = new uint256[](2);
+        uint256[] memory point;
+        (point, claimed[0], claimed[1]) = WrapStructure.reduce(x);
         Carry memory n = Stage.fresh(6, c.digest);
         n.v[Stage.CURSOR] = c.v[Stage.CURSOR] + x.p - Stage.at(data);
         (n.v[Stage.TR], n.b[Stage.TR_PENDING]) = Stage.saved(x.tr);
-        uint256 width = claims[0].length;
-        uint256[] memory flat = new uint256[](claims.length * width);
-        for (uint256 k = 0; k < claims.length; ++k) {
-            for (uint256 i = 0; i < width; ++i) {
-                flat[k * width + i] = claims[k][i];
-            }
-        }
-        n.a[Stage.CLAIMS] = flat;
+        n.a[Stage.CLAIMS] = point;
         n.a[Stage.CLAIMED] = claimed;
         return abi.encode(n);
     }
 }
 
-/// The sixth stage: the committed bytes' values at the conjugates of every bit claim's point, and
+/// The sixth stage: the committed bytes' values at the conjugates of the bit claim's point, and
 /// the tables' commitment's opening up to its last equation.
 contract WrapStageF is IWrapStage {
     /// The contract holding the subspace polynomials' values.
@@ -301,20 +285,9 @@ contract WrapStageF is IWrapStage {
         if (c.stage != 6) revert Stage.WrongStage();
         uint256 tr = Stage.transcript(c.v[Stage.TR], c.b[Stage.TR_PENDING], 1 << 17);
         uint256[] memory claimed = c.a[Stage.CLAIMED];
-        uint256[][] memory claims = new uint256[][](claimed.length);
-        {
-            uint256[] memory flat = c.a[Stage.CLAIMS];
-            uint256 width = 3 + WrapKey.STRUCT_N;
-            for (uint256 k = 0; k < claims.length; ++k) {
-                claims[k] = new uint256[](width);
-                for (uint256 i = 0; i < width; ++i) {
-                    claims[k][i] = flat[k * width + i];
-                }
-            }
-        }
         WhirClaim memory w;
         uint256 p;
-        (w.points, w.values, p) = WrapStructure.conjugates(claims, claimed, Stage.at(data));
+        (w.points, w.values, p) = WrapStructure.conjugates(c.a[Stage.CLAIMS], claimed[0], claimed[1], Stage.at(data));
         w.rounds = WrapKey.STRUCT_ROUNDS;
         w.finalVars = WrapKey.STRUCT_FINAL;
         w.powBits = WrapKey.STRUCT_POW;

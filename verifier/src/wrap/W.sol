@@ -11,12 +11,12 @@ import {K} from "./K.sol";
 library W {
     uint256 internal constant M128 = 0xffffffffffffffffffffffffffffffff;
 
-    /// Emitted at the end of stage `id` with the gas left and the transcript's state: its chaining
-    /// value with the pending bytes folded in.
-    event Stage(uint256 indexed id, uint256 gasLeft, bytes32 state);
+    /// Emitted at the end of stage `id` with the gas left, the transcript's state, which is its
+    /// chaining value with the pending bytes folded in, and the free memory pointer.
+    event Stage(uint256 indexed id, uint256 gasLeft, bytes32 state, uint256 memoryTop);
 
     function mark(uint256 id, uint256 tr) internal {
-        emit Stage(id, gasleft(), state(tr));
+        emit Stage(id, gasleft(), state(tr), top());
     }
 
     /// The chaining value `tr` would have were its pending bytes folded in.
@@ -27,6 +27,20 @@ library W {
             mstore(p, mload(tr))
             s := keccak256(p, add(l, 0x20))
             mstore(p, l)
+        }
+    }
+
+    /// The free memory pointer.
+    function top() internal pure returns (uint256 p) {
+        assembly ("memory-safe") {
+            p := mload(0x40)
+        }
+    }
+
+    /// Frees every allocation made since `top` returned `p`; none may be used afterwards.
+    function release(uint256 p) internal pure {
+        assembly ("memory-safe") {
+            mstore(0x40, p)
         }
     }
 

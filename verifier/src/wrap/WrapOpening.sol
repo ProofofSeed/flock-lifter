@@ -48,7 +48,6 @@ library WrapOpening {
     error RowPoints();
     error Layout();
     error Multipoint();
-    error Roots();
 
     // "flock-merged-open-v1"
     uint256 internal constant L_MERGED_0 = 0x02000000000000000000000000000014666c6f636b2d6d65726765642d6f7065;
@@ -228,90 +227,109 @@ library WrapOpening {
     }
 
     /// The claims' weights at the committed stack's point, as the assist proves them: the two
-    /// ring-switched claims' sums over the square-root chains at the cursor, and the two groups'
+    /// ring-switched claims' sums over their squaring chains, and the two groups'
     /// values.
     function rooted(Assist memory a, uint256[] memory gammas, uint256[][2] memory r) internal pure returns (uint256 weight) {
         weight = Calldata.f128(a.valuesAt + 256 * 16) ^ Calldata.f128(a.valuesAt + 257 * 16);
         for (uint256 i = 0; i < 2; ++i) {
-            (uint256 sum, bool ok) = K.rootedSum(gammas[i], W.ptr(r[i]), a.p, a.valuesAt + 128 * 16 * i, WrapKey.D0);
-            if (!ok) revert Roots();
-            weight ^= sum;
-            a.p += 127 * 128;
+            weight ^= K.rootedSum(gammas[i], W.ptr(r[i]), a.valuesAt + 128 * 16 * i, WrapKey.D0);
         }
     }
 
     /// `eq(bits(t0), sigma's even coordinates)·eq(bits(t1), sigma's odd coordinates)` per run.
     function _atRuns(uint256[] memory sigma, bytes memory runs) private pure returns (uint256[] memory at) {
         uint256 layers = sigma.length / 2;
+        uint256 count = runs.length / 12;
+        // No height exceeds the last run's second, so the layers above its bits weigh their zero side.
+        uint256 bits = 16;
+        while (bits < layers && (W.read(runs, 12 * (count - 1) + 4, 4) >> bits) != 0) {
+            ++bits;
+        }
         uint256[] memory even = new uint256[](layers);
         uint256[] memory odd = new uint256[](layers);
+        uint256 seedEven = 1;
+        uint256 seedOdd = 1;
         for (uint256 l = 0; l < layers; ++l) {
             even[l] = sigma[2 * l];
             odd[l] = sigma[2 * l + 1];
+            if (l >= bits) {
+                seedEven = F.mul(seedEven, 1 ^ even[l]);
+                seedOdd = F.mul(seedOdd, 1 ^ odd[l]);
+            }
         }
         uint256[] memory tables = new uint256[](6);
-        for (uint256 c = 0; c < 3; ++c) {
-            uint256 n = layers - 8 * c < 8 ? layers - 8 * c : 8;
-            tables[c] = W.ptr(W.eqTable(even, 8 * c, n, 1));
-            tables[3 + c] = W.ptr(W.eqTable(odd, 8 * c, n, 1));
-        }
-        uint256 count = runs.length / 12;
+        tables[0] = W.ptr(W.eqTable(even, 0, 8, 1));
+        tables[1] = W.ptr(W.eqTable(even, 8, 8, 1));
+        tables[2] = W.ptr(W.eqTable(even, 16, bits - 16, seedEven));
+        tables[3] = W.ptr(W.eqTable(odd, 0, 8, 1));
+        tables[4] = W.ptr(W.eqTable(odd, 8, 8, 1));
+        tables[5] = W.ptr(W.eqTable(odd, 16, bits - 16, seedOdd));
         at = new uint256[](count);
         K.atRuns(W.ptr(at), W.data(runs), count, W.ptr(tables));
     }
 
-    /// `Σ_runs at[run]·Σ_{columns of the run} table[column − base]`, the table taken as zero
-    /// outside `[base, base + table.length)`.
-    function _weigh(uint256[] memory table, uint256 base, bytes memory runs, uint256[] memory at) private pure returns (uint256) {
-        return K.weigh(W.ptr(table), base, table.length, W.data(runs), at.length, W.ptr(at));
+    /// The branching program's values over the boundary bits at the anchor's point, for the four
+    /// row points the claims have: the layers above the rows are run once for all of them.
+    function _boundaries(Run memory x, Assist memory a) private pure returns (uint256[4] memory b) {
+        uint256 nu = WrapKey.NU;
+        uint256 layers = a.sigma.length / 2;
+        uint256[4] memory top = [uint256(0), 1, 0, 0];
+        uint256 state;
+        assembly ("memory-safe") {
+            state := top
+        }
+        K.boundary(0, 0, W.ptr(a.point), a.point.length, W.ptr(a.sigma), layers, nu, state);
+        uint256[4] memory rows = [W.ptr(x.mlv) + 32, W.ptr(x.rRest) + 32, W.ptr(x.er), W.ptr(x.rho)];
+        for (uint256 i = 0; i < 4; ++i) {
+            uint256[4] memory g = [top[0], top[1], top[2], top[3]];
+            assembly ("memory-safe") {
+                state := g
+            }
+            K.boundary(rows[i], nu, W.ptr(a.point), a.point.length, W.ptr(a.sigma), nu, 0, state);
+            b[i] = g[0];
+        }
     }
 
-    /// The branching program's value over the boundary bits at `sigma`, for the row point
-    /// `row[from .. from + NU)` and the dense index `index`.
-    function _boundary(uint256[] memory row, uint256 from, uint256[] memory index, uint256[] memory sigma) private pure returns (uint256) {
-        return K.boundary(W.ptr(row) + 32 * from, WrapKey.NU, W.ptr(index), index.length, W.ptr(sigma), sigma.length / 2);
+    /// Adds the table `t` to the words of `columns` from `base` on.
+    function _add(uint256[] memory columns, uint256 base, uint256[] memory t) private pure {
+        K.addInto(W.ptr(columns) + 32 * base, W.ptr(t), t.length);
     }
 
-    /// The two sums of the anchor's last equation: over the claims on the committed bits, each
-    /// statement's batching power, layout weight and boundary value at the anchor's point, and the
-    /// same over the claims on the committed words. `runs` and `gateRuns` are the layout's tables.
-    function layoutSums(Run memory x, Assist memory a, uint256[] memory gammas, bytes memory runs, bytes memory gateRuns)
+    /// Checks the anchor's last equation: the claims on the committed bits weigh the twisted
+    /// equality of the stack's point `rho` at the multipoint sumcheck's point, and the claims on
+    /// the committed words the plain one; each claim then weighs its statement's batching power,
+    /// its boundary value at the anchor's point and its layout weight, which are summed over the
+    /// layout's runs in one pass. `runs` and `gateRuns` are the layout's tables.
+    function layout(Run memory x, Assist memory a, uint256[] memory rho, uint256[] memory gammas, bytes memory runs, bytes memory gateRuns)
         internal
         pure
-        returns (uint256 bits, uint256 words)
     {
+        uint256[4] memory k = _boundaries(x, a);
+        {
+            uint256 gAt = twistedEq(a.gamma, rho, a.point);
+            uint256 eAt = K.eqProduct(W.ptr(rho), W.ptr(a.point), rho.length);
+            uint256 g128 = K.frob(a.gamma, 7);
+            eAt = F.mul(eAt, F.sq(g128));
+            k[0] = F.mul(k[0], gAt);
+            k[1] = F.mul(k[1], F.mul(gAt, g128));
+            k[2] = F.mul(k[2], eAt);
+            k[3] = F.mul(k[3], F.mul(eAt, a.gamma));
+        }
         uint256[] memory at = _atRuns(a.sigma, runs);
         uint256 nu = WrapKey.NU;
         uint256 low = WrapKey.M_BOOL - nu - 7;
-        uint256 g128 = K.frob(a.gamma, 7);
-        uint256 g256 = F.sq(g128);
+        uint256 cols = x.ecol.length;
+        uint256 base = WrapKey.ELEM_FROZEN << cols;
+        uint256[] memory columns = new uint256[]((1 << low) > base + (1 << cols) ? (1 << low) : base + (1 << cols));
         // The two claims on the committed bits: their column points end in zeros.
-        bits = F.mul(_weigh(W.eqTable(x.rr, 1, low, 1), 0, runs, at), _boundary(x.mlv, 1, a.point, a.sigma))
-            ^ F.mul(g128, F.mul(_weigh(W.eqTable(x.rRest, 1 + nu, low, 1), 0, runs, at), _boundary(x.rRest, 1, a.point, a.sigma)));
+        _add(columns, 0, W.eqTable(x.rr, 1, low, k[0]));
+        _add(columns, 0, W.eqTable(x.rRest, 1 + nu, low, k[1]));
         // The element class's two claims share their rows; their column points end in the region's frozen bits.
-        {
-            uint256 cols = x.ecol.length;
-            uint256 base = WrapKey.ELEM_FROZEN << cols;
-            uint256 w = _weigh(W.eqTable(x.er, nu, cols, gammas[2]), base, runs, at) ^ _weigh(W.eqTable(x.ecol, 0, cols, gammas[3]), base, runs, at);
-            words = F.mul(g256, F.mul(w, _boundary(x.er, 0, a.point, a.sigma)));
-        }
+        _add(columns, base, W.eqTable(x.er, nu, cols, F.mul(gammas[2], k[2])));
+        _add(columns, base, W.eqTable(x.ecol, 0, cols, F.mul(gammas[3], k[2])));
+        uint256 sum = K.weigh(W.ptr(columns), 0, columns.length, W.data(runs), at.length, W.ptr(at));
         // The gathered cell slots share the wiring point's rows; each reads one column.
-        {
-            uint256[] memory hot = new uint256[](at.length);
-            for (uint256 i = 0; i < WrapKey.N_GATE; ++i) {
-                hot[W.entry(gateRuns, i, 2)] ^= gammas[4 + i];
-            }
-            uint256 w = K.dot(W.ptr(hot), W.ptr(at), at.length);
-            words ^= F.mul(F.mul(g256, a.gamma), F.mul(w, _boundary(x.rho, 0, a.point, a.sigma)));
-        }
-    }
-
-    /// Checks the anchor's last equation from its two sums: the claims on the bits weigh the
-    /// twisted equality of the stack's point `rho` at the multipoint sumcheck's point, and the
-    /// claims on the words the plain one.
-    function layoutCheck(Assist memory a, uint256[] memory rho, uint256 bits, uint256 words) internal pure {
-        uint256 gAt = twistedEq(a.gamma, rho, a.point);
-        uint256 eAt = K.eqProduct(W.ptr(rho), W.ptr(a.point), rho.length);
-        if (a.anchor != F.mul(gAt, bits) ^ F.mul(eAt, words)) revert Layout();
+        sum ^= F.mul(k[3], K.dotIndexed(W.ptr(gammas) + 32 * 4, W.ptr(at), W.data(gateRuns), WrapKey.N_GATE));
+        if (a.anchor != sum) revert Layout();
     }
 }

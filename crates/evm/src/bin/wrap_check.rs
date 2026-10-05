@@ -23,7 +23,7 @@ use pofseed_flock_lift_whir::{
 fn main() {
     let arg = |i: usize, d: usize| env::args().nth(i).map(|a| a.parse().expect("a number")).unwrap_or(d);
     let (n, chunk, rate) = (arg(1, 8), arg(2, 4), arg(3, 1));
-    let whir = WhirOuter::new(4, rate, Regime::Johnson, 6, 22, 128).with_merkle(MerkleHash::Keccak);
+    let whir = WhirOuter::new(4, rate, Regime::Johnson, 3, 22, 128).with_merkle(MerkleHash::Keccak);
     let (_, chain_code) = bip32_vector_1();
     let program = Arc::new(Program::new(&HardenedChildCircuit::public_only(chain_code.clone(), HARDENED_OFFSET)));
     let binding = b"flock-lifter wrap check binding";
@@ -62,16 +62,10 @@ fn main() {
         assert_eq!(c, linearized_coefficients(&build_fold_byte_table(&scaled)), "linearised coefficients");
         println!("closed-form coefficients are Flock's ✓");
         let v: Vec<F128> = (0..128u64).map(|i| F128::new(i.wrapping_mul(0x2545_F491_4F6C_DD1D) ^ 5, i + 3)).collect();
-        let mut chains = Vec::new();
-        let sum = opening::rooted_sum(gamma, &r, &v, &mut Reader::new(&[]), &mut opening::Roots::Derive(&mut chains)).expect("derived roots");
-        assert_eq!(sum, opening::frobenius_sum(&c, &v), "the rooted sum");
-        assert_eq!(opening::rooted_sum(gamma, &r, &v, &mut Reader::new(&chains), &mut opening::Roots::Read), Ok(sum), "the rooted sum from its encoding");
-        chains[40] ^= 1;
-        assert!(opening::rooted_sum(gamma, &r, &v, &mut Reader::new(&chains), &mut opening::Roots::Read).is_err(), "a false root");
-        println!("the sum over square-root chains is the sum over Frobenius powers ✓");
+        assert_eq!(opening::rooted_sum(gamma, &r, &v), opening::frobenius_sum(&c, &v), "the rooted sum");
+        println!("the squaring chain is the sum over Frobenius powers ✓");
     }
-    let mut chains = Vec::new();
-    let (opened, _child) = opening::transport(&vk, &mut rd, &mut tr, &p, &mut opening::Roots::Derive(&mut chains)).expect("the mirror accepts the transport");
+    let (opened, _child) = opening::transport(&vk, &mut rd, &mut tr, &p).expect("the mirror accepts the transport");
     assert_eq!(rd.remaining(), 0, "the encoding is read whole");
     assert_eq!(opened.target, opened.value * opened.weight, "the transport's last equation");
     println!("transport: the assist and the last equation hold ✓");
