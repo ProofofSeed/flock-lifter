@@ -85,6 +85,93 @@ fn main() {
             work.jagged.groups.len()
         );
     }
+    if env::var_os("POFSEED_SHAPE").is_some() {
+        use flock_prover::union::UnionInstance;
+        let shape = &w.key.key.shape;
+        let reg = &shape.registry;
+        let union = UnionInstance::new(reg, shape.counts.clone());
+        let cells = shape.circuit.cells();
+        println!(
+            "shape: nu {} M {} M_bool {} M_elem {} dense_m {} col_log {} mu {} c_bits {} gate slots {} public slots {} public words {}",
+            reg.nu(),
+            reg.m_total(),
+            reg.m_bool(),
+            reg.m_elem(),
+            union.dense_m(),
+            union.col_log(),
+            cells.mu(),
+            cells.c_bits(),
+            cells.num_gate_slots(),
+            cells.num_public_slots(),
+            shape.circuit.num_public(),
+        );
+        for (i, ((ty, slot), n)) in reg.types().iter().zip(reg.slots()).zip(&shape.counts).enumerate() {
+            println!(
+                "  type {i}: element {} k_log {} useful {} pin {:?} schema {} prefix {:#x}/{} count {} nnz a {} b {}",
+                ty.is_element(),
+                ty.k_log,
+                ty.useful_bits,
+                ty.const_pin,
+                ty.io_schema.len(),
+                slot.prefix,
+                slot.prefix_bits,
+                n,
+                ty.a_0.rows.iter().map(Vec::len).sum::<usize>(),
+                ty.b_0.rows.iter().map(Vec::len).sum::<usize>(),
+            );
+        }
+        for (i, ty) in reg.boolean_types().iter().enumerate() {
+            for (side, m) in [("a", &ty.a_0), ("b", &ty.b_0)] {
+                let mut diag: Vec<(i64, usize)> = Vec::new();
+                for (r, row) in m.rows.iter().enumerate() {
+                    for &c in row {
+                        diag.push((c as i64 - r as i64, r));
+                    }
+                }
+                diag.sort_unstable();
+                let mut runs = 0usize;
+                let mut aligned = 0usize;
+                let mut prev: Option<(i64, usize)> = None;
+                for &(d, r) in &diag {
+                    let cont = prev == Some((d, r.wrapping_sub(1)));
+                    if !cont {
+                        runs += 1;
+                    }
+                    if !cont || r % 32 == 0 {
+                        aligned += 1;
+                    }
+                    prev = Some((d, r));
+                }
+                let mut cyc: Vec<(usize, usize, usize, usize)> = Vec::new();
+                for (r, row) in m.rows.iter().enumerate() {
+                    for &c in row {
+                        cyc.push((r / 32, c / 32, (c % 32 + 32 - r % 32) % 32, r % 32));
+                    }
+                }
+                cyc.sort_unstable();
+                let mut cyc_runs = 0usize;
+                let mut prev: Option<(usize, usize, usize, usize)> = None;
+                for &(a, b, u, t) in &cyc {
+                    if prev != Some((a, b, u, t.wrapping_sub(1))) {
+                        cyc_runs += 1;
+                    }
+                    prev = Some((a, b, u, t));
+                }
+                println!(
+                    "  type {i} {side}: nnz {}, diagonal runs {runs}, word-aligned diagonal runs {aligned}, cyclic-32 runs {cyc_runs}",
+                    diag.len()
+                );
+            }
+        }
+        let live: usize = shape.circuit.live_mask().counts.iter().sum();
+        let heights = union.jagged_heights();
+        println!(
+            "  live cells {live}, layout columns {} used {}, fixed publics {}",
+            heights.len(),
+            heights.iter().filter(|&&h| h > 0).count(),
+            shape.circuit.fixed_public().iter().filter(|f| f.is_some()).count()
+        );
+    }
     let tm = w.timings;
     println!(
         "result: responses={n} chunks={} outer={spec} chunks_s={chunks_s:.2} chunks_verify_s={chunks_verify_s:.3} \

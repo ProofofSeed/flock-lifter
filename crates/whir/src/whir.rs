@@ -239,6 +239,16 @@ pub fn open<Ch: Challenger + ?Sized>(
     (values, proof)
 }
 
+/// Opens a commitment that is kept, at `points`, returning the values there and the proof.
+pub fn open_kept<Ch: Challenger + ?Sized>(
+    committed: &Committed,
+    points: &[Vec<F256>],
+    ch: &mut Ch,
+) -> (Vec<F256>, Proof) {
+    let (values, _, proof) = open_weighted_kept(committed, points, &[], ch);
+    (values, proof)
+}
+
 /// Opens a commitment at `points` and against `weights`, returning the values at the points, the
 /// weighted sums and the proof.
 pub fn open_weighted<Ch: Challenger + ?Sized>(
@@ -247,15 +257,26 @@ pub fn open_weighted<Ch: Challenger + ?Sized>(
     weights: &[&dyn Weight],
     ch: &mut Ch,
 ) -> (Vec<F256>, Vec<F256>, Proof) {
+    open_weighted_kept(&committed, points, weights, ch)
+}
+
+/// [`open_weighted`] on a commitment that is kept.
+pub fn open_weighted_kept<Ch: Challenger + ?Sized>(
+    committed: &Committed,
+    points: &[Vec<F256>],
+    weights: &[&dyn Weight],
+    ch: &mut Ch,
+) -> (Vec<F256>, Vec<F256>, Proof) {
     let Committed { config, schedule, message, tree, codeword, cap } = committed;
+    let config = *config;
     let rounds = &schedule.rounds;
     phase("start");
-    start(&config, &cap, ch);
+    start(&config, cap, ch);
     let ood_points: Vec<Vec<F256>> =
         (0..rounds[0].ood).map(|_| sample_point(config.num_vars, ch)).collect();
-    let ood_values = ood_answers(&message, &ood_points);
+    let ood_values = ood_answers(message, &ood_points);
     ood_values.iter().for_each(|&v| ch.observe_f256(v));
-    let values: Vec<F256> = points.iter().map(|z| mle_eval_base(&message, z)).collect();
+    let values: Vec<F256> = points.iter().map(|z| mle_eval_base(message, z)).collect();
     let weight_tables: Vec<Vec<F256>> = weights.iter().map(|w| w.table()).collect();
     assert!(
         weight_tables.iter().all(|t| t.len() == message.len()),
@@ -344,7 +365,7 @@ pub fn open_weighted<Ch: Challenger + ?Sized>(
             *e = fold(e, r);
         }
         if let Some(w) = &mut dense {
-            dense_f = if j == 0 { fold_base(&message, r) } else { fold(&dense_f, r) };
+            dense_f = if j == 0 { fold_base(message, r) } else { fold(&dense_f, r) };
             *w = fold(w, r);
         }
         alpha.push(r);
@@ -455,12 +476,12 @@ fn add_shift_terms(w: &mut [F256], coords: &[Vec<F128>], c: &[F256]) {
 }
 
 /// The previous committed function, whose rows the next round queries.
-enum Prev {
-    Base { codeword: Vec<F128>, tree: Tree, round: Round, alpha: Vec<F256> },
+enum Prev<'a> {
+    Base { codeword: &'a [F128], tree: &'a Tree, round: Round, alpha: Vec<F256> },
     Ext { codeword: Vec<F256>, tree: Tree, round: Round, alpha: Vec<F256> },
 }
 
-impl Prev {
+impl Prev<'_> {
     fn round(&self) -> Round {
         match self {
             Prev::Base { round, .. } | Prev::Ext { round, .. } => *round,

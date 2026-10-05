@@ -11,6 +11,7 @@ members = [
     "crates/evm",
     "crates/optimistic",
     "crates/whir",
+    "crates/structure",
 ]
 exclude = ["vendor"]
 

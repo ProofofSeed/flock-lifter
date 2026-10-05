@@ -2116,6 +2116,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pofseed-flock-lift-structure"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "flock-prover",
+ "pofseed-flock-lift-block",
+ "pofseed-flock-lift-statement",
+ "pofseed-flock-lift-whir",
+ "rayon",
+ "serde",
+]
+
+[[package]]
 name = "pofseed-flock-lift-whir"
 version = "0.1.0"
 dependencies = [
