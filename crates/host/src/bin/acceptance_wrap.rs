@@ -18,7 +18,7 @@
 //! - W1 a tampered published word: the wrap's outer proof
 //! - W2 a tampered unopened digest: the native Fiat-Shamir gate
 //! - W3 two responses' published words swapped: the wrap's outer proof
-//! - W4 a lift verified under another statement's block: the accumulated matrix claims
+//! - W4 a lift verified under another statement's tables: the structure proof
 //! - W5 a truncated lift: the shape check
 //! - W6 a tampered accumulated matrix claim: the wrap's outer proof
 //! - W7 a tampered commitment: the wrap's outer proof
@@ -88,6 +88,10 @@ fn expect_gate_refusal(name: &str, journal: &LiftJournal, exp: &JournalExpectati
     }
 }
 
+fn key_one_shape(key: &pofseed_flock_lift::wrapped::WrappedKey) -> &pofseed_flock_lift::wrapped::WrappedKey {
+    return key;
+}
+
 fn main() {
     let mode = env::args().nth(1).unwrap_or_else(|| "both".into());
     let full_n: usize = env::args().nth(2).map(|a| a.parse().expect("response count")).unwrap_or(n_eps(64));
@@ -110,7 +114,8 @@ fn main() {
             expected_output: output.clone(),
             binding: BINDING.to_vec(),
         };
-        let (key, lifted, _) = prove(&program, &statement, &proof, 4, &outer).expect("control lift");
+        let (key, lifted, _) = prove(&program, &statement, &proof, 4, &outer, None, rate).expect("control lift");
+        let root = key.root.clone();
         let check = |s: &Statement, l: &WrappedLift| verify(&program, &key, s, l, &outer);
         let journal = check(&statement, &lifted).expect("control must verify");
         check_journal(&journal, &expectation(&statement, n as u32)).expect("control gate must pass");
@@ -118,14 +123,14 @@ fn main() {
 
         let mut tampered = proof.clone();
         tampered[3] = tamper_and_msg(&tampered[3]);
-        let (_, lifted_r1, _) = prove(&program, &statement, &tampered, 4, &outer).expect("a tampered response still wraps");
+        let (_, lifted_r1, _) = prove(&program, &statement, &tampered, 4, &outer, Some(root.clone()), rate).expect("a tampered response still wraps");
         expect_refusal("R1 tampered proof", check(&statement, &lifted_r1), |e| matches!(e, LiftError::FiatShamir));
 
         let other_binding = Statement {
             binding: b"some other tx".to_vec(),
             ..statement.clone()
         };
-        let (key_r2, lifted_r2, _) = prove(&program, &other_binding, &proof, 4, &outer).expect("lift under another binding");
+        let (key_r2, lifted_r2, _) = prove(&program, &other_binding, &proof, 4, &outer, Some(root.clone()), rate).expect("lift under another binding");
         expect_refusal("R2 wrong binding", check(&other_binding, &lifted_r2), |e| matches!(e, LiftError::FiatShamir));
 
         let mut exp = expectation(&statement, n as u32);
@@ -135,7 +140,7 @@ fn main() {
         let exp = expectation(&statement, n_eps(64) as u32);
         expect_gate_refusal("R4 too few responses", &journal, &exp, JournalCheckError::TooFewResponses);
 
-        match prove(&program, &statement, &[], 4, &outer) {
+        match prove(&program, &statement, &[], 4, &outer, Some(root.clone()), rate) {
             Err(e @ LiftError::Shape) => println!("  R5 empty proof: refused by the prover ({e:?}) ✓"),
             other => panic!("R5 empty proof: expected a shape refusal, got {:?}", other.map(|_| ())),
         }
@@ -146,7 +151,7 @@ fn main() {
 
         let mut malformed = proof.clone();
         malformed[5] = oversize_and_msg(&malformed[5]);
-        match prove(&program, &statement, &malformed, 4, &outer) {
+        match prove(&program, &statement, &malformed, 4, &outer, Some(root.clone()), rate) {
             Err(e @ LiftError::Witness(5, _)) => println!("  R7 malformed response: refused by the prover ({e:?}) ✓"),
             other => panic!("R7 malformed response: expected a witness refusal at response 5, got {:?}", other.map(|_| ())),
         }
@@ -176,10 +181,14 @@ fn main() {
             ..statement.clone()
         };
         let other_program = Program::new(&other_index.circuit());
+        let other_key = pofseed_flock_lift::wrapped::WrappedKey {
+            root: Arc::new(pofseed_flock_lift::root::RootKey::new(&other_program, &key_r2.wrap, rate)),
+            ..key_r2
+        };
         expect_refusal(
-            "W4 another statement's block",
-            verify(&other_program, &key, &other_index, &lifted, &outer),
-            |e| matches!(e, LiftError::Wrap(WrapError::Matrix)),
+            "W4 another statement's tables",
+            verify(&other_program, &other_key, &other_index, &lifted, &outer),
+            |e| matches!(e, LiftError::Wrap(WrapError::Structure(_))),
         );
 
         let mut w5 = lifted.clone();
@@ -197,21 +206,37 @@ fn main() {
 
         let (_, output_b, proof_b) = vector_1_proof(n, b"another prover's entropy", BINDING);
         assert_eq!(output_b, output);
-        let (_, lifted_b, _) = prove(&program, &statement, &proof_b, 4, &outer).expect("a second lift");
+        let (_, lifted_b, _) = prove(&program, &statement, &proof_b, 4, &outer, Some(root.clone()), rate).expect("a second lift");
         let mut w8 = lifted.clone();
         w8.unopened = lifted_b.unopened.clone();
         expect_refusal("W8 another lift's unopened digests", check(&statement, &w8), |e| {
             matches!(e, LiftError::FiatShamir)
         });
 
-        let (key_one, _, _) = prove(&program, &statement, &proof[..4], 4, &outer).expect("a one-chunk lift");
+        let (key_one, _, _) = prove(&program, &statement, &proof[..4], 4, &outer, None, rate).expect("a one-chunk lift");
         expect_refusal("W9 a key of another shape", verify(&program, &key_one, &statement, &lifted, &outer), |e| {
             matches!(e, LiftError::Shape)
         });
 
-        verify(&program, &key_r2, &statement, &lifted_b, &outer).expect("a key made by one lift verifies another");
-        assert_eq!(key.wrap.key.digest(), key_r2.wrap.key.digest(), "lifts of one shape share their wrap circuit");
+        verify(&program, &key_one_shape(&key), &statement, &lifted_b, &outer).expect("a key made by one lift verifies another");
         println!("  a key made by one lift verifies another of the same shape ✓");
+
+        let mut s1 = lifted.clone();
+        s1.structure.kernel_values[0] += F128::ONE;
+        expect_refusal("S1 tampered structure proof", check(&statement, &s1), |e| {
+            matches!(e, LiftError::Wrap(WrapError::Structure(_)))
+        });
+        let mut s2 = lifted.clone();
+        s2.wrap.proof.wiring.gkr.s_sigma_eval += F128::ONE;
+        expect_refusal("S2 tampered wiring evaluation", check(&statement, &s2), |e| matches!(e, LiftError::Wrap(_)));
+        let mut s3 = lifted.clone();
+        s3.wrap.proof.boolean.as_mut().expect("a Boolean class").lincheck.matrix_evals[0].1 += F128::ONE;
+        expect_refusal("S3 tampered table evaluation", check(&statement, &s3), |e| matches!(e, LiftError::Wrap(_)));
+        let mut s4 = lifted.clone();
+        s4.structure = lifted_b.structure.clone();
+        expect_refusal("S4 another lift's structure proof", check(&statement, &s4), |e| {
+            matches!(e, LiftError::Wrap(WrapError::Structure(_)))
+        });
         println!("reject matrix: PASS");
         println!();
     }
@@ -228,12 +253,20 @@ fn main() {
             binding: BINDING.to_vec(),
         };
         let t = Instant::now();
-        let (key, lifted, tm) = prove(&program, &statement, &proof, MAX_CHUNK, &outer).expect("full-scale lift");
+        let (key, lifted, tm) = prove(&program, &statement, &proof, MAX_CHUNK, &outer, None, rate).expect("full-scale lift");
         println!(
-            "  wrapped lift in {:.2} s: chunks {:.2} s, wrap {:.2} s",
-            t.elapsed().as_secs_f64(),
+            "  wrapped lift in {:.2} s: chunks {:.2} s, wrap {:.2} s, tables committed in {:.2} s, structure proof {:.2} s",
+            t.elapsed().as_secs_f64() - tm.key,
             tm.chunks,
-            t.elapsed().as_secs_f64() - tm.chunks
+            t.elapsed().as_secs_f64() - tm.chunks - tm.key - tm.structure,
+            tm.key,
+            tm.structure
+        );
+        println!(
+            "  parts: wrap proof {} B, structure proof {} B, tables over 2^{} bytes",
+            pofseed_flock_lift::wrap::proof_bytes(&lifted.wrap),
+            bincode::serialize(&lifted.structure).expect("serialise").len(),
+            key.root.structure.layout.n
         );
         println!("  wrapped lift: {} B", bincode::serialize(&lifted).expect("serialise").len());
         let t = Instant::now();

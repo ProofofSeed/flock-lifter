@@ -208,16 +208,25 @@ pub fn verify_wrapped(
     // Flock's verifier takes the element tables' evaluations from the proof; the claims pass checks them.
     let table_of = vec![0; key.key.shape.registry.num_boolean()];
     crate::root::outer_claims(key, &table_of, proof, outer)?;
+    check_words(program, publics, key, proof)?;
+    for ((row, col, value), a_side) in matrix_claims(key, proof).into_iter().zip([true, false]) {
+        if program.bilinear_eq(a_side, &row, &col) != value {
+            return Err(WrapError::Matrix);
+        }
+    }
+    return Ok(());
+}
+
+/// Checks that the words a wrap publishes are the given ones, padded as its chunks pad them.
+pub fn check_words(program: &Program, publics: &[&[Vec<F128>]], key: &WrapKey, proof: &WrapProof) -> Result<(), WrapError> {
+    if key.tails.len() != publics.len() {
+        return Err(WrapError::Shape);
+    }
     for (i, p) in publics.iter().enumerate() {
         let (at, len) = words_at(key, i);
         let words: Vec<F128> = padded_publics(p, row_log(program, p.len())).into_iter().flatten().collect();
         if words.len() != len || proof.public[at..at + len] != words[..] {
             return Err(WrapError::Words);
-        }
-    }
-    for ((row, col, value), a_side) in matrix_claims(key, proof).into_iter().zip([true, false]) {
-        if program.bilinear_eq(a_side, &row, &col) != value {
-            return Err(WrapError::Matrix);
         }
     }
     return Ok(());

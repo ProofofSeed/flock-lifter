@@ -31,6 +31,8 @@ pub struct RootKey {
     pub structure: StructKey,
     /// Per Boolean table type, in registry order, its table.
     pub table_of: Vec<usize>,
+    /// The digest of the wrap circuit the tables are of.
+    pub circuit: [u8; 32],
 }
 
 /// What verifying a discharge needs.
@@ -76,6 +78,7 @@ impl RootKey {
         return Self {
             structure: StructKey::new(parts, log_inv_rate),
             table_of,
+            circuit: key.key.digest(),
         };
     }
 

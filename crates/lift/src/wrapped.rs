@@ -17,9 +17,12 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use zkboo::prover::proof::Response;
 
+use pofseed_flock_lift_structure::proof::StructProof;
+
 use crate::{
     chunk_wrap::{self, ChunkProofWrap},
     lift::{LiftError, MAX_CHUNK, Statement, gate, journal},
+    root::{self, RootKey},
     wrap::{self, WrapTimings},
 };
 
@@ -34,6 +37,8 @@ pub struct WrappedKey {
     pub responses: usize,
     /// Responses per chunk.
     pub chunk: usize,
+    /// The commitment to the fixed tables of the statement's block and of the wrap circuit.
+    pub root: Arc<RootKey>,
 }
 
 /// A wrapped lift.
@@ -43,6 +48,8 @@ pub struct WrappedLift {
     pub wrap: WrapProof,
     /// The unopened view digest of every response.
     pub unopened: Vec<[u8; 32]>,
+    /// The proof of what the wrap leaves about the fixed tables.
+    pub structure: StructProof,
 }
 
 /// Phase timings of a wrapped lift, in seconds.
@@ -52,6 +59,10 @@ pub struct WrappedTimings {
     pub chunks: f64,
     /// Wrapping them.
     pub wrap: WrapTimings,
+    /// Committing to the fixed tables, when no key was given.
+    pub key: f64,
+    /// Proving the structure.
+    pub structure: f64,
 }
 
 /// The transcript domain of chunk `index` of a wrapped lift of `responses` responses in chunks of
@@ -73,13 +84,16 @@ fn domains(program: &Program, responses: usize, chunk: usize) -> Vec<Vec<u8>> {
 }
 
 /// Lifts a ZKBoo proof of `statement` in chunks of at most `chunk` responses and wraps the chunks
-/// in one proof, opened through `outer`.
+/// in one proof, opened through `outer`; the fixed tables are those of `root`, or are committed at
+/// rate `2^-rate` when there is none.
 pub fn prove(
     program: &Arc<Program>,
     statement: &Statement,
     proof: &[Response<S, S>],
     chunk: usize,
     outer: &dyn OuterPcs,
+    root: Option<Arc<RootKey>>,
+    rate: usize,
 ) -> Result<(WrappedKey, WrappedLift, WrappedTimings), LiftError> {
     assert!((1..=MAX_CHUNK).contains(&chunk), "chunk size must be in 1..={MAX_CHUNK}");
     if proof.is_empty() {
@@ -106,16 +120,28 @@ pub fn prove(
     let chunks_s = t.elapsed().as_secs_f64();
     let parts: Vec<&[Vec<F128>]> = words.chunks(chunk).collect();
     let w = wrap::wrap(program, &parts, &chunks, &domains, &HeadEnv::measuring(), Some(outer)).map_err(LiftError::Wrap)?;
+    let t = std::time::Instant::now();
+    let root = match root {
+        Some(r) if r.circuit == w.key.key.digest() => r,
+        Some(_) => return Err(LiftError::Shape),
+        None => Arc::new(RootKey::new(program, &w.key, rate)),
+    };
+    let key_s = t.elapsed().as_secs_f64();
+    let t = std::time::Instant::now();
+    let structure = root::prove_structure(&root, &w.key, &w.proof, Some(outer)).map_err(LiftError::Wrap)?;
+    let timings = WrappedTimings {
+        chunks: chunks_s,
+        wrap: w.timings,
+        key: key_s,
+        structure: t.elapsed().as_secs_f64(),
+    };
     let key = WrappedKey {
         wrap: w.key,
         responses: proof.len(),
         chunk,
+        root,
     };
-    let timings = WrappedTimings {
-        chunks: chunks_s,
-        wrap: w.timings,
-    };
-    return Ok((key, WrappedLift { wrap: w.proof, unopened }, timings));
+    return Ok((key, WrappedLift { wrap: w.proof, unopened, structure }, timings));
 }
 
 /// The published words of every response of a wrapped lift, read from its public segment.
@@ -149,7 +175,8 @@ pub fn verify(
     }
     let words = words(program, key, lifted).ok_or(LiftError::Shape)?;
     let parts: Vec<&[Vec<F128>]> = words.chunks(key.chunk).collect();
-    wrap::verify_wrapped(program, &parts, &key.wrap, &lifted.wrap, Some(outer)).map_err(LiftError::Wrap)?;
+    root::verify_root(&key.root.verifying(), &key.wrap, &lifted.wrap, &lifted.structure, Some(outer)).map_err(LiftError::Wrap)?;
+    wrap::check_words(program, &parts, &key.wrap, &lifted.wrap).map_err(LiftError::Wrap)?;
     gate(program, statement, &words, &lifted.unopened)?;
     return Ok(journal(statement, key.responses));
 }
