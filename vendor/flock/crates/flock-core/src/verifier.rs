@@ -493,6 +493,8 @@ pub fn verify_union_circuit_deferred_with_outer<Ch: Challenger>(
         pcs_params,
         challenger,
     )?;
+    #[cfg(feature = "mul-count")]
+    crate::field::gf2_128::op_count::phase("deferred: piops");
     let mut jagged = None;
     let claims = verify_merged_opening(
         union,
@@ -1097,6 +1099,8 @@ fn verify_union_piops<Ch: Challenger>(
                 )
                 .map_err(FlockVerifyError::Lincheck)?;
                 matrix = Some(assertion);
+                #[cfg(feature = "mul-count")]
+                crate::field::gf2_128::op_count::phase("  boolean zerocheck and lincheck");
                 Some(R1csClaim {
                     ab: ZClaim {
                         point: union.ab_claim_point(
@@ -1152,6 +1156,8 @@ fn verify_union_piops<Ch: Challenger>(
             };
             par_gather = Some(gather);
             challenger.merge_child(ch_w.take().expect("forked above"));
+            #[cfg(feature = "mul-count")]
+            crate::field::gf2_128::op_count::phase("  wiring");
         }
 
         // DEFERRED on this side too: the element class's matrix work leaves
@@ -1171,6 +1177,8 @@ fn verify_union_piops<Ch: Challenger>(
             }
             None => None,
         };
+        #[cfg(feature = "mul-count")]
+        crate::field::gf2_128::op_count::phase("  element piop");
         let mut packed_direct = el_claim
             .as_ref()
             .map(|c: &Claims| {

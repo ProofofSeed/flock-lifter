@@ -15,6 +15,16 @@ pub enum Regime {
     Johnson,
 }
 
+/// The hash of the codewords' Merkle trees.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MerkleHash {
+    /// BLAKE3, which Flock's circuit gadgets replay.
+    #[default]
+    Blake3,
+    /// Keccak-256, which the EVM computes natively.
+    Keccak,
+}
+
 /// The parameters of a WHIR commitment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Config {
@@ -32,6 +42,8 @@ pub struct Config {
     pub final_vars: usize,
     /// The proximity regime.
     pub regime: Regime,
+    /// The hash of the Merkle trees.
+    pub merkle: MerkleHash,
 }
 
 /// One committed function of the protocol.

@@ -2678,6 +2678,8 @@ fn verify_batch_merged_core<Ch: Challenger>(
             tfmt(t.elapsed().as_secs_f64())
         );
     }
+    #[cfg(feature = "mul-count")]
+    crate::field::gf2_128::op_count::phase("  merged: ring switches");
     // Packed-direct values are bound before one PoW protects the entire mixed
     // coefficient vector (total discrepancy degree one).
     // VALUE-ONLY absorb (v1) — see the prover-side intake for the argument:
@@ -2733,6 +2735,8 @@ fn verify_batch_merged_core<Ch: Challenger>(
         rho.push(r);
     }
 
+    #[cfg(feature = "mul-count")]
+    crate::field::gf2_128::op_count::phase("  merged: batching and rounds");
     let t = Instant::now();
     let params = JaggedParams::from_heights(heights, n_log, dense_log);
     let k_cols = params.k;
@@ -2796,6 +2800,8 @@ fn verify_batch_merged_core<Ch: Challenger>(
             tfmt(t.elapsed().as_secs_f64())
         );
     }
+    #[cfg(feature = "mul-count")]
+    crate::field::gf2_128::op_count::phase("  merged: coefficients and groups");
     let t = Instant::now();
     #[cfg(feature = "mul-count")]
     let assist_start = snapshot();
@@ -2859,6 +2865,8 @@ fn verify_batch_merged_core<Ch: Challenger>(
             tfmt(t.elapsed().as_secs_f64())
         );
     }
+    #[cfg(feature = "mul-count")]
+    crate::field::gf2_128::op_count::phase("  merged: assist");
     let t = Instant::now();
     let pd = PackedDirectClaimRef {
         point: &rho,
@@ -2884,6 +2892,8 @@ fn verify_batch_merged_core<Ch: Challenger>(
         }
         _ => return Err(PcsOpenError::Ligerito),
     }
+    #[cfg(feature = "mul-count")]
+    crate::field::gf2_128::op_count::phase("  merged: outer commitment");
     challenger.merge_child(ch_a);
     // The assist's claim against the merged sumcheck's folded target. A pure
     // arithmetic check — it consumes no challenges, so the fork moved it here

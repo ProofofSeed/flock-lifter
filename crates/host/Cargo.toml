@@ -19,6 +19,7 @@ zkboo-profiling = { version = "1.3" }
 pofseed-flock-lift = { path = "../lift" }
 pofseed-flock-lift-block = { path = "../block" }
 pofseed-flock-lift-statement = { path = "../statement" }
+pofseed-flock-lift-whir = { path = "../whir" }
 bincode = { version = "1.3" }
 serde = { version = "1.0.228" }
 
@@ -57,3 +58,11 @@ path = "src/bin/verify_only.rs"
 [[bin]]
 name = "pcs-config"
 path = "src/bin/pcs_config.rs"
+
+[[bin]]
+name = "wrap-probe"
+path = "src/bin/wrap_probe.rs"
+
+[[bin]]
+name = "acceptance-wrap"
+path = "src/bin/acceptance_wrap.rs"

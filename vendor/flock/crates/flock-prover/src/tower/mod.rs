@@ -49,7 +49,7 @@ pub use crate::tower::{
     query::LeafOuter,
     rowmajor::{
         RowMajorChild, TailLayout, WrapKey, WrapProof, WrapTimings, build_head_circuit,
-        parent_digest, prove_wrap, verify_wrap,
+        parent_digest, prove_wrap, prove_wrap_on, verify_wrap,
     },
     verify::{
         RootBundle, TowerVerifyError, TowerVk, TowerVkFingerprint, verify_root, verify_root_bytes,

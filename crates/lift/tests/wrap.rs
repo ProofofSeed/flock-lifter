@@ -11,7 +11,7 @@ use pofseed_flock_lift::{
 };
 use pofseed_flock_lift_block::{native, program::Program, toy::Toy};
 use pofseed_flock_lift_statement::{H, PS, PV, S};
-use pofseed_flock_lift_whir::outer::WhirOuter;
+use pofseed_flock_lift_whir::{outer::WhirOuter, params::MerkleHash};
 use zkboo::{
     executor::{ExecOptions, OwnedFlexibleWordPool, exec},
     prover::{par_prove, proof::Response, views::OwnedFlexibleWordTriplePool},
@@ -58,7 +58,7 @@ fn toy_wrap_accepts_and_refuses() {
         .map(|((r, p), d)| chunk_wrap::prove_chunk(&program, r, p, d).expect("prove"))
         .collect();
     let parts: Vec<&[Vec<F128>]> = publics.chunks(per).collect();
-    let whir = WhirOuter::standard();
+    let whir = WhirOuter::standard().with_merkle(MerkleHash::Keccak);
     for outer in [Some(&whir as &dyn OuterPcs), None] {
         let t = Instant::now();
         let w = wrap::wrap(&program, &parts, &chunks, &domains, &HeadEnv::measuring(), outer).expect("wrap");
@@ -75,7 +75,7 @@ fn toy_wrap_accepts_and_refuses() {
         tampered[per + 1][3] += F128::ONE;
         let tparts: Vec<&[Vec<F128>]> = tampered.chunks(per).collect();
         assert!(
-            matches!(wrap::verify_wrapped(&program, &tparts, &w.key, &w.proof, outer), Err(WrapError::Digest)),
+            matches!(wrap::verify_wrapped(&program, &tparts, &w.key, &w.proof, outer), Err(WrapError::Words)),
             "a tampered published word"
         );
         let swapped = [parts[1], parts[0]];

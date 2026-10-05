@@ -573,6 +573,20 @@ impl EnvKey {
         proof: &EnvProof,
         outer: Option<&dyn OuterPcs>,
     ) -> Result<(), FlockVerifyError> {
+        self.verify_on(
+            proof,
+            outer,
+            &mut FsChallenger::with_chained_blake3(ENV_DOMAIN),
+        )
+    }
+
+    /// Verifies a proof under this key on a given transcript.
+    pub fn verify_on<Ch: flock_core::challenger::Challenger>(
+        &self,
+        proof: &EnvProof,
+        outer: Option<&dyn OuterPcs>,
+        challenger: &mut Ch,
+    ) -> Result<(), FlockVerifyError> {
         let union = UnionInstance::new(&self.shape.registry, self.shape.counts.clone());
         let lcs = self.lincheck_circuits();
         verify_union_circuit_with_outer(
@@ -584,9 +598,39 @@ impl EnvKey {
             &proof.proof,
             &self.pcs,
             outer,
-            &mut FsChallenger::with_chained_blake3(ENV_DOMAIN),
+            challenger,
         )
         .map(|_| ())
+    }
+
+    /// Verifies a proof under this key with every evaluation of a fixed table left undischarged:
+    /// returns the tables' matrix claims, the layout's and the wiring's.
+    pub fn verify_deferred<Ch: flock_core::challenger::Challenger>(
+        &self,
+        proof: &EnvProof,
+        outer: Option<&dyn OuterPcs>,
+        challenger: &mut Ch,
+    ) -> Result<
+        (
+            flock_core::verifier::DeferredMatrixWork,
+            flock_core::circuit::SigmaAssertion,
+        ),
+        FlockVerifyError,
+    > {
+        let union = UnionInstance::new(&self.shape.registry, self.shape.counts.clone());
+        let lcs = self.lincheck_circuits();
+        flock_core::verifier::verify_union_circuit_deferred_with_outer(
+            &union,
+            &self.shape.circuit,
+            &proof.public,
+            &lcs,
+            &proof.commitment,
+            &proof.proof,
+            &self.pcs,
+            outer,
+            challenger,
+        )
+        .map(|(_, work, sigma)| (work, sigma))
     }
 }
 
@@ -598,6 +642,25 @@ pub(super) fn prove_env(
     spread_w: usize,
     outer: Option<&dyn OuterPcs>,
     check: impl FnOnce(&[F128]),
+) -> (EnvKey, EnvProof, EnvTimings) {
+    prove_env_on(
+        eb,
+        nu,
+        spread_w,
+        outer,
+        &mut FsChallenger::with_chained_blake3(ENV_DOMAIN),
+        |public, _| check(public),
+    )
+}
+
+/// [`prove_env`] on a given transcript, which `check` may extend once the public segment is known.
+pub(super) fn prove_env_on<Ch: flock_core::challenger::Challenger>(
+    eb: EnvBuild,
+    nu: usize,
+    spread_w: usize,
+    outer: Option<&dyn OuterPcs>,
+    challenger: &mut Ch,
+    check: impl FnOnce(&[F128], &mut Ch),
 ) -> (EnvKey, EnvProof, EnvTimings) {
     let mut timings = EnvTimings::default();
     let t0 = Instant::now();
@@ -623,7 +686,7 @@ pub(super) fn prove_env(
     let hint_refs: Vec<&(dyn Any + Sync)> = hints.iter().map(|h| h as &(dyn Any + Sync)).collect();
     let fill_plan = shape.fill_plan();
     let mut witness = shape.run_filled_deferred(&fill_plan, &vals, &hint_refs);
-    check(&witness.public);
+    check(&witness.public, challenger);
     timings.witness = t0.elapsed().as_secs_f64();
     let dense_m = UnionInstance::new(&shape.registry, shape.counts.clone()).dense_m();
     let pf = LigeritoProfile::Fast;
@@ -724,7 +787,7 @@ pub(super) fn prove_env(
         bslots.into_iter().map(|(_, x)| x).collect(),
         el_inputs,
         outer,
-        &mut FsChallenger::with_chained_blake3(ENV_DOMAIN),
+        challenger,
     );
     timings.prove = t0.elapsed().as_secs_f64();
     let public = witness.public;

@@ -4,7 +4,7 @@
 use flock_prover::challenger::FsChallenger;
 use flock_prover::field::{F128, F256};
 use pofseed_flock_lift_whir::field::{mle_eval, mle_eval_base};
-use pofseed_flock_lift_whir::params::{Config, Regime};
+use pofseed_flock_lift_whir::params::{Config, MerkleHash, Regime};
 use pofseed_flock_lift_whir::whir::{self, Commitment, Openings, Proof, VerifyError, Weight};
 
 fn sample(n: usize, seed: u64) -> Vec<F128> {
@@ -33,6 +33,7 @@ fn config(num_vars: usize, folding: usize, log_inv_rate: usize, regime: Regime) 
         pow_bits: 8,
         final_vars: 4,
         regime,
+        merkle: Default::default(),
     }
 }
 
@@ -186,5 +187,26 @@ fn weighted_openings_verify_and_bind_their_sums() {
         table[5] += F256::ONE;
         let changed = Dense(table);
         assert!(check(&sums, &[&changed, dyn_weights[1]]).is_err(), "another weight");
+    }
+}
+
+#[test]
+fn keccak_trees_open_and_refuse_tampered_rows() {
+    for (vars, folding, rate) in [(12, 4, 1), (13, 3, 3)] {
+        let config = Config { merkle: MerkleHash::Keccak, ..config(vars, folding, rate, Regime::Johnson) };
+        let (c, p, v, proof) = prove(&config, 5, 2);
+        check(&config, &c, &p, &v, &proof).expect("an honest opening verifies");
+        let mut t = proof.clone();
+        if let Openings::Base(rows, _) = &mut t.rounds[0].openings {
+            rows[3] += F128::ONE;
+        }
+        assert!(matches!(check(&config, &c, &p, &v, &t), Err(VerifyError::Merkle(0))), "an opened row");
+        let mut t = proof.clone();
+        if let Openings::Ext(_, paths) = &mut t.final_openings {
+            paths[0][0][7] ^= 1;
+        }
+        assert!(check(&config, &c, &p, &v, &t).is_err(), "a path");
+        let blake = Config { merkle: MerkleHash::Blake3, ..config };
+        assert!(check(&blake, &c, &p, &v, &proof).is_err(), "another hash");
     }
 }

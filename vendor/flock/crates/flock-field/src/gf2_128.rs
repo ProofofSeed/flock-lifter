@@ -92,7 +92,9 @@ impl F128 {
     /// Used in one-time setup (Lagrange weight computation), not in hot paths.
     pub fn inv(self) -> Self {
         #[cfg(feature = "mul-count")]
-        INVS.fetch_add(1, Ordering::Relaxed);
+        if crate::gf2_128::op_count::ON.load(Ordering::Relaxed) {
+            INVS.fetch_add(1, Ordering::Relaxed);
+        }
         // x^{2^128 - 2} = ∏_{i=1..127} x^{2^i}
         let mut r = Self::ONE;
         let mut cur = self * self; // x^2
@@ -151,6 +153,20 @@ pub mod op_count {
     /// of `r *= cur; cur = cur*cur`. Pinned by `inv_mul_cost_is_stable`.
     pub const MULS_PER_INV: u64 = 255;
 
+    /// Whether operations are counted; on by default, switched off around provers.
+    pub static ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+    static LAST: AtomicU64 = AtomicU64::new(0);
+    static LAST_INV: AtomicU64 = AtomicU64::new(0);
+
+    /// Prints the multiplications and inversions since the last call, under `label`.
+    pub fn phase(label: &str) {
+        let (m, i) = (MULS.load(Relaxed), INVS.load(Relaxed));
+        let dm = m - LAST.swap(m, Relaxed);
+        let di = i - LAST_INV.swap(i, Relaxed);
+        eprintln!("[count] {label}: muls {} invs {di}", dm - di * MULS_PER_INV);
+    }
+
     pub fn reset() {
         MULS.store(0, Relaxed);
         INVS.store(0, Relaxed);
@@ -200,7 +216,9 @@ impl Mul for F128 {
     #[inline]
     fn mul(self, rhs: Self) -> Self {
         #[cfg(feature = "mul-count")]
-        MULS.fetch_add(1, Ordering::Relaxed);
+        if crate::gf2_128::op_count::ON.load(Ordering::Relaxed) {
+            MULS.fetch_add(1, Ordering::Relaxed);
+        }
         #[cfg(all(target_arch = "aarch64", target_feature = "aes"))]
         {
             // SAFETY: aes target feature is enabled at compile time.

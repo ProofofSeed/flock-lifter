@@ -9,3 +9,4 @@ pub mod lift;
 pub mod matrix;
 pub mod transcript;
 pub mod wrap;
+pub mod wrapped;

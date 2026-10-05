@@ -36,6 +36,7 @@ fn recorded_openings_verify_in_circuit() {
             pow_bits,
             final_vars: 4,
             regime,
+            merkle: Default::default(),
         };
         let message = sample(1 << num_vars, 5);
         let point: Vec<F256> =
@@ -69,6 +70,7 @@ fn a_tampered_merkle_sibling_fails_the_circuit() {
         pow_bits: 8,
         final_vars: 4,
         regime: Regime::Johnson,
+        merkle: Default::default(),
     };
     let message = sample(1 << 12, 5);
     let point: Vec<F256> = sample(24, 9).chunks(2).map(|c| F256::new(c[0], c[1])).collect();

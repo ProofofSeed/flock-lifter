@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 //! WHIR as the outer commitment of Flock's union-circuit prover.
 
-use crate::params::{Config, Regime};
+use crate::params::{Config, MerkleHash, Regime};
 use crate::whir::{self, Commitment, Committed, Proof};
 use flock_prover::challenger::Challenger;
 use flock_prover::field::{F128, F256};
@@ -18,6 +18,7 @@ pub struct WhirOuter {
     final_vars: usize,
     pow_bits: u32,
     security_bits: u32,
+    merkle: MerkleHash,
 }
 
 impl WhirOuter {
@@ -30,8 +31,15 @@ impl WhirOuter {
         pow_bits: u32,
         security_bits: u32,
     ) -> WhirOuter {
-        let outer =
-            WhirOuter { folding, log_inv_rate, regime, final_vars, pow_bits, security_bits };
+        let outer = WhirOuter {
+            folding,
+            log_inv_rate,
+            regime,
+            final_vars,
+            pow_bits,
+            security_bits,
+            merkle: MerkleHash::Blake3,
+        };
         outer.config(20).schedule().expect("secure WHIR parameters");
         outer
     }
@@ -40,6 +48,12 @@ impl WhirOuter {
     /// security.
     pub fn standard() -> WhirOuter {
         WhirOuter::new(4, 1, Regime::Johnson, 6, 16, 128)
+    }
+
+    /// The same parameters with Merkle trees on `merkle`.
+    pub fn with_merkle(mut self, merkle: MerkleHash) -> WhirOuter {
+        self.merkle = merkle;
+        self
     }
 
     /// The configuration for a stack of `2^num_vars` words.
@@ -52,6 +66,7 @@ impl WhirOuter {
             pow_bits: self.pow_bits,
             final_vars: self.final_vars.min(num_vars),
             regime: self.regime,
+            merkle: self.merkle,
         }
     }
 }

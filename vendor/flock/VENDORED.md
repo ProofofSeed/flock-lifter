@@ -29,6 +29,10 @@ A copy of the crates of [Flock](https://github.com/succinctlabs/flock) at revisi
 - `flock-core/src/matrix_fold.rs`: the fold prover's round message, low-variable fold, weight materialisation and μ-combination run in parallel (transcript unchanged).
 - `flock-prover/src/tower/fold_region.rs`: `FoldLoc`'s ordinals are visible to the rest of the tower.
 - `flock-prover/src/tower/child_walker.rs`: `ChildSlots::new` and the gate imports it needs are no longer test-only, and the constructor with a second BLAKE3 slot is visible to the tower.
+- `flock-field/src/gf2_128.rs`: the `mul-count` counters gain a switch (`op_count::ON`) and a per-phase printer (`op_count::phase`), so a process can count a verifier without counting the prover that ran before it.
+- `flock-core/src/verifier.rs`, `flock-core/src/pcs.rs`: under `mul-count`, the deferred circuit verifier and the merged opening print their multiplications by phase.
+- `flock-prover/src/tower/head_env.rs`: `EnvKey::verify_deferred`, the deferred verification of a proof under an envelope key on a given transcript.
+- `flock-prover/src/tower/head_env.rs`, `flock-prover/src/tower/rowmajor.rs`: `prove_env_on`, `EnvKey::verify_on` and `prove_wrap_on` make and check the outer proof on a caller's transcript, which the caller may extend with the public segment; `RowMajorChild::publish_rows` adds a chunk's published words to the wrap's public segment.
 
 ## Known upstream failures
 

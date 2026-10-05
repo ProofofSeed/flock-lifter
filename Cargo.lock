@@ -2077,6 +2077,7 @@ dependencies = [
  "pofseed-flock-lift",
  "pofseed-flock-lift-block",
  "pofseed-flock-lift-statement",
+ "pofseed-flock-lift-whir",
  "rayon",
  "serde",
  "zkboo",
@@ -2122,6 +2123,7 @@ dependencies = [
  "flock-prover",
  "rayon",
  "serde",
+ "tiny-keccak",
 ]
 
 [[package]]

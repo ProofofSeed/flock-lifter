@@ -193,7 +193,7 @@ pub fn commit(config: &Config, message: Vec<F128>) -> Result<(Commitment, Commit
     let domain = Domain::new(r0.log_domain);
     let lanes = 1 << r0.fold;
     let codeword = domain.encode(&message, lanes);
-    let tree = Tree::new(bytes_f128(&codeword), domain.size(), r0.queries);
+    let tree = Tree::new(bytes_f128(&codeword), domain.size(), r0.queries, config.merkle);
     let cap = tree.cap();
     Ok((
         Commitment { cap: cap.clone() },
@@ -369,7 +369,7 @@ pub fn open_weighted<Ch: Challenger + ?Sized>(
     for round in &rounds[1..] {
         let domain = Domain::new(round.log_domain);
         let word = domain.encode_f256(&g, 1 << round.fold);
-        let tree = Tree::new(bytes_f256(&word), domain.size(), round.queries);
+        let tree = Tree::new(bytes_f256(&word), domain.size(), round.queries, config.merkle);
         let cap = tree.cap();
         ch.observe_bytes(cap.as_flattened());
         let ood_points: Vec<Vec<F256>> =
@@ -615,7 +615,7 @@ pub fn verify_weighted<Ch: Challenger + ?Sized>(
             .verify_pow_and_sample_f128_vec(rp.pow, config.pow_bits, prev_round.queries)
             .ok_or(VerifyError::Pow(i + 1))?;
         let folded =
-            check_openings(&prev_cap, &prev_round, &alpha, &rp.openings, round.vars, i, &words)?;
+            check_openings(config, &prev_cap, &prev_round, &alpha, &rp.openings, round.vars, i, &words)?;
         let gamma = powers(ch.sample_f256(), rp.ood.len() + folded.len());
         let (ood_gamma, shift_gamma) = gamma.split_at(rp.ood.len());
         for ((z, &y), &c) in ood_points.into_iter().zip(&rp.ood).zip(ood_gamma) {
@@ -635,6 +635,7 @@ pub fn verify_weighted<Ch: Challenger + ?Sized>(
         .verify_pow_and_sample_f128_vec(proof.final_pow, config.pow_bits, prev_round.queries)
         .ok_or(VerifyError::Pow(rounds.len()))?;
     let folded = check_openings(
+        config,
         &prev_cap,
         &prev_round,
         &alpha,
@@ -661,6 +662,7 @@ pub fn verify_weighted<Ch: Challenger + ?Sized>(
 /// Checks a committed function's opened rows at the positions the sampled `words` select against
 /// its cap, and returns each position's coordinates with the folded function's value there.
 fn check_openings(
+    config: &Config,
     cap: &[Hash],
     round: &Round,
     alpha: &[F256],
@@ -702,7 +704,7 @@ fn check_openings(
                 )
             }
         };
-        if !merkle::verify(cap, leaves, &leaf, p, &paths[q]) {
+        if !merkle::verify(cap, leaves, &leaf, p, &paths[q], config.merkle) {
             return Err(VerifyError::Merkle(index));
         }
         out.push((domain.coordinates(p, vars), value));

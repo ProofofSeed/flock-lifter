@@ -4,22 +4,30 @@
 //! commitment, that every chunk proof verifies.
 
 use flock_prover::{
-    challenger::FsChallenger,
+    challenger::{Challenger, FsChallenger},
     field::F128,
     lincheck::SkipPoint,
     matrix_fold::{FoldMatrix, MatrixClaim, Weight},
     pcs::OuterPcs,
-    tower::{HeadEnv, RowMajorChild, WrapKey, WrapProof, parent_digest, prove_wrap, verify_wrap},
+    tower::{HeadEnv, RowMajorChild, WrapKey, WrapProof, prove_wrap_on},
     transcript_record::RecordingChallenger,
     zerocheck::K_SKIP,
 };
 use pofseed_flock_lift_block::{form::CONST, program::Program};
 use rayon::prelude::*;
 
-use crate::chunk_wrap::{
-    ChunkProofWrap, ChunkWrapError, chunk_params, chunk_r1cs, padded_publics, publics_digest, row_log,
-    verify_chunk_with,
+use crate::{
+    chunk_wrap::{
+        ChunkProofWrap, ChunkWrapError, chunk_params, chunk_r1cs, padded_publics, row_log, verify_chunk_with,
+    },
+    transcript::KeccakChallenger,
 };
+
+/// The transcript domain of a wrap's outer proof.
+pub const WRAP_DOMAIN: &[u8] = b"pofseed-flock-lift-wrap-v1";
+
+/// The name under which a wrap's key locates a chunk's published words in the public segment.
+const WORDS_TAIL: &str = "published words";
 
 /// Phase timings of a wrap, in seconds.
 #[derive(Clone, Copy, Debug, Default)]
@@ -55,25 +63,22 @@ pub enum WrapError {
     Chunk(usize, ChunkWrapError),
     /// The outer circuit proof was refused.
     Outer(String),
-    /// The published block digest is not the published words'.
-    Digest,
+    /// The published words are not the given ones.
+    Words,
     /// An accumulated matrix claim does not hold on the block's matrices.
     Matrix,
 }
 
-fn digest_words(bytes: &[u8; 32]) -> [F128; 2] {
-    let w = |b: &[u8]| {
-        F128::new(u64::from_le_bytes(b[..8].try_into().unwrap()), u64::from_le_bytes(b[8..].try_into().unwrap()))
-    };
-    return [w(&bytes[..16]), w(&bytes[16..])];
+/// A wrap's outer transcript, bound to the circuit's public segment.
+pub fn outer_transcript(public: &[F128]) -> KeccakChallenger {
+    let mut ch = KeccakChallenger::new(WRAP_DOMAIN);
+    bind_public(public, &mut ch);
+    return ch;
 }
 
-/// The digest a wrap publishes of its chunks' published words: the chunks' digests combined left to
-/// right by the parent compression.
-pub fn block_digest(program: &Program, publics: &[&[Vec<F128>]]) -> [u8; 32] {
-    let digests: Vec<[u8; 32]> =
-        publics.par_iter().map(|p| publics_digest(&padded_publics(p, row_log(program, p.len())))).collect();
-    return digests[1..].iter().fold(digests[0], |d, s| parent_digest(&d, s));
+fn bind_public(public: &[F128], ch: &mut KeccakChallenger) {
+    ch.observe_label(b"pofseed-flock-lift-wrap-public");
+    ch.observe_f128_slice(public);
 }
 
 /// Wraps verified chunk proofs in one circuit proof built to `env`, whose commitment `outer` opens,
@@ -141,11 +146,13 @@ pub fn wrap(
             konst: CONST as usize,
             jagged: r.jagged,
             r1cs_digest: chunk_r1cs(program, p.len()).statement_digest(),
+            publish_rows: true,
         })
         .collect();
     let (ma, mb) = (program.matrix(true), program.matrix(false));
     let mats: [&dyn FoldMatrix; 2] = [&ma, &mb];
-    let (key, proof, tm) = prove_wrap(&children, mats, env, outer);
+    let (key, proof, tm) =
+        prove_wrap_on(&children, mats, env, outer, &mut KeccakChallenger::new(WRAP_DOMAIN), bind_public);
     flock_prover::scratch::clear();
     let timings = WrapTimings {
         record,
@@ -163,8 +170,24 @@ pub fn proof_bytes(proof: &WrapProof) -> usize {
         + bincode::serialize(&proof.commitment).expect("serialisable").len();
 }
 
+/// Where chunk `i`'s published words sit in a wrap's public segment.
+pub fn words_at(key: &WrapKey, i: usize) -> (usize, usize) {
+    let (_, at, len) = key.tails[i].iter().find(|(name, _, _)| *name == WORDS_TAIL).expect("a wrap publishes its words");
+    return (*at, *len);
+}
+
+/// The two accumulated matrix claims a wrap publishes, on `A` then `B`: the row point, the column
+/// point and the value.
+pub fn matrix_claims(key: &WrapKey, proof: &WrapProof) -> [(Vec<F128>, Vec<F128>, F128); 2] {
+    return [0, 1].map(|i| {
+        let (at, k_col, k_row) = key.acc[i];
+        let p = &proof.public;
+        (p[at + k_col..at + k_col + k_row].to_vec(), p[at..at + k_col].to_vec(), p[at + k_col + k_row])
+    });
+}
+
 /// Verifies a wrap proof against the published words of its chunks: the circuit proof under `key`,
-/// its block digest, and the two accumulated matrix claims against the block's matrices.
+/// the words it publishes, and the two accumulated matrix claims against the block's matrices.
 pub fn verify_wrapped(
     program: &Program,
     publics: &[&[Vec<F128>]],
@@ -175,15 +198,18 @@ pub fn verify_wrapped(
     if publics.is_empty() || key.tails.len() != publics.len() || publics.iter().any(|p| p.is_empty()) {
         return Err(WrapError::Shape);
     }
-    verify_wrap(key, proof, outer).map_err(|e| WrapError::Outer(format!("{e:?}")))?;
-    let at = key.block;
-    if proof.public[at..at + 2] != digest_words(&block_digest(program, publics)) {
-        return Err(WrapError::Digest);
+    key.key
+        .verify_on(proof, outer, &mut outer_transcript(&proof.public))
+        .map_err(|e| WrapError::Outer(format!("{e:?}")))?;
+    for (i, p) in publics.iter().enumerate() {
+        let (at, len) = words_at(key, i);
+        let words: Vec<F128> = padded_publics(p, row_log(program, p.len())).into_iter().flatten().collect();
+        if words.len() != len || proof.public[at..at + len] != words[..] {
+            return Err(WrapError::Words);
+        }
     }
-    for (&(at, k_col, k_row), a_side) in key.acc.iter().zip([true, false]) {
-        let p = &proof.public;
-        let (col, row, value) = (&p[at..at + k_col], &p[at + k_col..at + k_col + k_row], p[at + k_col + k_row]);
-        if program.bilinear_eq(a_side, row, col) != value {
+    for ((row, col, value), a_side) in matrix_claims(key, proof).into_iter().zip([true, false]) {
+        if program.bilinear_eq(a_side, &row, &col) != value {
             return Err(WrapError::Matrix);
         }
     }

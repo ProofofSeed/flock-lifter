@@ -50,7 +50,7 @@ use crate::{
         cw, emit_fiat_shamir_chain, emit_recorded_pow_checks, emit_residual_region, flatten_ops,
         gates_spine::emit_mac256,
         head_env::{
-            ENV_DOMAIN, EnvBuild, EnvCensus, EnvKey, EnvProof, HeadEnv, prove_env, slot_list,
+            ENV_DOMAIN, EnvBuild, EnvCensus, EnvKey, EnvProof, HeadEnv, prove_env_on, slot_list,
         },
         level_geometry, level_sources, pack8, parse_open_levels,
         query::emit_opening,
@@ -94,6 +94,8 @@ pub struct RowMajorChild<'p> {
     pub jagged: JaggedAssertion,
     /// The block's R1CS digest, to which the circuit holds the one the transcript absorbs.
     pub r1cs_digest: [u8; 32],
+    /// Whether the published words themselves join the wrap's public segment.
+    pub publish_rows: bool,
 }
 
 /// Where a transcript squeeze landed: its finalisation ordinal and its challenge ordinal.
@@ -1507,7 +1509,7 @@ pub(super) fn emit_rowmajor_region(
     };
 
     // ---- the tail: what the wrap's verifier checks natively ----
-    let tail = vec![
+    let mut tail = vec![
         Tail {
             name: "statement digest",
             wires: payload_wires(p.digest_payload),
@@ -1529,6 +1531,12 @@ pub(super) fn emit_rowmajor_region(
             wires: t_final.to_vec(),
         },
     ];
+    if t.child.publish_rows {
+        tail.push(Tail {
+            name: "published words",
+            wires: word_w,
+        });
+    }
     (tail, surface)
 }
 
@@ -1547,7 +1555,7 @@ pub(super) fn expected_rowmajor_tail(t: &RowMajorTape<'_>) -> Vec<(&'static str,
             })
             .collect()
     };
-    vec![
+    let mut tail = vec![
         ("statement digest", payload(p.digest_payload)),
         ("r1cs digest", payload(p.r1cs_payload)),
         (
@@ -1556,7 +1564,14 @@ pub(super) fn expected_rowmajor_tail(t: &RowMajorTape<'_>) -> Vec<(&'static str,
         ),
         ("anchor end", vec![t.anc_end_n]),
         ("spine final", vec![t.t_final_n.c0, t.t_final_n.c1]),
-    ]
+    ];
+    if t.child.publish_rows {
+        tail.push((
+            "published words",
+            t.child.rows.iter().flatten().copied().collect(),
+        ));
+    }
+    tail
 }
 
 /// The published tail of one child in the wrap's public segment: per block, its name, offset and
@@ -2177,6 +2192,26 @@ pub fn prove_wrap(
     env: &HeadEnv,
     outer: Option<&dyn OuterPcs>,
 ) -> (WrapKey, WrapProof, WrapTimings) {
+    prove_wrap_on(
+        children,
+        mats,
+        env,
+        outer,
+        &mut FsChallenger::with_chained_blake3(ENV_DOMAIN),
+        |_, _| {},
+    )
+}
+
+/// [`prove_wrap`] with the outer proof made on a given transcript, which `bind` may extend once the
+/// public segment is known.
+pub fn prove_wrap_on<Ch: flock_core::challenger::Challenger>(
+    children: &[RowMajorChild<'_>],
+    mats: [&dyn FoldMatrix; 2],
+    env: &HeadEnv,
+    outer: Option<&dyn OuterPcs>,
+    challenger: &mut Ch,
+    bind: impl FnOnce(&[F128], &mut Ch),
+) -> (WrapKey, WrapProof, WrapTimings) {
     use std::time::Instant;
     let mut timings = WrapTimings::default();
     let t0 = Instant::now();
@@ -2212,12 +2247,13 @@ pub fn prove_wrap(
         ..
     } = emit_wrap(&tapes, &fold, env, nu, sw, spread_w);
     let t_emit = t0.elapsed().as_secs_f64();
-    let (key, proof, tm) = prove_env(eb, nu, sw, outer, |public| {
+    let (key, proof, tm) = prove_env_on(eb, nu, sw, outer, challenger, |public, ch| {
         for (t, layout) in tapes.iter().zip(&tails) {
             for ((name, at, len), (_, want)) in layout.iter().zip(expected_rowmajor_tail(t)) {
                 assert_eq!(&public[*at..at + len], &want[..], "the published {name}");
             }
         }
+        bind(public, ch);
     });
     timings.build = t_emit + tm.build;
     timings.witness = tm.witness;
