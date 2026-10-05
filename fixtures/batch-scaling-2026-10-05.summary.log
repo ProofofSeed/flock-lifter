@@ -1,0 +1,227 @@
+# Batch scaling of the wrapped lift, 2026-10-05.
+# Part 1: batch-probe <responses> 4, chunks and wrap only, outer rate 2^-6.
+8 responses in 2 chunks of 4: chunks 4.9 s, wrap 13.5 s (record 0.1, tapes 0.0, build 9.6, witness 0.0, prove 3.8), wrap proof 168283 B
+wrap circuit: nu 15 M 33 M_bool 31 M_elem 32 dense_m 29 mu 24 gate slots 330 public words 1316 live cells 1114019
+tables: 2^27 bytes
+  table 0 of 2^14 columns: dense, two regions of 2^25 bytes
+  table 1 of 2^12 columns: among the small entries
+  table 2 of 2^12 columns: among the small entries
+  table 3 of 2^11 columns: among the small entries
+  table 4 of 2^9 columns: among the small entries
+  operations 2^23 and masks 2^23, Keccak tensor 2^24, live cells 2^24, small entries 2^18 bytes
+       20.49 real       137.59 user        25.90 sys
+         41059106816  maximum resident set size
+         40810001712  peak memory footprint
+16 responses in 4 chunks of 4: chunks 9.6 s, wrap 23.9 s (record 0.1, tapes 0.0, build 16.3, witness 0.0, prove 7.5), wrap proof 180059 B
+wrap circuit: nu 16 M 34 M_bool 32 M_elem 33 dense_m 30 mu 25 gate slots 330 public words 1612 live cells 2223511
+tables: 2^28 bytes
+  table 0 of 2^14 columns: dense, two regions of 2^25 bytes
+  table 1 of 2^12 columns: among the small entries
+  table 2 of 2^12 columns: among the small entries
+  table 3 of 2^11 columns: among the small entries
+  table 4 of 2^9 columns: among the small entries
+  operations 2^23 and masks 2^23, Keccak tensor 2^24, live cells 2^25, small entries 2^18 bytes
+       35.26 real       256.34 user        60.85 sys
+         69159452672  maximum resident set size
+         68924966736  peak memory footprint
+32 responses in 8 chunks of 4: chunks 19.0 s, wrap 57.1 s (record 0.2, tapes 0.0, build 42.1, witness 0.0, prove 14.7), wrap proof 202327 B
+wrap circuit: nu 17 M 35 M_bool 33 M_elem 34 dense_m 31 mu 26 gate slots 330 public words 2206 live cells 4450991
+tables: 2^28 bytes
+  table 0 of 2^14 columns: dense, two regions of 2^25 bytes
+  table 1 of 2^12 columns: among the small entries
+  table 2 of 2^12 columns: among the small entries
+  table 3 of 2^11 columns: among the small entries
+  table 4 of 2^9 columns: among the small entries
+  operations 2^23 and masks 2^23, Keccak tensor 2^24, live cells 2^26, small entries 2^18 bytes
+       77.93 real       577.18 user       137.94 sys
+         82284658688  maximum resident set size
+         82054539488  peak memory footprint
+64 responses in 16 chunks of 4: chunks 37.7 s, wrap 128.2 s (record 0.4, tapes 0.0, build 82.4, witness 0.0, prove 45.3), wrap proof 227263 B
+wrap circuit: nu 18 M 36 M_bool 34 M_elem 35 dense_m 32 mu 27 gate slots 330 public words 3391 live cells 8897454
+tables: 2^28 bytes
+  table 0 of 2^14 columns: dense, two regions of 2^25 bytes
+  table 1 of 2^12 columns: among the small entries
+  table 2 of 2^12 columns: among the small entries
+  table 3 of 2^11 columns: among the small entries
+  table 4 of 2^9 columns: among the small entries
+  operations 2^23 and masks 2^23, Keccak tensor 2^24, live cells 2^27, small entries 2^18 bytes
+      168.03 real      1140.26 user       301.82 sys
+        122950926336  maximum resident set size
+        133091351536  peak memory footprint
+# Part 2: POFSEED_WRAP_FRESH=1 wrap-bench <responses> <chunk> <outer rate> <tables' rate>, whole lifts verified on chain.
+## wrap-bench 8 4 6 3
+lifted 8 responses in 39.3 s: chunks 4.9 s, wrap 14.0 s, tables committed in 6.1 s, structure proof 14.4 s
+lift of 8 responses in chunks of 4, outer rate 2^-6, tables' rate 2^-3: 390328 B of calldata
+FlockWrap: runtime 118327 B, deployment 25450174 gas
+ran in 0.04 s: success true, gas 61935168 (execution 55835884, calldata and base 6099284)
+  stage   1:       158581 gas,  127 KB of memory ✓
+  stage   2:       523121 gas,  135 KB of memory ✓
+  stage   3:       532389 gas,  142 KB of memory ✓
+  stage   4:      3386224 gas,  164 KB of memory ✓
+  stage   5:      2854602 gas,  220 KB of memory ✓
+  stage   6:      2670314 gas,  279 KB of memory ✓
+  stage   7:       376938 gas,  312 KB of memory ✓
+  stage   8:       130931 gas,  313 KB of memory ✓
+  stage  81:      3607581 gas,  313 KB of memory 
+  stage  82:     10298759 gas,  313 KB of memory 
+  stage   9:      4104129 gas,  353 KB of memory ✓
+  stage  91:      4455992 gas,  313 KB of memory 
+  stage  10:         2839 gas,  313 KB of memory ✓
+  stage  11:      5673001 gas,  411 KB of memory 
+  stage  12:       192893 gas,  420 KB of memory 
+  stage  13:      6919716 gas,  480 KB of memory 
+  stage  20:      9945543 gas,  563 KB of memory ✓
+staged verifier:
+  deployment in all 36148648 gas
+  transaction 1:   5216382 gas ( 31.1% of the cap),  29872 B of the lift,     0 B of state: gate, binding, zerocheck, lincheck, wiring
+  transaction 2:  10269542 gas ( 61.2% of the cap),  13848 B of the lift, 17632 B of state: element class, ring switches, assist sumchecks, claim weights
+  transaction 3:  10655998 gas ( 63.5% of the cap),      0 B of the lift, 26976 B of state: layout equation
+  transaction 4:  10695117 gas ( 63.7% of the cap), 106664 B of the lift, 12896 B of state: outer opening
+  transaction 6:  10813393 gas ( 64.5% of the cap), 192192 B of the lift,  3488 B of state: bit claim's conjugates, tables' opening
+  transaction 7:  10367660 gas ( 61.8% of the cap),      0 B of the lift, 21312 B of state: tables' opening's last equation
+staged verification: 64616580 gas in 7 transactions, each under the cap; the statement is accepted
+       67.31 real       397.27 user        54.01 sys
+         72625471488  maximum resident set size
+         72352993024  peak memory footprint
+  key: NU=15 M_BOOL=31 DENSE_LOG=22 MU=24 NUM_PUBLIC=1316 STRUCT_N=27
+## wrap-bench 16 4 6 3
+lifted 16 responses in 82.7 s: chunks 9.6 s, wrap 24.0 s, tables committed in 10.5 s, structure proof 38.6 s
+lift of 16 responses in chunks of 4, outer rate 2^-6, tables' rate 2^-3: 414816 B of calldata
+FlockWrap: runtime 118645 B, deployment 25517083 gas
+ran in 0.04 s: success true, gas 64908020 (execution 58427640, calldata and base 6480380)
+  stage   1:       275161 gas,  131 KB of memory ✓
+  stage   2:       531763 gas,  140 KB of memory ✓
+  stage   3:       541528 gas,  147 KB of memory ✓
+  stage   4:      3727040 gas,  169 KB of memory ✓
+  stage   5:      2865343 gas,  225 KB of memory ✓
+  stage   6:      2674264 gas,  284 KB of memory ✓
+  stage   7:       380390 gas,  317 KB of memory ✓
+  stage   8:       136528 gas,  319 KB of memory ✓
+  stage  81:      3607585 gas,  319 KB of memory 
+  stage  82:     10627041 gas,  319 KB of memory 
+  stage   9:      4288292 gas,  358 KB of memory ✓
+  stage  91:      4905390 gas,  319 KB of memory 
+  stage  10:         2839 gas,  319 KB of memory ✓
+  stage  11:      5729007 gas,  417 KB of memory 
+  stage  12:       197442 gas,  426 KB of memory 
+  stage  13:      7137715 gas,  488 KB of memory 
+  stage  20:     10797972 gas,  575 KB of memory ✓
+staged verifier:
+  deployment in all 36151880 gas
+  transaction 1:   5753508 gas ( 34.3% of the cap),  33736 B of the lift,     0 B of state: gate, binding, zerocheck, lincheck, wiring
+  transaction 2:  10293385 gas ( 61.4% of the cap),  14048 B of the lift, 17728 B of state: element class, ring switches, assist sumchecks, claim weights
+  transaction 3:  10982287 gas ( 65.5% of the cap),      0 B of the lift, 27232 B of state: layout equation
+  transaction 4:  11440611 gas ( 68.2% of the cap), 112424 B of the lift, 13024 B of state: outer opening
+  transaction 6:  11302009 gas ( 67.4% of the cap), 206008 B of the lift,  3520 B of state: bit claim's conjugates, tables' opening
+  transaction 7:  11245985 gas ( 67.0% of the cap),      0 B of the lift, 22592 B of state: tables' opening's last equation
+staged verification: 67684557 gas in 7 transactions, each under the cap; the statement is accepted
+      113.36 real       723.95 user       127.27 sys
+        123066187776  maximum resident set size
+        135363215288  peak memory footprint
+  key: NU=16 M_BOOL=32 DENSE_LOG=23 MU=25 NUM_PUBLIC=1612 STRUCT_N=28
+## wrap-bench 32 4 6 3
+lifted 32 responses in 129.0 s: chunks 19.0 s, wrap 57.8 s, tables committed in 10.5 s, structure proof 41.7 s
+lift of 32 responses in chunks of 4, outer rate 2^-6, tables' rate 2^-3: 433848 B of calldata
+FlockWrap: runtime 118639 B, deployment 25517143 gas
+ran in 0.05 s: success true, gas 67352668 (execution 60585660, calldata and base 6767008)
+  stage   1:       507455 gas,  141 KB of memory ✓
+  stage   2:       541143 gas,  150 KB of memory ✓
+  stage   3:       545708 gas,  157 KB of memory ✓
+  stage   4:      4283159 gas,  180 KB of memory ✓
+  stage   5:      2874334 gas,  236 KB of memory ✓
+  stage   6:      2679608 gas,  295 KB of memory ✓
+  stage   7:       384639 gas,  328 KB of memory ✓
+  stage   8:       142164 gas,  330 KB of memory ✓
+  stage  81:      3607595 gas,  330 KB of memory 
+  stage  82:     11066551 gas,  330 KB of memory 
+  stage   9:      4493620 gas,  372 KB of memory ✓
+  stage  91:      5555789 gas,  330 KB of memory 
+  stage  10:         2839 gas,  330 KB of memory ✓
+  stage  11:      5773440 gas,  428 KB of memory 
+  stage  12:       197442 gas,  437 KB of memory 
+  stage  13:      7140701 gas,  499 KB of memory 
+  stage  20:     10787133 gas,  586 KB of memory ✓
+staged verifier:
+  deployment in all 36196210 gas
+  transaction 1:   6691097 gas ( 39.9% of the cap),  40424 B of the lift,     0 B of state: gate, binding, zerocheck, lincheck, wiring
+  transaction 2:  10316948 gas ( 61.5% of the cap),  14248 B of the lift, 17824 B of state: element class, ring switches, assist sumchecks, claim weights
+  transaction 3:  11411970 gas ( 68.0% of the cap),      0 B of the lift, 27488 B of state: layout equation
+  transaction 4:  12494912 gas ( 74.5% of the cap), 123728 B of the lift, 13152 B of state: outer opening
+  transaction 6:  11306223 gas ( 67.4% of the cap), 206008 B of the lift,  3520 B of state: bit claim's conjugates, tables' opening
+  transaction 7:  11246141 gas ( 67.0% of the cap),      0 B of the lift, 22592 B of state: tables' opening's last equation
+staged verification: 70189977 gas in 7 transactions, each under the cap; the statement is accepted
+      158.68 real      1066.56 user       219.41 sys
+        122914996224  maximum resident set size
+        133546736704  peak memory footprint
+  key: NU=17 M_BOOL=33 DENSE_LOG=24 MU=26 NUM_PUBLIC=2206 STRUCT_N=28
+## wrap-bench 384 128 6 4
+lifted 384 responses in 80.4 s: chunks 17.3 s, wrap 19.9 s, tables committed in 10.4 s, structure proof 32.6 s
+lift of 384 responses in chunks of 128, outer rate 2^-6, tables' rate 2^-4: 478792 B of calldata
+FlockWrap: runtime 114235 B, deployment 24557687 gas
+ran in 0.05 s: success true, gas 69763030 (execution 62455426, calldata and base 7307604)
+  stage   1:      3648806 gas,  220 KB of memory ✓
+  stage   2:       556953 gas,  228 KB of memory ✓
+  stage   3:       544817 gas,  235 KB of memory ✓
+  stage   4:      7305630 gas,  262 KB of memory ✓
+  stage   5:      2925378 gas,  319 KB of memory ✓
+  stage   6:      2712049 gas,  378 KB of memory ✓
+  stage   7:       392972 gas,  412 KB of memory ✓
+  stage   8:       137107 gas,  413 KB of memory ✓
+  stage  81:      3607668 gas,  413 KB of memory 
+  stage  82:     10783476 gas,  413 KB of memory 
+  stage   9:      4290147 gas,  453 KB of memory ✓
+  stage  91:      4905390 gas,  413 KB of memory 
+  stage  10:         2839 gas,  413 KB of memory ✓
+  stage  11:      5694086 gas,  511 KB of memory 
+  stage  12:       192887 gas,  520 KB of memory 
+  stage  13:      6028997 gas,  571 KB of memory 
+  stage  20:      8723884 gas,  654 KB of memory ✓
+staged verifier:
+  deployment in all 35228220 gas
+  transaction 1:  14502857 gas ( 86.4% of the cap), 133864 B of the lift,     0 B of state: gate, binding, zerocheck, lincheck, wiring
+  transaction 2:  10353855 gas ( 61.7% of the cap),  14048 B of the lift, 17984 B of state: element class, ring switches, assist sumchecks, claim weights
+  transaction 3:  11081156 gas ( 66.0% of the cap),      0 B of the lift, 27712 B of state: layout equation
+  transaction 4:  11442550 gas ( 68.2% of the cap), 112424 B of the lift, 13024 B of state: outer opening
+  transaction 6:   9503657 gas ( 56.6% of the cap), 170336 B of the lift,  3488 B of state: bit claim's conjugates, tables' opening
+  transaction 7:   9094248 gas ( 54.2% of the cap),      0 B of the lift, 19392 B of state: tables' opening's last equation
+staged verification: 72607860 gas in 7 transactions, each under the cap; the statement is accepted
+      108.92 real       800.75 user       116.52 sys
+        122832371712  maximum resident set size
+        128189000688  peak memory footprint
+  key: NU=16 M_BOOL=32 DENSE_LOG=23 MU=25 NUM_PUBLIC=7240 STRUCT_N=27
+## wrap-bench 438 128 6 3
+lifted 438 responses in 101.4 s: chunks 20.8 s, wrap 31.2 s, tables committed in 10.5 s, structure proof 38.5 s
+lift of 438 responses in chunks of 128, outer rate 2^-6, tables' rate 2^-3: 541432 B of calldata
+FlockWrap: runtime 120216 B, deployment 25850110 gas
+ran in 0.05 s: success true, gas 76570211 (execution 68297283, calldata and base 8272928)
+  stage   1:      4213074 gas,  238 KB of memory ✓
+  stage   2:       562760 gas,  247 KB of memory ✓
+  stage   3:       545062 gas,  253 KB of memory ✓
+  stage   4:      8061616 gas,  285 KB of memory ✓
+  stage   5:      2930591 gas,  342 KB of memory ✓
+  stage   6:      2720234 gas,  401 KB of memory ✓
+  stage   7:       398811 gas,  435 KB of memory ✓
+  stage   8:       142843 gas,  436 KB of memory ✓
+  stage  81:      3607688 gas,  436 KB of memory 
+  stage  82:     11181234 gas,  436 KB of memory 
+  stage   9:      4483645 gas,  479 KB of memory ✓
+  stage  91:      5555789 gas,  436 KB of memory 
+  stage  10:         2839 gas,  436 KB of memory ✓
+  stage  11:      5729007 gas,  534 KB of memory 
+  stage  12:       197442 gas,  544 KB of memory 
+  stage  13:      7141491 gas,  606 KB of memory 
+  stage  20:     10820817 gas,  693 KB of memory ✓
+staged verifier:
+  deployment in all 36535590 gas
+  transaction 1:  16121914 gas ( 96.1% of the cap), 148888 B of the lift,     0 B of state: gate, binding, zerocheck, lincheck, wiring
+  transaction 2:  10368228 gas ( 61.8% of the cap),  14208 B of the lift, 17984 B of state: element class, ring switches, assist sumchecks, claim weights
+  transaction 3:  11455276 gas ( 68.3% of the cap),      0 B of the lift, 27840 B of state: layout equation
+  transaction 4:  12482514 gas ( 74.4% of the cap), 123728 B of the lift, 13088 B of state: outer opening
+  transaction 6:  11308165 gas ( 67.4% of the cap), 206008 B of the lift,  3520 B of state: bit claim's conjugates, tables' opening
+  transaction 7:  11246117 gas ( 67.0% of the cap),      0 B of the lift, 22592 B of state: tables' opening's last equation
+staged verification: 79650834 gas in 7 transactions, each under the cap; the statement is accepted
+      132.85 real       972.18 user       168.64 sys
+        124152053760  maximum resident set size
+        135497400440  peak memory footprint
+  key: NU=16 M_BOOL=32 DENSE_LOG=24 MU=25 NUM_PUBLIC=8354 STRUCT_N=28
+# Part 3: wrap-bench 16 4 6 4 was killed for memory in the tables' opening, at a peak footprint of 197.7 GB.

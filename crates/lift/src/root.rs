@@ -45,9 +45,9 @@ pub struct RootVk {
 }
 
 impl RootKey {
-    /// Commits to the fixed tables of `program`'s block and of the wrap circuit of `key`, at rate
-    /// `2^-log_inv_rate`.
-    pub fn new(program: &Program, key: &WrapKey, log_inv_rate: usize) -> Self {
+    /// The fixed tables of `program`'s block and of the wrap circuit of `key`, with the table each
+    /// Boolean type of the circuit uses.
+    pub fn parts(program: &Program, key: &WrapKey) -> (Parts, Vec<usize>) {
         let shape = &key.key.shape;
         let mut tables: Vec<Table> = Vec::new();
         let mut table_of = Vec::new();
@@ -75,6 +75,13 @@ impl RootKey {
             live: shape.circuit.live_mask().counts,
             sigma: shape.circuit.sigma().to_vec(),
         };
+        return (parts, table_of);
+    }
+
+    /// Commits to the fixed tables of `program`'s block and of the wrap circuit of `key`, at rate
+    /// `2^-log_inv_rate`.
+    pub fn new(program: &Program, key: &WrapKey, log_inv_rate: usize) -> Self {
+        let (parts, table_of) = Self::parts(program, key);
         return Self {
             structure: StructKey::new(parts, log_inv_rate),
             table_of,

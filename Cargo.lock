@@ -2080,6 +2080,7 @@ dependencies = [
  "pofseed-flock-lift",
  "pofseed-flock-lift-block",
  "pofseed-flock-lift-statement",
+ "pofseed-flock-lift-structure",
  "pofseed-flock-lift-whir",
  "rayon",
  "serde",

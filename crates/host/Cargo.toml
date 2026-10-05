@@ -20,6 +20,7 @@ pofseed-flock-lift = { path = "../lift" }
 pofseed-flock-lift-block = { path = "../block" }
 pofseed-flock-lift-statement = { path = "../statement" }
 pofseed-flock-lift-whir = { path = "../whir" }
+pofseed-flock-lift-structure = { path = "../structure" }
 bincode = { version = "1.3" }
 serde = { version = "1.0.228" }
 
@@ -62,6 +63,10 @@ path = "src/bin/pcs_config.rs"
 [[bin]]
 name = "wrap-probe"
 path = "src/bin/wrap_probe.rs"
+
+[[bin]]
+name = "batch-probe"
+path = "src/bin/batch_probe.rs"
 
 [[bin]]
 name = "acceptance-wrap"
