@@ -46,7 +46,7 @@ const K_SKIP: usize = 6;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Reject(pub &'static str);
 
-type Result<T> = core::result::Result<T, Reject>;
+pub(crate) type Result<T> = core::result::Result<T, Reject>;
 
 /// A forward cursor over calldata.
 pub struct Reader<'a> {
@@ -118,19 +118,19 @@ pub fn native(b: &[u8]) -> F128 {
     );
 }
 
-const fn bits_for(n: usize) -> u32 {
+pub(crate) const fn bits_for(n: usize) -> u32 {
     return usize::BITS - n.leading_zeros();
 }
 
-fn pow_f128(tr: &mut KeccakChallenger, nonce: u64, bits: u32) -> Result<F128> {
+pub(crate) fn pow_f128(tr: &mut KeccakChallenger, nonce: u64, bits: u32) -> Result<F128> {
     return tr.verify_pow_and_sample_f128(nonce, bits).ok_or(Reject("proof of work"));
 }
 
-fn pow_vec(tr: &mut KeccakChallenger, nonce: u64, bits: u32, n: usize) -> Result<Vec<F128>> {
+pub(crate) fn pow_vec(tr: &mut KeccakChallenger, nonce: u64, bits: u32, n: usize) -> Result<Vec<F128>> {
     return tr.verify_pow_and_sample_f128_vec(nonce, bits, n).ok_or(Reject("proof of work"));
 }
 
-fn dot(a: &[F128], b: &[F128]) -> F128 {
+pub(crate) fn dot(a: &[F128], b: &[F128]) -> F128 {
     return a.iter().zip(b).fold(F128::ZERO, |acc, (&x, &y)| acc + x * y);
 }
 
@@ -147,16 +147,16 @@ pub struct Claim {
 }
 
 /// What the zerocheck hands on.
-struct Zerocheck {
-    z: F128,
-    mlv: Vec<F128>,
-    r_rest: Vec<F128>,
-    a: F128,
-    b: F128,
-    c: F128,
+pub(crate) struct Zerocheck {
+    pub(crate) z: F128,
+    pub(crate) mlv: Vec<F128>,
+    pub(crate) r_rest: Vec<F128>,
+    pub(crate) a: F128,
+    pub(crate) b: F128,
+    pub(crate) c: F128,
 }
 
-fn zerocheck(m: usize, rd: &mut Reader, tr: &mut KeccakChallenger) -> Result<Zerocheck> {
+pub(crate) fn zerocheck(m: usize, rd: &mut Reader, tr: &mut KeccakChallenger) -> Result<Zerocheck> {
     tr.observe_label(b"flock-zerocheck-v0");
     let n0 = rd.nonce()?;
     let r_skip = pow_vec(tr, n0, bits_for(m), K_SKIP)?;
@@ -775,7 +775,7 @@ pub fn verify_chunk(program: &Program, publics: &[Vec<F128>], domain: &[u8], dat
     return Ok(matrix);
 }
 
-fn read_n(rd: &mut Reader, n: usize) -> Result<Vec<F128>> {
+pub(crate) fn read_n(rd: &mut Reader, n: usize) -> Result<Vec<F128>> {
     return (0..n).map(|_| rd.f128()).collect();
 }
 

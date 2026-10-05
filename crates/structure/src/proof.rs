@@ -600,7 +600,16 @@ pub fn prove<Ch: Challenger>(key: &StructKey, claims: &Claims, ch: &mut Ch) -> S
 
 /// Verifies `proof` of `claims` against the commitment of `vk`.
 pub fn verify<Ch: Challenger>(vk: &StructVk, claims: &Claims, proof: &StructProof, ch: &mut Ch) -> Result<(), StructError> {
-    let layout = &vk.layout;
+    let (points, values) = reduce(&vk.layout, claims, proof, ch)?;
+    let points: Vec<Vec<F256>> = points.iter().map(|p| p.iter().map(|&c| F256::new(c, F128::ZERO)).collect()).collect();
+    let values: Vec<F256> = values.iter().map(|&y| F256::new(y, F128::ZERO)).collect();
+    whir::verify(&vk.config, &vk.commitment, &points, &values, &proof.opening, ch).map_err(|_| StructError::Opening)?;
+    return Ok(());
+}
+
+/// Verifies everything of `proof` but its opening: reduces `claims` to the points the committed
+/// bytes must be opened at and their values there.
+pub fn reduce<Ch: Challenger>(layout: &Layout, claims: &Claims, proof: &StructProof, ch: &mut Ch) -> Result<(Vec<Vec<F128>>, Vec<F128>), StructError> {
     if claims.tables.len() != layout.tables.len()
         || proof.folds.len() != layout.tables.len()
         || claims.cells.0.len() != layout.mu
@@ -687,8 +696,8 @@ pub fn verify<Ch: Challenger>(vk: &StructVk, claims: &Claims, proof: &StructProo
     if proof.roots.len() != bit_claims.len() || proof.values.len() != bit_claims.len() {
         return Err(StructError::Shape);
     }
-    let mut points: Vec<Vec<F256>> = Vec::with_capacity(DEGREE * bit_claims.len());
-    let mut values: Vec<F256> = Vec::with_capacity(DEGREE * bit_claims.len());
+    let mut points: Vec<Vec<F128>> = Vec::with_capacity(DEGREE * bit_claims.len());
+    let mut values: Vec<F128> = Vec::with_capacity(DEGREE * bit_claims.len());
     for (((point, value), roots), ys) in bit_claims.iter().zip(&proof.roots).zip(&proof.values) {
         if roots.len() != DEGREE - 1 || ys.len() != DEGREE {
             return Err(StructError::Shape);
@@ -701,9 +710,8 @@ pub fn verify<Ch: Challenger>(vk: &StructVk, claims: &Claims, proof: &StructProo
         if bit_value(&point[..3], ys) != *value {
             return Err(StructError::Bits);
         }
-        points.extend(all.iter().map(|p| p.iter().map(|&c| F256::new(c, F128::ZERO)).collect::<Vec<F256>>()));
-        values.extend(ys.iter().map(|&y| F256::new(y, F128::ZERO)));
+        points.extend(all);
+        values.extend(ys.iter().copied());
     }
-    whir::verify(&vk.config, &vk.commitment, &points, &values, &proof.opening, ch).map_err(|_| StructError::Opening)?;
-    return Ok(());
+    return Ok((points, values));
 }

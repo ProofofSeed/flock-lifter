@@ -172,6 +172,57 @@ fn main() {
             shape.circuit.fixed_public().iter().filter(|f| f.is_some()).count()
         );
     }
+    if env::var_os("POFSEED_LAYOUT").is_some() {
+        use flock_prover::union::UnionInstance;
+        let shape = &w.key.key.shape;
+        let reg = &shape.registry;
+        let union = UnionInstance::new(reg, shape.counts.clone());
+        println!("layout: tails {:?}", w.key.tails);
+        println!("layout: acc {:?} block {}", w.key.acc, w.key.block);
+        println!("layout: pcs {:?}", w.key.key.pcs);
+        let fixed = shape.circuit.fixed_public();
+        let mut runs: Vec<(usize, usize)> = Vec::new();
+        for (i, f) in fixed.iter().enumerate() {
+            if f.is_some() {
+                match runs.last_mut() {
+                    Some((s, l)) if *s + *l == i => *l += 1,
+                    _ => runs.push((i, 1)),
+                }
+            }
+        }
+        println!("layout: fixed public runs {:?}", runs);
+        for (i, ty) in reg.element_types().iter().enumerate() {
+            let e = ty.element_type().expect("an element type");
+            let nnz = |m: &flock_prover::element_r1cs::SparseF128Matrix| {
+                let all: usize = m.rows.iter().map(Vec::len).sum();
+                let units: usize = m.rows.iter().flatten().filter(|(_, c)| *c == F128::ONE).count();
+                let rows = m.rows.iter().filter(|r| !r.is_empty()).count();
+                (all, units, rows)
+            };
+            println!(
+                "layout: element {i}: kappa {} width {} k {} a {:?} b {:?} a_const {} b_const {}",
+                e.kappa(),
+                e.width(),
+                e.k(),
+                nnz(e.a_0()),
+                nnz(e.b_0()),
+                e.a_const().iter().filter(|c| !c.is_zero()).count(),
+                e.b_const().iter().filter(|c| !c.is_zero()).count(),
+            );
+        }
+        let heights = union.jagged_heights();
+        let mut bounds: Vec<(u64, u64, usize)> = Vec::new();
+        let mut t = 0u64;
+        for &h in &heights {
+            match bounds.last_mut() {
+                Some((c, d, run)) if *c == t && *d == t + h => *run += 1,
+                _ => bounds.push((t, t + h, 1)),
+            }
+            t += h;
+        }
+        println!("layout: boundary runs {} (zero-height {}), area {t}", bounds.len(), bounds.iter().filter(|b| b.0 == b.1).count());
+        println!("layout: slots element prefix coords {:?}", union.element_prefix_coords().len());
+    }
     let tm = w.timings;
     println!(
         "result: responses={n} chunks={} outer={spec} chunks_s={chunks_s:.2} chunks_verify_s={chunks_verify_s:.3} \

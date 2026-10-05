@@ -2062,6 +2062,8 @@ dependencies = [
  "pofseed-flock-lift-block",
  "pofseed-flock-lift-host",
  "pofseed-flock-lift-statement",
+ "pofseed-flock-lift-structure",
+ "pofseed-flock-lift-whir",
  "revm",
  "serde_json",
  "sha2 0.10.9",
