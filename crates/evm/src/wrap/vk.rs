@@ -113,11 +113,13 @@ pub struct Vk {
     pub responses: usize,
     /// Responses per chunk.
     pub chunk: usize,
+    /// Published words per response.
+    pub n_io: usize,
 }
 
 impl Vk {
     /// The constants of lifts under `key`, whose outer commitment has parameters `whir`.
-    pub fn new(key: &WrappedKey, whir: Config) -> Self {
+    pub fn new(key: &WrappedKey, whir: Config, n_io: usize) -> Self {
         let env = &key.wrap.key;
         let shape = &env.shape;
         let registry = &shape.registry;
@@ -211,7 +213,18 @@ impl Vk {
             structure: key.root.structure.verifying(),
             responses: key.responses,
             chunk: key.chunk,
+            n_io,
         };
+    }
+
+    /// Whether word `i` of the public segment is one of a chunk's published words.
+    pub fn is_published(&self, i: usize) -> bool {
+        return self.words.iter().any(|&(at, len)| (at..at + len).contains(&i));
+    }
+
+    /// Live responses of chunk `c`.
+    pub fn live(&self, c: usize) -> usize {
+        return self.chunk.min(self.responses - c * self.chunk);
     }
 
     /// The public cell slot.

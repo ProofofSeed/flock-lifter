@@ -38,13 +38,14 @@ fn main() {
     let (key, lifted, _) = wrapped::prove(&program, &statement, &proof, chunk, &whir, None, rate).expect("a lift");
     println!("lifted {n} responses in {:.1} s", t.elapsed().as_secs_f64());
     wrapped::verify(&program, &key, &statement, &lifted, &whir).expect("the lift verifies");
-    let vk = Vk::new(&key, whir.config(key.wrap.key.pcs.m - 7));
+    let words = wrapped::words(&program, &key, &lifted).expect("published words");
+    let vk = Vk::new(&key, whir.config(key.wrap.key.pcs.m - 7), words[0].len());
     let (claims, mut native_tr) =
         root::outer_claims(&key.wrap, &key.root.table_of, &lifted.wrap, Some(&whir)).expect("the outer proof verifies");
     let (data, _opening) = encode::encode_outer(&vk, &lifted.wrap, claims.cells.1[0], claims.cells.1[1]);
     println!("outer calldata before the opening: {} B", data.len());
     let mut rd = Reader::new(&data);
-    let public = outer::read_public(&vk, &mut rd).expect("public words");
+    let public = outer::read_public(&vk, &mut rd, &words).expect("public words");
     assert_eq!(public, lifted.wrap.public, "the public segment");
     let (p, mut tr, _cap) = outer::piops(&vk, &mut rd, &public).expect("the mirror accepts the interactive proofs");
     assert_eq!(p.claims.block, claims.block, "block claims");
@@ -65,16 +66,16 @@ fn main() {
     assert_eq!(opened.target, opened.value * opened.weight, "the transport's last equation");
     println!("transport: the assist and the last equation hold ✓");
     pofseed_flock_lift_structure::proof::verify(&key.root.structure.verifying(), &claims, &lifted.structure, &mut native_tr).expect("the structure proof verifies");
-    let data = pofseed_flock_lift_evm::wrap::encode_proofs(&vk, &lifted, claims.cells.1[0], claims.cells.1[1]);
+    let data = pofseed_flock_lift_evm::wrap::encode_lift(&vk, &lifted, &words, claims.cells.1[0], claims.cells.1[1]);
     let t = Instant::now();
-    let (_, digest) = pofseed_flock_lift_evm::wrap::verify_proofs(&vk, &data).expect("the mirror accepts the lift's proofs");
+    let digest = pofseed_flock_lift_evm::wrap::verify_lift(&vk, &program, &statement, &data).expect("the mirror accepts the lift");
     assert_eq!(digest, native_tr.digest(), "the transcripts end alike");
-    println!("proofs: {} B of calldata, accepted by the mirror in {:.3} s on the lifter's transcript ✓", data.len(), t.elapsed().as_secs_f64());
+    println!("lift: {} B of calldata, accepted by the mirror in {:.3} s on the lifter's transcript ✓", data.len(), t.elapsed().as_secs_f64());
     let mut refused = 0;
     for at in (0..data.len()).step_by(data.len() / 997 + 1) {
         let mut bad = data.clone();
         bad[at] ^= 1;
-        if pofseed_flock_lift_evm::wrap::verify_proofs(&vk, &bad).is_err() {
+        if pofseed_flock_lift_evm::wrap::verify_lift(&vk, &program, &statement, &bad).is_err() {
             refused += 1;
         } else {
             println!("  a flipped bit at byte {at} is ACCEPTED");

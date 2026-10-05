@@ -16,7 +16,10 @@ use pofseed_flock_lift_structure::proof::Claims;
 
 use crate::{
     mirror::{Reader, Reject, Result, dot, pow_f128, read_n, zerocheck},
-    wrap::vk::{Sparse, Vk},
+    wrap::{
+        trace,
+        vk::{Sparse, Vk},
+    },
 };
 
 /// Univariate-skip variables.
@@ -352,10 +355,25 @@ fn element(vk: &Vk, rd: &mut Reader, tr: &mut KeccakChallenger) -> Result<[WordC
     ]);
 }
 
-/// The public segment of a wrap: the fixed prefix, then the words read from calldata.
-pub fn read_public(vk: &Vk, rd: &mut Reader) -> Result<Vec<F128>> {
+/// Words a response's row holds in the public segment.
+pub const ROW_WORDS: usize = pofseed_flock_lift_block::layout::IO_WORDS;
+
+/// The public segment of a wrap: the fixed prefix, every chunk's published words, padded as the
+/// chunk pads them, from the responses' `words`, and the rest read from calldata.
+pub fn read_public(vk: &Vk, rd: &mut Reader, words: &[Vec<F128>]) -> Result<Vec<F128>> {
+    if words.len() != vk.responses || words.iter().any(|w| w.len() != vk.n_io) {
+        return Err(Reject("published words"));
+    }
     let mut public = vk.fixed.clone();
-    public.extend(read_n(rd, vk.num_public - vk.fixed.len())?);
+    for (c, &(at, len)) in vk.words.iter().enumerate() {
+        public.extend(read_n(rd, at - public.len())?);
+        let live = vk.live(c);
+        for j in 0..len / ROW_WORDS {
+            let row = &words[c * vk.chunk + j.min(live - 1)];
+            public.extend((0..ROW_WORDS).map(|k| row.get(k).copied().unwrap_or(F128::ZERO)));
+        }
+    }
+    public.extend(read_n(rd, vk.num_public - public.len())?);
     return Ok(public);
 }
 
@@ -370,7 +388,9 @@ pub fn piops(vk: &Vk, rd: &mut Reader, public: &[F128]) -> Result<(Piops, Keccak
     let digest = rd.hash()?;
     let mut tr = bind(vk, public, &cap, &digest);
     let mut child = tr.fork(b"flock-par-wiring-v1");
+    trace::mark(1, &tr);
     let zc = zerocheck(vk.m_bool, rd, &mut tr)?;
+    trace::mark(2, &tr);
     let nu = vk.nu;
     let skip = lagrange_weights_naive(K_SKIP, zc.z);
     let mut x_inner_rest = vec![zc.mlv[0]];
@@ -378,6 +398,7 @@ pub fn piops(vk: &Vk, rd: &mut Reader, public: &[F128]) -> Result<(Piops, Keccak
     let x_outer = &zc.mlv[1..1 + nu];
     let mut tables: Vec<[Vec<MatrixClaim>; 2]> = vec![[Vec::new(), Vec::new()]; vk.n_tables];
     let lc = lincheck(vk, rd, &mut tr, &skip, &x_inner_rest, x_outer, zc.a, zc.b, &mut tables)?;
+    trace::mark(3, &tr);
     let zeros = vec![F128::ZERO; vk.m_total - vk.m_bool];
     let ab = BitClaim {
         z: lc.z,
@@ -394,6 +415,7 @@ pub fn piops(vk: &Vk, rd: &mut Reader, public: &[F128]) -> Result<(Piops, Keccak
         value: zc.c,
     };
     let w = wiring(vk, rd, &mut child, public)?;
+    trace::mark(4, &child);
     tr.merge_child(child);
     let words = element(vk, rd, &mut tr)?;
     let block = [0, 1].map(|i| {

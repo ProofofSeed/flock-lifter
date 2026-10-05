@@ -45,3 +45,7 @@ path = "src/bin/layout_probe.rs"
 [[bin]]
 name = "wrap-check"
 path = "src/bin/wrap_check.rs"
+
+[[bin]]
+name = "wrap-bench"
+path = "src/bin/wrap_bench.rs"

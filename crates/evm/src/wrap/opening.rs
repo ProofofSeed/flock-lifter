@@ -19,6 +19,7 @@ use crate::{
     mirror::{Reader, Reject, Result, dot, pow_f128, pow_vec, read_n},
     wrap::{
         outer::{Piops, quadratic},
+        trace,
         vk::Vk,
     },
 };
@@ -199,6 +200,7 @@ pub fn transport(vk: &Vk, rd: &mut Reader, tr: &mut KeccakChallenger, p: &Piops)
         rho.push(r);
     }
     let q_eval = rd.f128()?;
+    trace::mark(6, tr);
     let coeffs: Vec<Vec<F128>> = switched.iter().zip(g_bits).map(|((r, eq, _), &g)| coefficients(g, r, eq)).collect();
     // The statements' rows must differ: Flock merges equal ones, which this verifier does not.
     let rows = [&p.bits[0].row, &p.bits[1].row, &p.words[0].row, &p.gather_row];
@@ -232,6 +234,7 @@ pub fn transport(vk: &Vk, rd: &mut Reader, tr: &mut KeccakChallenger, p: &Piops)
     let g_at = twisted_eq(gamma, &rho, &point);
     let e_at = rho.iter().zip(&point).fold(F128::ONE, |acc, (&a, &b)| acc * (F128::ONE + a + b));
 
+    trace::mark(7, &ch);
     ch.observe_label(b"flock-frobenius-assist-v0");
     let v = rd.f128()?;
     ch.observe_f128(v);

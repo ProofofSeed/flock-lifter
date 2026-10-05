@@ -19,7 +19,11 @@ fn rounds(w: &mut Writer, rounds: &[(flock_prover::field::F128, flock_prover::fi
 pub fn encode_outer(vk: &Vk, proof: &WrapProof, live: flock_prover::field::F128, masked: flock_prover::field::F128) -> (Vec<u8>, Vec<u8>) {
     let mut w = Writer::default();
     assert_eq!(proof.public.len(), vk.num_public);
-    proof.public[vk.fixed.len()..].iter().for_each(|&v| w.f128(v));
+    for (i, &v) in proof.public.iter().enumerate().skip(vk.fixed.len()) {
+        if !vk.is_published(i) {
+            w.f128(v);
+        }
+    }
     proof.commitment.cap.iter().for_each(|h| w.hash(h));
     w.hash(&flock_prover::union::publics_digest(&proof.public));
     let p = &proof.proof;

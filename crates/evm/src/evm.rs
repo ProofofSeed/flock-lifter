@@ -180,6 +180,11 @@ impl Evm {
         };
     }
 
+    /// The gas limit every transaction is given.
+    pub fn gas_limit(&self) -> u64 {
+        return self.gas;
+    }
+
     fn tx(&self, kind: TxKind, data: Vec<u8>) -> TxEnv {
         return TxEnv::builder()
             .caller(CALLER)
