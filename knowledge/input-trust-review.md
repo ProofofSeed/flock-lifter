@@ -1,0 +1,38 @@
+# Input trust review
+
+A review of what the lifter's verifiers trust about their inputs, made on 2026-10-09 after Trail of Bits forged an SP1 proof of a Google quantum-resource estimate through two bugs in the proved program: untrusted bytes deserialised without validation, where an out-of-range enum discriminant took a branch that skipped a counter, and an aliasing condition the program never checked.
+The lesson carried over is that whatever a proved relation or a verifier trusts about its inputs is part of the proof's soundness.
+The Flock lifter compiles the ZKBoo verifier into a Boolean block rather than running it in a zkVM, so the questions here are which inputs the block, the native verifier and the contracts take on trust.
+
+## Verdict
+
+The lifter is not exposed to either pattern.
+No verifier parses untrusted bytes into branches: proofs arrive as typed values whose deserialisation, where it happens at all, is serde's, and every verifier checks the shape of a proof's vectors before iterating over them, so no comparison is silently skipped by a short vector.
+The one enum-like input, the published challenge word, is matched against exactly the three unit words and anything else is refused.
+
+The review found four weaknesses of a lesser kind, none a forgery, and three gaps in the tests.
+Three of the weaknesses are fixed and the fourth is recorded below.
+
+## What was checked
+
+- **The native path.** The Fiat-Shamir gate (`crates/lift/src/lift.rs`, `gate`) matches the challenge word against `(1, 0)`, `(2, 0)` and `(4, 0)` and refuses any other value, reads both opened digests as full words, rebuilds the two output shares from exactly the circuit's output bits, forms the third share as `y ⊕ s0 ⊕ s1` and replays zkboo's challenge generator, which is the transcript zkboo's own `par_verify` builds. Before proving, `Program::check_response` requires the AND messages to have exactly the statement's shape and the party-2 input share to be present with the statement's shape precisely when the challenge opens party 2, which is stricter than zkboo's own well-formedness check and than its replay source, which zero-fills a short message. The verifier never sees a response at all: it sees rows of a fixed geometry. The structured discharge, the matrix proof, the structure proof, the WHIR verifier and the structure crate's sumchecks each refuse a proof whose vectors have the wrong length before using them. The four `unsafe` blocks in the workspace are prover-side scatters.
+- **The block.** Its free columns are the three challenge bits, the two seeds, the party-2 input share and the AND messages; every other column is defined by a row. The AND messages reach slot 1's view-commitment stream and the input share reaches whichever slot is party 2, so both are bound by the published digests exactly as in ZKBoo. The whole sixteen-word published subcube of every row is one evaluation claim whose value the verifier computes from the published words, with the words beyond the published ones bound to zero and padding rows bound to copies of the last live row. The block does not constrain the challenge bits to be one-hot: that is the gate's job, natively and on chain, and the gate runs before acceptance on every route. A short or long AND message, a challenge value outside the three unit words and a response count other than the one claimed have no spelling in the proven relation.
+- **The contracts.** Reading calldata past its end yields zeros on the EVM rather than reverting. The single-call contracts require the cursor to end exactly at the end of the encoding; the staged direct route checks the length of each stage's data and pins the published words, the output, the binding and the word counts across stages by hashes kept in the session state; the staged wrap reads the published words only in the stage that runs the gate and the public-segment binding, and carries what later stages need inside the state the session hashes. The output's serialisation is validated against the word counts the caller passes, in zkboo's own encoding, and the assertion word is required.
+
+## Weaknesses found
+
+1. **Key and statement were not tied natively.** `lift::verify` and `wrapped::verify` took a key, a statement and a block and trusted the caller to pair them: the journal reported the statement's chain code, index and fingerprint while the proof was about whatever block the key held, and the gate indexed the expected output's bits without checking its shape against the block's. In the direct route the statement digest in every chunk's transcript domain refused a mismatched pair; in the wrapped route, whose chunk domains carry no statement, a lift verified under another statement with its own key was accepted and its journal reported the other statement. On chain this could not happen, since chain code, index, fingerprint and tables are fixed at deployment. **Fixed:** the block records the structural fingerprint of its circuit (`Program::fingerprint`), the root key records the fingerprint of the block its tables are of, and both verifiers and both provers refuse a statement whose circuit is not the key's or whose expected output does not have the circuit's output shape (`LiftError::Statement`). The gate checks the shape before indexing.
+2. **One-hotness is a gate property.** The block takes the challenge bits free. Four rows (`h_i · h_j = 0` for each pair and `(h0 ⊕ h1 ⊕ h2 ⊕ 1) · 1 = 0`) would make the block's relation ZKBoo's on its own, but any change to the block re-keys the committed tables and every contract constant. **Recorded, not built.** Soundness rests on the gate running, which it does on every route before acceptance.
+3. **The output's word counts were not pinned on chain.** The contracts tied the payload size to the published words but took the split across widths from the caller, so a relying contract had to pass the circuit's canonical counts itself; a different split with the same payload is not a forgery, since the gate still hashes a Fiat-Shamir transcript over the same payload bits, but it is an input a relying party should not have to get right. **Fixed:** `FlockLift` and `LiftStages` take the counts as a constructor argument and refuse any other, and the wrap's generated constants carry `WrapKey.COUNTS`, which `FlockWrap` and the first wrap stage check.
+4. **A documented check that nothing performed.** `WrapSessions` said the last stage must leave the cursor at the end of the encoding and declared an error for it, but no stage checked it; unread trailing bytes cannot help a forger. **Fixed:** the sentence and the error are gone, and the documentation says what holds.
+
+## Tests added
+
+- `crates/host/tests/gate.rs`: the native gate on challenge words that are zero, two bits, out of range or set in the upper half, on an expected output of another shape, and the response check on AND messages one word short or one word long.
+- The on-chain gate on the same challenge words, and the lift contract on another split of the word counts (`crates/evm/tests/contract.rs`); the wrap bench reports the same probe at 219 responses.
+- The acceptance matrices: F4 now names the statement check as its refuser, F9 and W11 verify under an expected output of another shape, and W10 verifies a wrapped lift under a statement its key is not for, the case that was accepted before.
+
+## Caveats
+
+The review is a reading of the code with the tests named above, not an audit.
+It does not revisit the lift-fidelity gap, the soundness accounting of the structure proof or the publics digest the wrap takes from calldata, which `whir-wrapper.md` records.
