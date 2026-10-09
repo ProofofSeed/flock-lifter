@@ -33,7 +33,7 @@ contract WrapStageA {
     {
         OutputShape memory s = FiatShamir.shape(output, counts & 0xffff, (counts >> 16) & 0xffff, counts >> 32);
         if (s.counts[0] == 0 || output[s.at[0] + s.counts[0] - 1] != 0x01) revert AssertionWord();
-        if (WrapKey.N_IO != 5 + 2 * ((8 * s.payload + 127) / 128)) revert Shape();
+        if (counts != WrapKey.COUNTS) revert Shape();
         FiatShamir.GateArgs memory g;
         g.outputAt = Stage.at(output);
         g.bindingAt = Stage.at(binding);

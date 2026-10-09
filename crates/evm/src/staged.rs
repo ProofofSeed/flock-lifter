@@ -100,14 +100,15 @@ fn deploy_one(evm: &mut Evm, out: &mut Vec<(String, usize, u64)>, name: &str, ar
 }
 
 /// Deploys the staged verifier of the statement with circuit fingerprint `fingerprint`, chain code
-/// `chain_code` and child index `index`, lifted with at least `min_responses` responses, and of
-/// the entry commitment `key` of `program`.
+/// `chain_code` and child index `index`, whose expected output has the packed word counts `counts`,
+/// lifted with at least `min_responses` responses, and of the entry commitment `key` of `program`.
 pub fn deploy(
     evm: &mut Evm,
     fingerprint: &[u8; 32],
     chain_code: &[u8],
     index: u32,
     min_responses: usize,
+    counts: U256,
     program: &Program,
     key: &MatrixCommitment,
     slim: bool,
@@ -128,6 +129,7 @@ pub fn deploy(
                 chain_code.to_vec(),
                 word(U256::from(index)),
                 word(U256::from(min_responses)),
+                word(counts),
                 slim_word.clone(),
             ],
             "ConsistencyStages" => vec![address_word(store)],

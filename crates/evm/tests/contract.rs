@@ -101,6 +101,7 @@ fn deploy_lift(evm: &mut Evm, statement: &Statement, min: usize) -> revm::primit
     code.extend_from_slice(&statement.chain_code);
     code.extend_from_slice(&U256::from(statement.index).to_be_bytes::<32>());
     code.extend_from_slice(&U256::from(min).to_be_bytes::<32>());
+    code.extend_from_slice(&counts(statement).to_be_bytes::<32>());
     let slim = pofseed_flock_lift::chunk_rm::profile() == flock_prover::pcs::ligerito::LigeritoProfile::Slim;
     code.extend_from_slice(&U256::from(slim as u8).to_be_bytes::<32>());
     return evm.deploy(code).0;
@@ -126,11 +127,12 @@ fn lift_contract_verifies_a_lift_and_its_gate_refuses_forgeries() {
     let lifted = prove(&LiftKey::new(program.clone()), &statement, &proof, 4).expect("lift");
     let mut evm = Evm::new();
     let lift = deploy_lift(&mut evm, &statement, n);
-    let call = |binding: &[u8], data: &[u8]| {
+    let call_with = |binding: &[u8], data: &[u8], counts: U256| {
         encode("verify(bytes,uint256,bytes,bytes)", |a| {
-            a.bytes(&statement.expected_output.as_bytes()).uint(counts(&statement)).bytes(binding).bytes(data)
+            a.bytes(&statement.expected_output.as_bytes()).uint(counts).bytes(binding).bytes(data)
         })
     };
+    let call = |binding: &[u8], data: &[u8]| call_with(binding, data, counts(&statement));
     let data = pofseed_flock_lift_evm::calldata::encode_lift(&lifted);
     let out = evm.call(lift, call(BINDING, &data));
     assert!(out.success, "lift refused: {}", hex::encode(&out.output));
@@ -151,6 +153,9 @@ fn lift_contract_verifies_a_lift_and_its_gate_refuses_forgeries() {
     forged.words[1][0] = if forged.words[1][0].lo == 1 { F128::new(2, 0) } else { F128::new(1, 0) };
     let bad = pofseed_flock_lift_evm::calldata::encode_lift(&forged);
     assert!(!evm.call(lift, call(BINDING, &bad)).success, "a changed challenge was accepted");
+    let y = &statement.expected_output;
+    let other_split = U256::from((y.as_vec::<u8>().len() - 8) | ((y.as_vec::<u64>().len() + 1) << 32));
+    assert!(!evm.call(lift, call_with(BINDING, &data, other_split)).success, "another split of the same payload was accepted");
 }
 
 #[test]
@@ -202,6 +207,11 @@ fn fiat_shamir_gate_refuses_what_the_native_gate_refuses() {
         };
         w[i][0] = F128::new(next, 0);
         assert!(!run(BINDING, &w, &unopened, &y).0, "a changed challenge at {i} passed the gate");
+        for bad_word in [F128::ZERO, F128::new(3, 0), F128::new(8, 0), F128::new(1, 1)] {
+            let mut w = words.clone();
+            w[i][0] = bad_word;
+            assert!(!run(BINDING, &w, &unopened, &y).0, "a challenge word {bad_word:?} at {i} passed the gate");
+        }
         let mut w = words.clone();
         w[i][6].lo ^= 1 << 9;
         assert!(!run(BINDING, &w, &unopened, &y).0, "a changed output share at {i} passed the gate");

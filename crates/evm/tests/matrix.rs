@@ -61,10 +61,11 @@ fn matrix_contract_matches_the_mirror_and_refuses_tampering() {
     code.extend_from_slice(&statement.chain_code);
     code.extend_from_slice(&U256::from(statement.index).to_be_bytes::<32>());
     code.extend_from_slice(&U256::from(n).to_be_bytes::<32>());
-    code.extend_from_slice(&U256::ZERO.to_be_bytes::<32>());
-    let (lift, _) = evm.deploy(code);
     let y = &statement.expected_output;
     let counts = U256::from(y.as_vec::<u8>().len() | (y.as_vec::<u32>().len() << 16) | (y.as_vec::<u64>().len() << 32));
+    code.extend_from_slice(&counts.to_be_bytes::<32>());
+    code.extend_from_slice(&U256::ZERO.to_be_bytes::<32>());
+    let (lift, _) = evm.deploy(code);
     let out = evm.call(
         lift,
         encode("verify(bytes,uint256,bytes,bytes)", |a| {

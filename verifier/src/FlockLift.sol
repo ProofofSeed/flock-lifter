@@ -27,6 +27,9 @@ contract FlockLift {
     uint32 public immutable index;
     /// The fewest responses a lift may carry.
     uint256 public immutable minResponses;
+    /// The expected output's word counts: 8-bit words, then 32-bit words shifted by 16, then
+    /// 64-bit words shifted by 32.
+    uint256 public immutable counts;
     /// Whether chunks are opened under Ligerito's `Slim` profile rather than `Fast`.
     bool public immutable slim;
 
@@ -34,7 +37,8 @@ contract FlockLift {
     error AssertionWord();
     error TooFewResponses();
 
-    constructor(bytes32 fingerprint_, bytes32 chainCode_, uint32 index_, uint256 minResponses_, bool slim_) {
+    constructor(bytes32 fingerprint_, bytes32 chainCode_, uint32 index_, uint256 minResponses_, uint256 counts_, bool slim_) {
+        counts = counts_;
         slim = slim_;
         fingerprint = fingerprint_;
         chainCode = chainCode_;
@@ -59,12 +63,13 @@ contract FlockLift {
 
     /// Verifies a lift against the expected output `output`, which ZKBoo serialised from
     /// `counts & 0xffff` 8-bit, `(counts >> 16) & 0xffff` 32-bit and `counts >> 32` 64-bit words,
-    /// under `binding`.
-    function verify(bytes calldata output, uint256 counts, bytes calldata binding, bytes calldata proof)
+    /// the statement circuit's counts, under `binding`.
+    function verify(bytes calldata output, uint256 counts_, bytes calldata binding, bytes calldata proof)
         external
         returns (uint256[] memory)
     {
         Meter.mark(100);
+        if (counts_ != counts) revert Shape();
         OutputShape memory s = FiatShamir.shape(output, counts & 0xffff, (counts >> 16) & 0xffff, counts >> 32);
         if (s.counts[0] == 0 || output[s.at[0] + s.counts[0] - 1] != 0x01) revert AssertionWord();
         Lift memory l;

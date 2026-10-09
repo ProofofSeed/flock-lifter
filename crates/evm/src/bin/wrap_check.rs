@@ -39,7 +39,9 @@ fn main() {
     println!("lifted {n} responses in {:.1} s", t.elapsed().as_secs_f64());
     wrapped::verify(&program, &key, &statement, &lifted, &whir).expect("the lift verifies");
     let words = wrapped::words(&program, &key, &lifted).expect("published words");
-    let vk = Vk::new(&key, whir.config(key.wrap.key.pcs.m - 7), words[0].len());
+    let y = &statement.expected_output;
+    let counts = (y.as_vec::<u8>().len() | (y.as_vec::<u32>().len() << 16) | (y.as_vec::<u64>().len() << 32)) as u64;
+    let vk = Vk::new(&key, whir.config(key.wrap.key.pcs.m - 7), words[0].len(), counts);
     let (claims, mut native_tr) =
         root::outer_claims(&key.wrap, &key.root.table_of, &lifted.wrap, Some(&whir)).expect("the outer proof verifies");
     let (data, _opening) = encode::encode_outer(&vk, &lifted.wrap, claims.cells.1[0], claims.cells.1[1]);

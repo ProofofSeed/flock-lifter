@@ -149,6 +149,9 @@ impl Scenario {
         code.extend_from_slice(&chain_code);
         code.extend_from_slice(&U256::from(HARDENED_OFFSET).to_be_bytes::<32>());
         code.extend_from_slice(&U256::from(n).to_be_bytes::<32>());
+        let y = &statement.expected_output;
+        let counts = U256::from(y.as_vec::<u8>().len() | (y.as_vec::<u32>().len() << 16) | (y.as_vec::<u64>().len() << 32));
+        code.extend_from_slice(&counts.to_be_bytes::<32>());
         code.extend_from_slice(&U256::ZERO.to_be_bytes::<32>());
         let lift = machine.install(Machine::runtime_code(code));
         let g = program.geometry();
@@ -163,8 +166,6 @@ impl Scenario {
             code.extend_from_slice(&v.to_be_bytes::<32>());
         }
         let matrix = machine.install(Machine::runtime_code(code));
-        let y = &statement.expected_output;
-        let counts = U256::from(y.as_vec::<u8>().len() | (y.as_vec::<u32>().len() << 16) | (y.as_vec::<u64>().len() << 32));
         let pinned = Pinned {
             fingerprint: fingerprint.as_slice().try_into().expect("fingerprint"),
             chain_code: chain_code.as_slice().try_into().expect("chain code"),

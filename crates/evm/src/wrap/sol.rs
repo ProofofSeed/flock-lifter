@@ -124,6 +124,7 @@ pub fn key_source(vk: &Vk) -> String {
     constant(&mut s, "Responses per lift.", "RESPONSES", vk.responses);
     constant(&mut s, "Responses per chunk.", "CHUNK", vk.chunk);
     constant(&mut s, "Published words per response.", "N_IO", vk.n_io);
+    constant(&mut s, "The expected output's word counts: 8-bit words, then 32-bit words shifted by 16, then 64-bit words shifted by 32.", "COUNTS", vk.counts as usize);
 
     let mut prefix = op(1, 0, WRAP_DOMAIN.len() as u64, WRAP_DOMAIN);
     prefix.extend(label(b"pofseed-flock-lift-wrap-public"));

@@ -115,11 +115,14 @@ pub struct Vk {
     pub chunk: usize,
     /// Published words per response.
     pub n_io: usize,
+    /// The expected output's word counts, packed as the contracts take them.
+    pub counts: u64,
 }
 
 impl Vk {
-    /// The constants of lifts under `key`, whose outer commitment has parameters `whir`.
-    pub fn new(key: &WrappedKey, whir: Config, n_io: usize) -> Self {
+    /// The constants of lifts under `key`, whose outer commitment has parameters `whir`, of a
+    /// statement whose expected output has the word counts `counts`.
+    pub fn new(key: &WrappedKey, whir: Config, n_io: usize, counts: u64) -> Self {
         let env = &key.wrap.key;
         let shape = &env.shape;
         let registry = &shape.registry;
@@ -213,6 +216,7 @@ impl Vk {
             structure: key.root.structure.verifying(),
             responses: key.responses,
             chunk: key.chunk,
+            counts,
             n_io,
         };
     }
