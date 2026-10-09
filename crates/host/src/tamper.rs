@@ -25,6 +25,15 @@ pub fn oversize_and_msg(response: &Response<S, S>) -> Response<S, S> {
     return rebuild_response(response, msg);
 }
 
+/// A copy of `response` with the last word of its AND messages removed.
+pub fn short_and_msg(response: &Response<S, S>) -> Response<S, S> {
+    let mut msg = response.and_msg_next_party().clone();
+    if msg.as_vec_mut::<u64>().pop().is_none() && msg.as_vec_mut::<u32>().pop().is_none() {
+        msg.as_vec_mut::<u8>().pop();
+    }
+    return rebuild_response(response, msg);
+}
+
 fn rebuild_response(response: &Response<S, S>, msg: Words) -> Response<S, S> {
     let seeds = response.seeds();
     let digest = *response.commitment_digest_unopened();

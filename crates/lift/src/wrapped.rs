@@ -21,7 +21,7 @@ use pofseed_flock_lift_structure::proof::StructProof;
 
 use crate::{
     chunk_wrap::{self, ChunkProofWrap},
-    lift::{LiftError, MAX_CHUNK, Statement, gate, journal},
+    lift::{LiftError, MAX_CHUNK, Statement, check_statement, gate, journal},
     root::{self, RootKey},
     wrap::{self, WrapTimings},
 };
@@ -99,6 +99,7 @@ pub fn prove(
     if proof.is_empty() {
         return Err(LiftError::Shape);
     }
+    check_statement(program, statement)?;
     let circuit = statement.circuit();
     for (i, response) in proof.iter().enumerate() {
         program.check_response(response).map_err(|e| LiftError::Witness(i, e))?;
@@ -122,7 +123,7 @@ pub fn prove(
     let w = wrap::wrap(program, &parts, &chunks, &domains, &HeadEnv::measuring(), Some(outer)).map_err(LiftError::Wrap)?;
     let t = std::time::Instant::now();
     let root = match root {
-        Some(r) if r.circuit == w.key.key.digest() => r,
+        Some(r) if r.circuit == w.key.key.digest() && r.program == program.fingerprint() => r,
         Some(_) => return Err(LiftError::Shape),
         None => Arc::new(RootKey::new(program, &w.key, rate)),
     };
@@ -170,6 +171,10 @@ pub fn verify(
     lifted: &WrappedLift,
     outer: &dyn OuterPcs,
 ) -> Result<LiftJournal, LiftError> {
+    if key.root.program != program.fingerprint() {
+        return Err(LiftError::Statement);
+    }
+    check_statement(program, statement)?;
     if lifted.unopened.len() != key.responses || key.wrap.tails.len() != key.responses.div_ceil(key.chunk) {
         return Err(LiftError::Shape);
     }

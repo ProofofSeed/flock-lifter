@@ -18,8 +18,12 @@
 //! - F1 a tampered published word: the chunk's Flock verification
 //! - F2 a tampered unopened digest: the native Fiat-Shamir gate
 //! - F3 two chunks swapped: the chunks' Flock verification
-//! - F4 a lift verified under another statement: the chunks' Flock verification
+//! - F4 a lift verified under a statement the key is not for: the statement check
 //! - F5 a truncated lift: the shape check
+//! - F6 a tampered matrix proof: the matrix proof's verification
+//! - F7 a missing matrix proof: the shape check
+//! - F8 another lift's matrix proof: the matrix proof's verification
+//! - F9 an expected output of another shape: the statement check
 //!
 //! Usage: `acceptance [rejects|full|both] [responses]` (default `both`, 219).
 
@@ -165,7 +169,7 @@ fn main() {
             ..statement.clone()
         };
         expect_lift_refusal("F4 another statement", verify(&vk, &other_index, &lifted), |e| {
-            matches!(e, LiftError::Chunk(0, _))
+            matches!(e, LiftError::Statement)
         });
 
         let mut f5 = lifted.clone();
@@ -184,6 +188,12 @@ fn main() {
         f8.matrix = lifted_r2.matrix.clone();
         expect_lift_refusal("F8 another lift's matrix proof", verify(&vk, &statement, &f8), |e| {
             matches!(e, LiftError::Matrix(_))
+        });
+
+        let mut other_shape = statement.clone();
+        other_shape.expected_output.as_vec_mut::<u8>().push(1);
+        expect_lift_refusal("F9 an expected output of another shape", verify(&vk, &other_shape, &lifted), |e| {
+            matches!(e, LiftError::Statement)
         });
         println!("reject matrix: PASS");
         println!();

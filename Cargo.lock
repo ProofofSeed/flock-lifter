@@ -2048,6 +2048,7 @@ dependencies = [
  "rayon",
  "tiny-keccak",
  "zkboo",
+ "zkboo-circuit-hash",
  "zkboo-profiling",
 ]
 

@@ -14,7 +14,7 @@ use flock_prover::{
     lincheck::{LincheckCircuit, build_eq_table},
     matrix_fold::FoldMatrix,
 };
-use pofseed_flock_lift_statement::S;
+use pofseed_flock_lift_statement::{H, S};
 use rayon::prelude::*;
 use zkboo::{
     circuit::Circuit,
@@ -88,6 +88,7 @@ fn counts(words: &Words) -> [usize; 3] {
 
 /// The response block of a statement circuit.
 pub struct Program {
+    fingerprint: [u8; 32],
     geometry: Geometry,
     replay_products: usize,
     replay_materialised: usize,
@@ -124,6 +125,7 @@ impl Program {
     }
 
     fn build<C: Circuit>(circuit: &C, compile: fn(&C, &Geometry) -> Result<Replay, usize>) -> Self {
+        let fingerprint = zkboo_circuit_hash::hash_circuit::<_, H>(circuit);
         let shape = StatementShape::of(circuit);
         let mut k_log = SUB_LOG + 1;
         let mut head_bits = 0;
@@ -137,10 +139,10 @@ impl Program {
                 Err(needed) => head_bits = needed,
             }
         };
-        return Self::assemble(geometry, replay);
+        return Self::assemble(fingerprint, geometry, replay);
     }
 
-    fn assemble(geometry: Geometry, replay: Replay) -> Self {
+    fn assemble(fingerprint: [u8; 32], geometry: Geometry, replay: Replay) -> Self {
         let g = &geometry;
         let shape = g.shape().clone();
         let mut rows = RowsBuilder::default();
@@ -259,12 +261,24 @@ impl Program {
         }
         schedule.push(Step::Rows(start, rows.len()));
         return Self {
+            fingerprint,
             geometry,
             replay_products: replay.products,
             replay_materialised: replay.materialised,
             rows,
             schedule,
         };
+    }
+
+    /// The structural fingerprint of the circuit the block is of.
+    pub fn fingerprint(&self) -> [u8; 32] {
+        return self.fingerprint;
+    }
+
+    /// Whether `words` has the shape of the circuit's output.
+    pub fn is_output_shape(&self, words: &Words) -> bool {
+        let counts = [words.as_vec::<u8>().len(), words.as_vec::<u32>().len(), words.as_vec::<u64>().len()];
+        return counts == self.geometry.shape().outputs;
     }
 
     /// The block geometry.
