@@ -33,6 +33,8 @@ pub struct RootKey {
     pub table_of: Vec<usize>,
     /// The digest of the wrap circuit the tables are of.
     pub circuit: [u8; 32],
+    /// The fingerprint of the statement circuit whose block the tables are of.
+    pub program: [u8; 32],
 }
 
 /// What verifying a discharge needs.
@@ -86,6 +88,7 @@ impl RootKey {
             structure: StructKey::new(parts, log_inv_rate),
             table_of,
             circuit: key.key.digest(),
+            program: program.fingerprint(),
         };
     }
 

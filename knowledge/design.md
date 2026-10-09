@@ -90,6 +90,7 @@ Its lincheck is this lifter's own replay of Flock's, which walks the same transc
 The verifier (`crates/lift/src/lift.rs`) holds the statement — chain code, index, expected output, binding — and builds the response block itself from the public-only circuit, so a proof never selects the constraint system it is checked against.
 It then checks, in order:
 
+0. the block is the statement's circuit's, by the structural fingerprint the block records, and the expected output has that circuit's output shape;
 1. the lifted proof's parts agree in length, and its chunk count matches its response count and chunk size;
 2. every chunk's Flock proof, under a transcript domain that binds the statement digest (circuit fingerprint, statement fields, response count, chunk size) and the chunk's position, against the words the chunk's blocks publish;
 3. that every published challenge word is one-hot;
@@ -104,7 +105,7 @@ The journal is then built from the verifier's own values and put through the sam
 The acceptance run (`acceptance rejects`) names the refuser of every case, and the checks that nothing else backs were validated by deletion (`fixtures/deletion-validation-2026-09-14.summary.log`, `fixtures/deletion-validation-2026-09-15.summary.log`).
 With the Fiat-Shamir comparison removed, a proof with one AND-message bit flipped lifts and verifies; with the published-word claim removed from the opening, a chunk proved over published words its witness does not carry verifies; and with the lincheck's final comparison removed, a chunk whose matrix evaluation is deliberately wrong verifies.
 Each of the matrix proof's three checks was validated the same way against a forging prover (`fixtures/deletion-validation-2026-09-16-committed-matrix.summary.log`).
-The other refusals — a tampered published word, a swapped chunk, another statement — are enforced by the transcript binding before either check is reached.
+The other refusals — a tampered published word, a swapped chunk — are enforced by the transcript binding before either check is reached, and a statement the key is not for by the fingerprint check before anything is read (`input-trust-review.md`).
 
 That the compiled block means what the replay means is established by test, not by proof: `crates/block/tests/block.rs` checks every published word against ZKBoo's own replay for all three challenges, on a circuit that exercises every gate kind and on the hardened child at full size, checks the structured lincheck fold against the witness it folds, and checks the structured matrix discharge against the dense fold it replaces.
 This is the lift-fidelity gap the SP1 lifter does not have, since its guest is the verifier itself.

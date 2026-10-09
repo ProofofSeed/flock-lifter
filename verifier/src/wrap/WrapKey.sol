@@ -38,6 +38,8 @@ library WrapKey {
     uint256 internal constant CHUNK = 128;
     /// Published words per response.
     uint256 internal constant N_IO = 15;
+    /// The expected output's word counts: 8-bit words, then 32-bit words shifted by 16, then 64-bit words shifted by 32.
+    uint256 internal constant COUNTS = 17179869217;
     /// The outer transcript before the public words: the domain, the label and the slice header.
     bytes internal constant BIND_PREFIX = hex"0100000000000000000000000000001a706f66736565642d666c6f636b2d6c6966742d777261702d76310000000000000200000000000000000000000000001e706f66736565642d666c6f636b2d6c6966742d777261702d7075626c6963000003020000000000000000000000001433";
     /// The fixed public words, sixteen bytes each.

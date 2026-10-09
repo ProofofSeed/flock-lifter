@@ -22,6 +22,8 @@ What each route deploys:
 `FlockDischarge` (22,586 B) fits, but it is the row-walking discharge the committed matrix replaced, at 158 billion gas for a 219-response lift (`knowledge/evm-verifier.md`).
 `forge build --sizes` prints every contract's margin.
 
+Every route fixes its statement at deployment: `FlockLift` and `LiftStages` take the circuit fingerprint, chain code, index, minimum response count and the expected output's word counts as constructor arguments, and the wrap's `WrapKey` is generated per statement and lift shape. A caller supplies only the expected output, its word counts, the binding and the proof, and the counts must be the pinned ones.
+
 The single-call harness (`crates/evm/src/evm.rs`, `Evm::new`) lifts the code-size limit and the gas cap so the references can run; `Evm::mainnet` and the optimistic route's `Machine` keep the code-size limit.
 
 ## Tests

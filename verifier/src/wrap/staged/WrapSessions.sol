@@ -22,7 +22,6 @@ contract WrapSessions {
 
     error StaleState();
     error NoRoute();
-    error Unread();
 
     constructor(address first_, address[] memory later) {
         first = first_;
@@ -42,8 +41,8 @@ contract WrapSessions {
     }
 
     /// Advances the caller's session `salt`, whose current state is `state`, by one stage reading
-    /// `data` from the lift's encoding at the state's cursor. The last stage must leave the cursor
-    /// at `end`, the length of the lift's encoding the caller has sent.
+    /// `data` from the lift's encoding at the state's cursor. Every stage reads what it needs from
+    /// `data` and no stage reads past it, so bytes beyond the encoding are never read.
     function advance(bytes32 salt, bytes calldata state, bytes calldata data) external returns (bytes memory next) {
         bytes32 id = keccak256(abi.encodePacked(msg.sender, salt));
         if (keccak256(state) != head[id]) revert StaleState();

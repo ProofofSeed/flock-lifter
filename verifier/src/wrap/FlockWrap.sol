@@ -22,7 +22,7 @@ contract FlockWrap {
 
     /// Verifies a wrapped lift against the expected output `output`, which ZKBoo serialised from
     /// `counts & 0xffff` 8-bit, `(counts >> 16) & 0xffff` 32-bit and `counts >> 32` 64-bit words,
-    /// under `binding`; returns the transcript's last state.
+    /// the statement circuit's counts, under `binding`; returns the transcript's last state.
     function verify(bytes calldata output, uint256 counts, bytes calldata binding, bytes calldata lift)
         external
         returns (bytes32)
@@ -36,7 +36,7 @@ contract FlockWrap {
     {
         OutputShape memory s = FiatShamir.shape(output, counts & 0xffff, (counts >> 16) & 0xffff, counts >> 32);
         if (s.counts[0] == 0 || output[s.at[0] + s.counts[0] - 1] != 0x01) revert AssertionWord();
-        if (WrapKey.N_IO != 5 + 2 * ((8 * s.payload + 127) / 128)) revert Shape();
+        if (counts != WrapKey.COUNTS) revert Shape();
         FiatShamir.GateArgs memory g;
         g.outputAt = _offset(output);
         g.bindingAt = _offset(binding);

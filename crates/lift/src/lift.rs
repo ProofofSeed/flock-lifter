@@ -117,6 +117,9 @@ pub enum LiftError {
     Matrix(MatrixError),
     /// The wrap was refused.
     Wrap(crate::wrap::WrapError),
+    /// The statement is not the one the key is for, or its expected output does not have the
+    /// circuit's output shape.
+    Statement,
 }
 
 impl Statement {
@@ -137,6 +140,15 @@ impl Statement {
         absorb_framed(&mut h, b"chunk", &chunk.to_le_bytes());
         return h.finalize();
     }
+}
+
+/// Checks that `program` is the block of `statement`'s circuit and that the statement's expected
+/// output has that circuit's output shape.
+pub fn check_statement(program: &Program, statement: &Statement) -> Result<(), LiftError> {
+    if program.fingerprint() != hash_circuit::<_, H>(&statement.circuit()) || !program.is_output_shape(&statement.expected_output) {
+        return Err(LiftError::Statement);
+    }
+    return Ok(());
 }
 
 /// The transcript domain of chunk `chunk_index` of a lift whose statement digest is `digest`.
@@ -164,6 +176,7 @@ pub fn prove(
 ) -> Result<LiftedProof, LiftError> {
     assert!((1..=MAX_CHUNK).contains(&chunk), "chunk size must be in 1..={MAX_CHUNK}");
     let program = &key.program;
+    check_statement(program, statement)?;
     let circuit = statement.circuit();
     for (i, response) in proof.iter().enumerate() {
         program.check_response(response).map_err(|e| LiftError::Witness(i, e))?;
@@ -231,6 +244,7 @@ fn f128_bits(words: &[F128]) -> Vec<bool> {
 /// Verifies a lifted proof of `statement`, returning the journal it attests.
 pub fn verify(key: &VerifyingKey, statement: &Statement, lifted: &LiftedProof) -> Result<LiftJournal, LiftError> {
     let program = &key.program;
+    check_statement(program, statement)?;
     let n = lifted.words.len();
     let chunk = lifted.chunk as usize;
     if lifted.unopened.len() != n || chunk == 0 || chunk > MAX_CHUNK || lifted.chunks.len() != n.div_ceil(chunk) {
@@ -274,6 +288,9 @@ pub fn gate(program: &Program, statement: &Statement, words: &[Vec<F128>], unope
     let n = words.len();
     let ow = program.geometry().out_words();
     let y = &statement.expected_output;
+    if !program.is_output_shape(y) || unopened.len() != n || words.iter().any(|w| w.len() != 5 + 2 * ow) {
+        return Err(LiftError::Statement);
+    }
     let mut hasher = H::new();
     absorb_framed(&mut hasher, TAG_CHALLENGE, &statement.binding);
     let mut challenges = Vec::with_capacity(n);

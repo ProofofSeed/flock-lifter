@@ -151,6 +151,7 @@ fn run_staged(s: &Staged) {
         s.chain_code,
         HARDENED_OFFSET,
         s.n,
+        s.counts,
         s.program,
         s.key,
         s.slim,
@@ -221,12 +222,13 @@ fn main() {
     code.extend_from_slice(&chain_code);
     code.extend_from_slice(&U256::from(HARDENED_OFFSET).to_be_bytes::<32>());
     code.extend_from_slice(&U256::from(n).to_be_bytes::<32>());
+    let y = &statement.expected_output;
+    let counts = U256::from(y.as_vec::<u8>().len() | (y.as_vec::<u32>().len() << 16) | (y.as_vec::<u64>().len() << 32));
+    code.extend_from_slice(&counts.to_be_bytes::<32>());
     let slim = pofseed_flock_lift::chunk_rm::profile() == flock_prover::pcs::ligerito::LigeritoProfile::Slim;
     code.extend_from_slice(&U256::from(slim as u8).to_be_bytes::<32>());
     let (lift, lift_deploy) = evm.deploy(code);
     println!("FlockLift: initcode {runtime_len} bytes, deployment {} gas", lift_deploy);
-    let y = &statement.expected_output;
-    let counts = U256::from(y.as_vec::<u8>().len() | (y.as_vec::<u32>().len() << 16) | (y.as_vec::<u64>().len() << 32));
     let call = encode("verify(bytes,uint256,bytes,bytes)", |a| {
         a.bytes(&y.as_bytes()).uint(counts).bytes(BINDING).bytes(&data)
     });

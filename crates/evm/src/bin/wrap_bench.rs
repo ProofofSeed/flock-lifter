@@ -77,7 +77,8 @@ fn make(n: usize, chunk: usize, rate: usize, tables: usize, dir: &PathBuf) -> Ca
     );
     wrapped::verify(&program, &key, &statement, &lifted, &whir).expect("the lift verifies");
     let words = wrapped::words(&program, &key, &lifted).expect("published words");
-    let vk = Vk::new(&key, whir.config(key.wrap.key.pcs.m - 7), words[0].len());
+    let counts = (output.as_vec::<u8>().len() | (output.as_vec::<u32>().len() << 16) | (output.as_vec::<u64>().len() << 32)) as u64;
+    let vk = Vk::new(&key, whir.config(key.wrap.key.pcs.m - 7), words[0].len(), counts);
     let (claims, _) = root::outer_claims(&key.wrap, &key.root.table_of, &lifted.wrap, Some(&whir)).expect("the outer proof verifies");
     let lift = wrap::encode_lift(&vk, &lifted, &words, claims.cells.1[0], claims.cells.1[1]);
     trace::take();
@@ -86,7 +87,7 @@ fn make(n: usize, chunk: usize, rate: usize, tables: usize, dir: &PathBuf) -> Ca
         key: sol::key_source(&vk),
         lift,
         output: output.as_bytes(),
-        counts: (output.as_vec::<u8>().len() | (output.as_vec::<u32>().len() << 16) | (output.as_vec::<u64>().len() << 32)) as u64,
+        counts,
         marks: trace::take(),
     };
     fs::create_dir_all(dir).expect("cache directory");
@@ -259,6 +260,9 @@ fn run(case: &Case, n: usize, chunk: usize, rate: usize, tables: usize, stop: Op
             }
         }
         println!("tampering: {refused} flipped bits refused");
+        let other_split = (case.counts - 8) & 0xffff | ((case.counts >> 32) + 1) << 32;
+        let call = encode("verify(bytes,uint256,bytes,bytes)", |a| a.bytes(&case.output).uint(U256::from(other_split)).bytes(BINDING).bytes(&case.lift));
+        println!("  another split of the output's word counts: {}", if evm.simulate(address, call).success { "ACCEPTED" } else { "refused" });
         for (name, bad) in targeted(case) {
             let call = encode("verify(bytes,uint256,bytes,bytes)", |a| a.bytes(&case.output).uint(U256::from(case.counts)).bytes(BINDING).bytes(&bad));
             let verdict = if evm.simulate(address, call).success { "ACCEPTED" } else { "refused" };

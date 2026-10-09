@@ -29,6 +29,8 @@ Bits are read from bytes through eight Frobenius-conjugate openings, so the open
 `verifier/src/wrap/FlockWrap.sol` is the single-call reference; `verifier/src/wrap/staged/` is the deployable verifier.
 A Rust mirror (`crates/evm/src/wrap/`) reads the same calldata, and the bench compares the contract's transcript with the mirror's at every stage boundary.
 
+The contract takes the expected output, its word counts, the binding and the lift; the counts must be the statement circuit's (`WrapKey.COUNTS`), and the response count, the chunk size and the committed tables are constants of the key.
+
 What the contract does, in order, with the single call's gas at 219 responses:
 
 | step                                             | gas (M) |
@@ -118,10 +120,11 @@ Skipping repeated blocks of public words saved a further 0.24 M at 219 responses
 
 ## Validation
 
-- **Native acceptance.** `acceptance-wrap both`: the reject matrix R1 to R8, nine wrap cases, four structure cases, a key reused across lifts, and a 219-response lift through the relying-party gate. All pass, before and after the gas savings.
+- **Native acceptance.** `acceptance-wrap both`: the reject matrix R1 to R8, eleven wrap cases, four structure cases, a key reused across lifts, and a 219-response lift through the relying-party gate. All pass, before and after the gas savings. W10, a lift verified under a statement its key is not for, was accepted until the key and the statement were tied (`input-trust-review.md`).
 - **Mirror.** `wrap-check` compares the Rust mirror with the native verifier; `wrap-bench` compares the contract with the mirror stage by stage, at 8 and at 219 responses.
 - **Tampering.** 23 flipped bits across a lift are refused by the single call and 11 by the staged verifier.
 - **Deletion.** Four checks can be singled out by one flipped bit: a WHIR opening's last equation, a Merkle path, the Fiat-Shamir gate, and the session's state comparison. For each, a case built to fail only that check is refused, and is accepted once the check is deleted, with every other case still refused (`fixtures/deletion-validation-2026-10-05-wrap-after-savings.summary.log`). That run predates the return to Flock's own binding of the public words, which touches none of the four checks.
+- **After pinning the word counts.** The same run on 2026-10-09, with the contracts refusing any word counts but the key's, agrees with the mirror at every stage, refuses the same tampering, the three single-check cases and another split of the counts, and costs 192 gas less in one call (`fixtures/wrap-bench-2026-10-09-pinned-counts.summary.log`).
 - **Limit of that method.** A flip anywhere else in a lift changes the transcript and fails a grinding check first, so the remaining contract checks are not individually validated by deletion. They are covered by agreement with the mirror and, natively, by the reject matrix and the structure crate's tests.
 
 ## Caveats

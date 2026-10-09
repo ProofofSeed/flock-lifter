@@ -64,6 +64,9 @@ contract LiftStages is IStage {
     uint32 public immutable index;
     /// The fewest responses a lift may carry.
     uint256 public immutable minResponses;
+    /// The expected output's word counts: 8-bit words, then 32-bit words shifted by 16, then
+    /// 64-bit words shifted by 32.
+    uint256 public immutable counts;
     /// Whether chunks are opened under Ligerito's `Slim` profile rather than `Fast`.
     bool public immutable slim;
 
@@ -73,7 +76,8 @@ contract LiftStages is IStage {
     error Words();
     error Final();
 
-    constructor(bytes32 fingerprint_, bytes32 chainCode_, uint32 index_, uint256 minResponses_, bool slim_) {
+    constructor(bytes32 fingerprint_, bytes32 chainCode_, uint32 index_, uint256 minResponses_, uint256 counts_, bool slim_) {
+        counts = counts_;
         fingerprint = fingerprint_;
         chainCode = chainCode_;
         index = index_;
@@ -83,11 +87,12 @@ contract LiftStages is IStage {
 
     /// The first state of a lift verification of `n` responses in chunks of `chunk`, against
     /// the expected output `output` (word counts packed as in `FlockLift.verify`) under `binding`.
-    function start(bytes calldata output, uint256 counts, bytes calldata binding, uint256 n, uint256 chunk)
+    function start(bytes calldata output, uint256 counts_, bytes calldata binding, uint256 n, uint256 chunk)
         external
         view
         returns (bytes memory, uint256[] memory)
     {
+        if (counts_ != counts) revert Shape();
         OutputShape memory s = FiatShamir.shape(output, counts & 0xffff, (counts >> 16) & 0xffff, counts >> 32);
         if (s.counts[0] == 0 || output[s.at[0] + s.counts[0] - 1] != 0x01) revert AssertionWord();
         if (n < minResponses) revert TooFewResponses();

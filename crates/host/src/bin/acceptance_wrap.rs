@@ -24,6 +24,8 @@
 //! - W7 a tampered commitment: the wrap's outer proof
 //! - W8 another lift's unopened digests: the native Fiat-Shamir gate
 //! - W9 a key of another shape: the shape check
+//! - W10 a lift verified under a statement its key is not for: the statement check
+//! - W11 an expected output of another shape: the statement check
 //!
 //! It also checks that a key made by one lift verifies another lift of the same shape.
 //!
@@ -220,6 +222,13 @@ fn main() {
 
         verify(&program, &key_one_shape(&key), &statement, &lifted_b, &outer).expect("a key made by one lift verifies another");
         println!("  a key made by one lift verifies another of the same shape ✓");
+
+        expect_refusal("W10 a statement the key is not for", check(&other_index, &lifted), |e| matches!(e, LiftError::Statement));
+        let mut other_shape = statement.clone();
+        other_shape.expected_output.as_vec_mut::<u8>().push(1);
+        expect_refusal("W11 an expected output of another shape", check(&other_shape, &lifted), |e| {
+            matches!(e, LiftError::Statement)
+        });
 
         let mut s1 = lifted.clone();
         s1.structure.kernel_values[0] += F128::ONE;

@@ -54,6 +54,7 @@ fn a_lift_verifies_in_capped_transactions() {
     code.extend_from_slice(&chain_code);
     code.extend_from_slice(&U256::from(HARDENED_OFFSET).to_be_bytes::<32>());
     code.extend_from_slice(&U256::from(n).to_be_bytes::<32>());
+    code.extend_from_slice(&counts.to_be_bytes::<32>());
     code.extend_from_slice(&U256::ZERO.to_be_bytes::<32>());
     let (at, _) = reference.deploy(code);
     let out = reference.call(
@@ -64,7 +65,7 @@ fn a_lift_verifies_in_capped_transactions() {
     let claims: Vec<U256> = (0..word(&out.output, 32).to::<usize>()).map(|i| word(&out.output, 64 + 32 * i)).collect();
 
     let mut evm = Evm::mainnet();
-    let dep = staged::deploy(&mut evm, &fingerprint, &chain_code, HARDENED_OFFSET, n, &program, &vk.matrix, false);
+    let dep = staged::deploy(&mut evm, &fingerprint, &chain_code, HARDENED_OFFSET, n, counts, &program, &vk.matrix, false);
     for (name, size, gas) in &dep.contracts {
         eprintln!("{name}: {size} bytes, deployed for {gas} gas");
     }
