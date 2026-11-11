@@ -4,7 +4,7 @@ How the verification of a ZKBoo proof of seed is laid out as a Flock statement, 
 
 ## What must be proved
 
-The lifted relation is the one the SP1 lifter proves by running `zkboo::verifier::verify` in a zkVM (catalogued formally in `~/git/zkboo/succinct-lifter/knowledge/lifted-relation.md`).
+The lifted relation is the one the SP1 lifter proves by running `zkboo::verifier::verify` in a zkVM (catalogued formally in the lifted-relation note of the ZKBoo repository).
 For each of the `N` responses `R_i = (c_i, s_i, s'_i, x_i, M_i, d_i)`:
 
 - the two opened seeds are keyed into PRGs, `K = Keccak(TAG_PRG ‖ le64(32) ‖ s)`, whose tapes are blocks `Keccak(TAG_PRG ‖ K ‖ le64(counter))`;

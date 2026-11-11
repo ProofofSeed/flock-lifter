@@ -3,7 +3,7 @@
 Status: ported and re-measured, 2026-09-21.
 Until then the workspace built only against zkboo 1.2.x, and every figure in this repository belonged to the 1.2.1 hardened-child circuit.
 This file records what the release changed here, what was re-measured, and what was not.
-The upstream account is each crate's `CHANGELOG.md` in `~/git/zkboo`; the SP1 lifter's port is `../sp1-lifter/knowledge/zkboo-1.3.0-migration.md`.
+The upstream account is each ZKBoo crate's `CHANGELOG.md`; the SP1 lifter's port is recorded in the `knowledge/zkboo-1.3.0-migration.md` of the `sp1-lifter` repository.
 
 ## What changed upstream, and here
 
