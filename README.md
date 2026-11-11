@@ -1,15 +1,25 @@
 # flock-lifter
 
 A succinct lifter for ZKBoo proofs of seed built on [Flock](https://github.com/succinctlabs/flock), Succinct's hash-based SNARK for batched Boolean computations: the verification of each ZKBoo response — its two-party view replay, the Keccak-256 PRG tapes and view commitments behind it — is compiled into one row of a Boolean R1CS table and proved with Flock's zerocheck, lincheck and Ligerito commitment, and the global Fiat-Shamir gate that ties the responses together runs natively over the words each row publishes.
-It lifts the same statement under the same crypto suite as the companion SP1 lifter in `../sp1-lifter`, and ends in the same journal and relying-party gate, so the two can be compared on equal terms.
+It lifts the same statement under the same crypto suite as the companion SP1 lifter (the `sp1-lifter` repository of this project), and ends in the same journal and relying-party gate, so the two can be compared on equal terms.
 On Ethereum, a lift can be accepted in three ways, all built and measured on a 219-response lift:
 - **Direct verification** runs the EVM verifier on chain: a lift session, then a matrix session bound to the claims it recorded, with the block's explicit rows discharged by a proof against an entry list committed once per statement. Every transaction fits mainnet's gas cap and every contract its code-size limit; at 219 responses it takes 889 million gas in 106 transactions under the `Fast` profile (781 million in 100 under `Slim`). The same checks as two single calls, with the limits lifted, cost 759 million.
 - **Optimistic verification** accepts the lift unless someone disputes it. An asserter uploads the proofs and posts a bond, and a dispute is settled by bisecting the direct verifier's own execution down to one EVM step, which a contract re-executes. It costs 64 million gas when unchallenged. Within a dispute, no transaction costs more than 7 million gas, well under the 2^24 gas cap.
 - **Wrapped verification** proves the chunk proofs' verification in one further Flock proof opened with WHIR, and proves its fixed tables against a commitment made once per shape. The staged contracts verify it in 69 million gas over 7 transactions, each under the gas cap, a thirteenth of direct verification, for a lift that takes 75 seconds and 123 GB to produce in place of 13 seconds and 75 GB.
 
+## Status
+
+This is a research prototype and is not for production.
+Nothing in it has been audited: not the Rust provers and verifiers, not the Solidity contracts, not the soundness accounting of the matrix proof or of the WHIR wrapper.
+The lift has a fidelity gap: the response block is a compilation of the ZKBoo verifier, checked differentially against `zkboo`'s replay, and is not the verifier itself.
+No post-quantum claim is made.
+The 219-response lift is classical 128-bit only in the forgery-work-ratio sense, and Flock's grinding under Grover has not been accounted for.
+In the wrapped route, the contract takes the BLAKE3 digest of the public words from calldata without recomputing it; the words themselves are bound by the wrap's Keccak transcript, and that argument has not been reviewed.
+The repository cannot be built by others yet: every crate depends on the ZKBoo crates at 1.3.0, which are unpublished and are patched in from local checkouts.
+
 ## Usage
 
-Requires Rust 1.95.0 (pinned by `rust-toolchain.toml`) and local checkouts of the ZKBoo crates at 1.3.0 under `../../zkboo`, which are patched in at the workspace root because every published version is yanked.
+Requires Rust 1.95.0 (pinned by `rust-toolchain.toml`) and checkouts of the ZKBoo crates at 1.3.0 in a `zkboo` folder two levels above this one (`../../zkboo`), which are patched in at the workspace root because the ZKBoo crates are not published.
 Flock is pinned to a revision of its public repository and builds with `target-cpu=native`, as its kernels expect.
 
 ```sh
@@ -31,7 +41,7 @@ cargo run --release -p pofseed-flock-lift-host --features count --bin verifier-c
 ./target/release/verify-only check 219 /tmp/lift.bin   # verifier without the prover around it
 ```
 
-Both on-chain routes need Foundry (`forge`, looked up at `~/.foundry/bin/forge`); the harnesses build `verifier/` themselves.
+Both on-chain routes need Foundry (`forge`, looked up in `$HOME/.foundry/bin`, Foundry's default install location); the harnesses build `verifier/` themselves.
 Direct verification:
 
 ```sh
@@ -82,5 +92,7 @@ Set `POFSEED_TIMING=1` for the lifter's own phase timings; Flock's `PCS_TRACE`, 
 - `crates/evm/` — the EVM side: calldata encoding of a lift and its matrix proof, a Rust mirror of the contract verifiers, the row stream, and an in-process EVM harness with the gas benchmark and the layout probes; `src/wrap/` is the wrapped lift's encoding, mirror, key generator and staged driver.
 - `crates/optimistic/` — optimistic verification: the direct verifier's execution as a trace of committed EVM states, witnesses for any single step, the off-chain side of the dispute game, a simulation of whole disputes, and a fuzzer of the one-step contract against revm.
 - `verifier/` — the Solidity verifier (Foundry); its `README.md` says which contracts can be deployed under EIP-170, where they are tested, and that none is audited. `src/staged/` holds the deployable verifier: `FlockSessions` advances lift and matrix sessions across transactions, through seven stage contracts. `FlockLift` verifies every chunk and the Fiat-Shamir gate in one call, and `FlockMatrix` discharges the resulting matrix claims, computing their Keccak part (`Structured`) and checking the matrix proof against the pinned entry commitment, and both evaluate Ligerito's final-level residuals in assembly (`Residual`, generated by `tools/residual.py`). Both are over EIP-170's limit at 53 KB, so they are never deployed: they are the staged verifier's reference and the optimistic route's program. `FlockDischarge` is the row-walking discharge `FlockMatrix` replaced. `src/wrap/` holds the wrapped lift's verifier, `FlockWrap` in one call and `staged/` across seven stage contracts under `WrapSessions`. `src/optimistic/` holds the optimistic route: `OneStep` re-executes one step of those two calls, and `Dispute` runs uploads, assertions and games.
+- `fixtures/` — the recorded output of the measurement and acceptance runs, as dated `.summary.log` files; `knowledge/` cites them by name.
+- `vendor/flock/` — a vendored, modified copy of Flock under its own licence; `VENDORED.md` lists the upstream revision and every change.
 - `TODO.md` — the open work on the on-chain verifier, in order.
 - `knowledge/` — design record and measurements; `design.md` explains the block and why the lift proves it through the row-major path, `matrix-discharge.md` how the verifier checks the lincheck's last equation without a vector over the block's columns, `evm-verifier.md` what verifying a lift on Ethereum first cost, `verifier-routes.md` the routes costed to cheapen it, `committed-matrix.md` the regular layout and committed matrix that were built, `staged-verification.md` how they run in transactions under mainnet's limits, `optimistic-verification.md` the optimistic route beside it, `whir-wrapper.md` the wrapped lift and its verifier, `batch-proving.md` how it scales when it carries several proofs of seed, `input-trust-review.md` what the verifiers trust about their inputs and what that review changed, and `zkboo-1.3.0-migration.md` what moving to zkboo 1.3.0 changed and what was re-measured.

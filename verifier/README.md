@@ -43,3 +43,5 @@ Several checks were validated by deletion: the check is removed and the test mus
 None of these contracts has been audited: not the staged verifiers and their session contracts, not `OneStep` and `Dispute`, not the wrap verifier or the structure proof it checks, and not the soundness accounting of the matrix proof they verify.
 The evidence is the tests above, agreement with the native verifier, and fuzzing, which show that the contracts accept what the native verifier accepts and refuse the forgeries that were tried.
 They are not a proof of soundness, and the contracts are not for production.
+The wrap verifier takes the BLAKE3 digest of the public words from calldata without recomputing it.
+The argument that this adds nothing the transcript does not already hold has not been reviewed (`knowledge/whir-wrapper.md`).

@@ -1,5 +1,5 @@
 # evm-bench 219, regular block layout with the committed-matrix discharge, Fast profile, 2026-09-16, M4 Max.
-# revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted; the lift was proved in this process (a sibling session was running light EVM work).
+# revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted; the lift was proved in this process (another process was running light EVM work).
 # Each phase is one call: the lift contract, the Keccak sub-blocks structured part (keccakPart), then the matrix contract; no call is split into 2^24-gas transactions, so the transaction count is a lower bound.
 # intrinsic is 21,000 plus standard calldata pricing (4 per zero byte, 16 per nonzero).
 
