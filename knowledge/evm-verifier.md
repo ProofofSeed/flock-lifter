@@ -82,7 +82,7 @@ Deployment costs 18.83 M gas for `FlockLift`.
 - **Discharge, per-claim 8-bit multiplication tables** for the 64 slot weights and for α, and head, tape and sponge-input weight tables. Every row is then accumulated straight into one scalar per claim.
 - **Discharge, hashing a segment in 32 KiB pieces** instead of copying it whole. Memory expansion is quadratic, and copying the 238 MB stream cost 107 B of the 109 B per-call overhead. That overhead is now 1.78 B.
 - **Discharge, the row loop in Yul.** It removes Solidity's call overhead from a loop over 2.72 M row records and 53.5 M column references per claim: 224 B → 152 B.
-  🪤 The first version of this loop allocated a four-word constant array inside the per-row function, and the free pointer's growth made it **cost 415 B**, nearly twice what it replaced. A memory allocation inside a hot loop is quadratic in the EVM.
+  The first version of this loop allocated a four-word constant array inside the per-row function, and the free pointer's growth made it **cost 415 B**, nearly twice what it replaced. A memory allocation inside a hot loop is quadratic in the EVM.
 
 Altogether: **4.24×** on the whole verification, 1.37× on the lift contract (1.67× with Slim), and 4.39× on the stream's row execution.
 

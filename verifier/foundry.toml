@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
 # The Flock lifter's Ethereum verifier. Built with `forge build`; exercised and metered by the
 # Rust harness in `crates/evm`, which runs the artefacts in an in-process EVM; there are no
 # Solidity tests. `FlockLift`, `FlockMatrix` and `FlockVerifier` exceed EIP-170: see README.md.
