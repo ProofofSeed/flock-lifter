@@ -4,7 +4,11 @@
 //! size, so that a verification larger than a block can still run to completion and be metered,
 //! or with mainnet's transaction gas cap (EIP-7825) and code-size limit (EIP-170) in force.
 
-use std::{path::PathBuf, process::Command, sync::OnceLock};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+    sync::OnceLock,
+};
 
 use revm::{
     Context, ExecuteCommitEvm, ExecuteEvm, MainBuilder, MainContext,
@@ -34,27 +38,53 @@ pub fn project() -> PathBuf {
     return PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../verifier");
 }
 
+/// Runs `forge build` with `paths` in the Foundry project at `dir`.
+fn forge_build(dir: &Path, paths: &[&str]) {
+    let forge = std::env::var("FORGE").unwrap_or_else(|_| format!("{}/.foundry/bin/forge", std::env::var("HOME").expect("HOME")));
+    let status = Command::new(forge).arg("build").arg("--quiet").args(paths).current_dir(dir).status().expect("run forge");
+    assert!(status.success(), "forge build failed");
+}
+
 /// Builds the contracts once per process.
 pub fn build() {
     static BUILT: OnceLock<()> = OnceLock::new();
-    BUILT.get_or_init(|| {
-        let forge = std::env::var("FORGE").unwrap_or_else(|_| {
-            format!("{}/.foundry/bin/forge", std::env::var("HOME").expect("HOME"))
-        });
-        let status = Command::new(forge)
-            .arg("build")
-            .arg("--quiet")
-            .current_dir(project())
-            .status()
-            .expect("run forge");
-        assert!(status.success(), "forge build failed");
-    });
+    BUILT.get_or_init(|| forge_build(&project(), &[]));
+}
+
+/// Copies the verifier's Foundry project to `dir` with the wrap verifier's constants' source
+/// replaced by `key`, and builds the wrap contracts there.
+pub fn build_wrap_at(dir: &Path, key: &str) {
+    fn copy(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).expect("a project directory");
+        for entry in std::fs::read_dir(from).expect("the verifier's sources") {
+            let entry = entry.expect("a directory entry");
+            let target = to.join(entry.file_name());
+            if entry.file_type().expect("a file type").is_dir() {
+                copy(&entry.path(), &target);
+            } else if std::fs::read(entry.path()).ok() != std::fs::read(&target).ok() {
+                std::fs::copy(entry.path(), &target).expect("a copied source");
+            }
+        }
+    }
+    copy(&project().join("src"), &dir.join("src"));
+    std::fs::copy(project().join("foundry.toml"), dir.join("foundry.toml")).expect("the Foundry configuration");
+    let key_path = dir.join("src/wrap/WrapKey.sol");
+    if std::fs::read_to_string(&key_path).ok().as_deref() != Some(key) {
+        std::fs::write(&key_path, key).expect("the wrap constants");
+    }
+    forge_build(dir, &["src/wrap"]);
 }
 
 /// The creation bytecode of contract `name` in source file `file`.
 pub fn artifact(file: &str, name: &str) -> Vec<u8> {
     build();
-    let path = project().join("out").join(file).join(format!("{name}.json"));
+    return artifact_at(&project(), file, name);
+}
+
+/// The creation bytecode of contract `name` in source file `file` of the built Foundry project
+/// at `dir`.
+pub fn artifact_at(dir: &Path, file: &str, name: &str) -> Vec<u8> {
+    let path = dir.join("out").join(file).join(format!("{name}.json"));
     let json: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())))
             .expect("artifact json");
@@ -65,7 +95,13 @@ pub fn artifact(file: &str, name: &str) -> Vec<u8> {
 /// The runtime bytecode length of contract `name` in source file `file`.
 pub fn runtime_len(file: &str, name: &str) -> usize {
     build();
-    let path = project().join("out").join(file).join(format!("{name}.json"));
+    return runtime_len_at(&project(), file, name);
+}
+
+/// The runtime bytecode length of contract `name` in source file `file` of the built Foundry
+/// project at `dir`.
+pub fn runtime_len_at(dir: &Path, file: &str, name: &str) -> usize {
+    let path = dir.join("out").join(file).join(format!("{name}.json"));
     let json: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())))
             .expect("artifact json");
