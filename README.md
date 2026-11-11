@@ -96,3 +96,8 @@ Set `POFSEED_TIMING=1` for the lifter's own phase timings; Flock's `PCS_TRACE`, 
 - `vendor/flock/` — a vendored, modified copy of Flock under its own licence; `VENDORED.md` lists the upstream revision and every change.
 - `TODO.md` — the open work on the on-chain verifier, in order.
 - `knowledge/` — design record and measurements; `design.md` explains the block and why the lift proves it through the row-major path, `matrix-discharge.md` how the verifier checks the lincheck's last equation without a vector over the block's columns, `evm-verifier.md` what verifying a lift on Ethereum first cost, `verifier-routes.md` the routes costed to cheapen it, `committed-matrix.md` the regular layout and committed matrix that were built, `staged-verification.md` how they run in transactions under mainnet's limits, `optimistic-verification.md` the optimistic route beside it, `whir-wrapper.md` the wrapped lift and its verifier, `batch-proving.md` how it scales when it carries several proofs of seed, `input-trust-review.md` what the verifiers trust about their inputs and what that review changed, and `zkboo-1.3.0-migration.md` what moving to zkboo 1.3.0 changed and what was re-measured.
+
+## Licence
+
+Copyright © 2026 Stefano Gogioso.
+The code is LGPL-3.0-or-later (see `LICENSE`); vendored third-party code keeps its own licence.
