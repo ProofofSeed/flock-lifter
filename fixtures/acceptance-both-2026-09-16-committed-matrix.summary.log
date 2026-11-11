@@ -1,4 +1,4 @@
-# acceptance both, 2026-09-16, M4 Max; regular layout with the committed-matrix proof at its final encoding. A sibling session was running single-threaded EVM simulations, so the prove time is not a clean figure.
+# acceptance both, 2026-09-16, M4 Max; regular layout with the committed-matrix proof at its final encoding. Another process was running single-threaded EVM simulations, so the prove time is not a clean figure.
 
 block built in 0.68 s (k_log 28)
 entry list committed in 1.30 s (2^22 entries)

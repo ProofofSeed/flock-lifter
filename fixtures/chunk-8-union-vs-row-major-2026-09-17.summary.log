@@ -1,4 +1,4 @@
-# chunk-probe 8, union path against row-major path, compact layout, 2026-09-17, M4 Max, one process at a time; a sibling session was running light EVM work, so the times are indicative, the peak memory is the figure recorded.
+# chunk-probe 8, union path against row-major path, compact layout, 2026-09-17, M4 Max, one process at a time; another process was running light EVM work, so the times are indicative, the peak memory is the figure recorded.
 
 union: prove 69.71 s, verify 1.31 s, proof 518387 B
          32363315200  maximum resident set size

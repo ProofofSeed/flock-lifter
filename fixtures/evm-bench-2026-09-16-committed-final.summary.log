@@ -1,5 +1,5 @@
 # evm-bench 219, regular block layout, committed-matrix discharge with the Keccak sub-blocks computed inside the matrix contract, Fast profile, 2026-09-16, M4 Max.
-# revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted; the lift was read from a cache this binary proved earlier the same day. Gas is deterministic; the wall-clock lines are not measurements (a sibling session was running).
+# revm 43.0.2 under Osaka rules with the gas cap, block limit and code-size limit lifted; the lift was read from a cache this binary proved earlier the same day. Gas is deterministic; the wall-clock lines are not measurements (another process was running).
 # Two calls: the lift contract, then the matrix contract; neither is split into 2^24-gas transactions, so the transaction count is a lower bound.
 # intrinsic is 21,000 plus standard calldata pricing (4 per zero byte, 16 per nonzero).
 
