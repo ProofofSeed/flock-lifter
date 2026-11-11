@@ -124,6 +124,7 @@ Skipping repeated blocks of public words saved a further 0.24 M at 219 responses
 - **Mirror.** `wrap-check` compares the Rust mirror with the native verifier; `wrap-bench` compares the contract with the mirror stage by stage, at 8 and at 219 responses.
 - **Tampering.** 23 flipped bits across a lift are refused by the single call and 11 by the staged verifier.
 - **Deletion.** Four checks can be singled out by one flipped bit: a WHIR opening's last equation, a Merkle path, the Fiat-Shamir gate, and the session's state comparison. For each, a case built to fail only that check is refused, and is accepted once the check is deleted, with every other case still refused (`fixtures/deletion-validation-2026-10-05-wrap-after-savings.summary.log`). That run predates the return to Flock's own binding of the public words, which touches none of the four checks.
+- **Element tables.** With the comparison in `WrapPiop._elementTables` deleted, the shifted element-table evaluations of `crates/evm/tests/wrap_element.rs` are accepted by the single call and by the staged verifier, whose session then accepts the statement; with it in place, both revert with `ElementTable` (2026-11-11, 8 responses, not recorded under `fixtures/`).
 - **After pinning the word counts.** The same run on 2026-10-09, with the contracts refusing any word counts but the key's, agrees with the mirror at every stage, refuses the same tampering, the three single-check cases and another split of the counts, and costs 192 gas less in one call (`fixtures/wrap-bench-2026-10-09-pinned-counts.summary.log`).
 - **Limit of that method.** A flip anywhere else in a lift changes the transcript and fails a grinding check first, so the remaining contract checks are not individually validated by deletion. They are covered by agreement with the mirror and, natively, by the reject matrix and the structure crate's tests.
 
@@ -135,7 +136,7 @@ Skipping repeated blocks of public words saved a further 0.24 M at 219 responses
 - **Security level.** The WHIR parameters target 128 bits including 22 bits of grinding in the Johnson regime. 219 responses is classical 128-bit in the forgery-work-ratio sense only. No post-quantum claim is made.
 - **Lift fidelity.** Unchanged from the lifter: the block is a compilation of the ZKBoo verifier, checked differentially.
 - **Shape.** Gas was measured for one statement at one size. The contracts compile and pass at 8 responses too.
-- **Flock upstream.** Flock's non-deferred union-circuit verifier accepts shifted element matrix evaluations, since it only checks that they recombine. This lifter's verifier compares them with the tables (`shifted_element_matrix_evaluations_are_refused`). Other users of that verifier are exposed.
+- **Flock upstream.** Flock's non-deferred union-circuit verifier accepts shifted element matrix evaluations, since it only checks that they recombine. This lifter's verifiers compare them with the tables: natively (`shifted_element_matrix_evaluations_are_refused`), and on chain, where the single call and the staged verifier both revert with `ElementTable` (`crates/evm/tests/wrap_element.rs`). Other users of that verifier are exposed.
 
 ## Not done
 

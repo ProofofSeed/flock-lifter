@@ -4,9 +4,11 @@
 //! contracts, their deployment, and a driver that advances a session one capped transaction at a
 //! time, sending each stage exactly the bytes it reads.
 
+use std::path::Path;
+
 use revm::primitives::{Address, U256};
 
-use crate::evm::{CODE_CAP, Evm, artifact, encode, runtime_len};
+use crate::evm::{CODE_CAP, Evm, artifact_at, build, encode, project, runtime_len_at};
 
 /// The stage contracts, with the table each reads from a data contract, if any.
 const STAGES: [(&str, Option<&str>); 7] = [
@@ -79,19 +81,30 @@ fn data_contract(data: &[u8]) -> Vec<u8> {
     return code;
 }
 
-/// Deploys the staged verifier whose constants' source is `key`.
+/// Deploys the staged verifier whose constants' source is `key`, every contract under the
+/// code-size limit.
 pub fn deploy(evm: &mut Evm, key: &str) -> Deployment {
+    build();
+    let deployment = deploy_at(evm, key, &project());
+    for (name, size, _) in &deployment.contracts {
+        assert!(*size <= CODE_CAP, "{name} is {size} bytes");
+    }
+    return deployment;
+}
+
+/// Deploys the staged verifier whose constants' source is `key` from the built Foundry project at
+/// `dir`.
+pub fn deploy_at(evm: &mut Evm, key: &str, dir: &Path) -> Deployment {
     let mut contracts = Vec::new();
     let mut stores: Vec<(&str, Address)> = Vec::new();
     let mut targets = Vec::new();
     for (name, data) in STAGES {
-        let mut code = artifact("WrapStages.sol", name);
+        let mut code = artifact_at(dir, "WrapStages.sol", name);
         if let Some(data) = data {
             let store = match stores.iter().find(|(d, _)| *d == data) {
                 Some(&(_, at)) => at,
                 None => {
                     let bytes = table(key, data);
-                    assert!(bytes.len() < CODE_CAP, "the table {data} is {} bytes", bytes.len());
                     let (at, gas) = evm.deploy(data_contract(&bytes));
                     contracts.push((format!("table {data}"), bytes.len() + 1, gas));
                     stores.push((data, at));
@@ -101,12 +114,11 @@ pub fn deploy(evm: &mut Evm, key: &str) -> Deployment {
             code.extend(address_word(store));
         }
         let (at, gas) = evm.deploy(code);
-        let size = runtime_len("WrapStages.sol", name);
-        assert!(size <= CODE_CAP, "{name} is {size} bytes");
+        let size = runtime_len_at(dir, "WrapStages.sol", name);
         contracts.push((name.to_string(), size, gas));
         targets.push(at);
     }
-    let mut code = artifact("WrapSessions.sol", "WrapSessions");
+    let mut code = artifact_at(dir, "WrapSessions.sol", "WrapSessions");
     code.extend(address_word(targets[0]));
     code.extend(U256::from(0x40).to_be_bytes::<32>());
     code.extend(U256::from(targets.len() - 1).to_be_bytes::<32>());
@@ -114,7 +126,7 @@ pub fn deploy(evm: &mut Evm, key: &str) -> Deployment {
         code.extend(address_word(*t));
     }
     let (sessions, gas) = evm.deploy(code);
-    contracts.push(("WrapSessions".to_string(), runtime_len("WrapSessions.sol", "WrapSessions"), gas));
+    contracts.push(("WrapSessions".to_string(), runtime_len_at(dir, "WrapSessions.sol", "WrapSessions"), gas));
     return Deployment { sessions, contracts };
 }
 

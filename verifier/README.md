@@ -33,8 +33,9 @@ Every contract is exercised from Rust in revm, against the native verifier or a 
 - `crates/evm/tests/`: the chunk verifier against the mirror (`contract.rs`, `mirror.rs`), the lift contract and its Fiat-Shamir gate on forgeries, the matrix contract on tampering (`matrix.rs`), the row-walking discharge (`discharge.rs`), the field arithmetic (`gf2.rs`), the assembly residuals against their reference (`residual.rs`), the structured fold in pieces (`structured.rs`), and the staged verifier end to end under both mainnet limits with its refusals (`staged.rs`).
 - `crates/optimistic/tests/optimistic.rs`: disputes played to the end, forged witnesses, and `OneStep` against revm on random programs.
 - `crates/evm/tests/wrap_field.rs`: the wrap verifier's field kernels.
+- `crates/evm/tests/wrap_element.rs`: the wrap verifier, in one call and in stages, on an 8-response lift, refusing with `ElementTable` element-table evaluations that recombine as the honest ones but are not the tables'; the stages run without the code-size limit, which one stage exceeds at that shape.
 - The binaries `evm-bench`, `onestep-check` and `dispute-sim` repeat these checks at 219 responses.
-- The wrap contracts are exercised by the binary `wrap-bench` only: against the Rust mirror stage by stage, under both mainnet limits, with tampered lifts and session states, at 8 and at 219 responses.
+- Otherwise the wrap contracts are exercised by the binary `wrap-bench`: against the Rust mirror stage by stage, under both mainnet limits, with tampered lifts and session states, at 8 and at 219 responses.
 
 Several checks were validated by deletion: the check is removed and the test must fail (`fixtures/deletion-validation-*.summary.log`).
 
