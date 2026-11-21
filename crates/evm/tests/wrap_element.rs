@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 //! The wrap contracts refuse element-table evaluations that are not the tables', in one call and
-//! in stages, where Flock's own verifier accepts any that recombine; the contracts are built in a
-//! copy of the verifier's project with the constants of this test's shape.
+//! in stages, as Flock's own verifier does; the contracts are built in a copy of the verifier's
+//! project with the constants of this test's shape.
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -56,8 +56,8 @@ fn shifted_element_matrix_evaluations_are_refused_on_chain() {
     evals[0].0 += alpha;
     evals[0].1 += F128::ONE;
     assert!(
-        key.wrap.key.verify_on(&forged.wrap, outer, &mut outer_transcript(&forged.wrap.public)).is_ok(),
-        "Flock's own verifier accepts the shifted evaluations"
+        key.wrap.key.verify_on(&forged.wrap, outer, &mut outer_transcript(&forged.wrap.public)).is_err(),
+        "Flock's own verifier refuses the shifted evaluations"
     );
     let honest = wrap::encode_lift(&vk, &lifted, &words, live, masked);
     let shifted = wrap::encode_lift(&vk, &forged, &words, live, masked);

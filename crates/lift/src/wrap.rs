@@ -205,7 +205,7 @@ pub fn verify_wrapped(
     key.key
         .verify_on(proof, outer, &mut outer_transcript(&proof.public))
         .map_err(|e| WrapError::Outer(format!("{e:?}")))?;
-    // Flock's verifier takes the element tables' evaluations from the proof; the claims pass checks them.
+    // The claims pass checks the element tables' evaluations against the tables, as Flock's verifier also does.
     let table_of = vec![0; key.key.shape.registry.num_boolean()];
     crate::root::outer_claims(key, &table_of, proof, outer)?;
     check_words(program, publics, key, proof)?;
