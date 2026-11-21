@@ -136,7 +136,7 @@ Skipping repeated blocks of public words saved a further 0.24 M at 219 responses
 - **Security level.** The WHIR parameters target 128 bits including 22 bits of grinding in the Johnson regime. 219 responses is classical 128-bit in the forgery-work-ratio sense only. No post-quantum claim is made.
 - **Lift fidelity.** Unchanged from the lifter: the block is a compilation of the ZKBoo verifier, checked differentially.
 - **Shape.** Gas was measured for one statement at one size. The contracts compile and pass at 8 responses too.
-- **Flock upstream.** Flock's non-deferred union-circuit verifier accepts shifted element matrix evaluations, since it only checks that they recombine. This lifter's verifiers compare them with the tables: natively (`shifted_element_matrix_evaluations_are_refused`), and on chain, where the single call and the staged verifier both revert with `ElementTable` (`crates/evm/tests/wrap_element.rs`). Other users of that verifier are exposed.
+- **Flock upstream.** Up to upstream `4a7f470` (2026-11-21), Flock's non-deferred union-circuit verifiers accepted shifted element matrix evaluations, since they only checked that the evaluations recombine. We reported this to Succinct, and `4a7f470` fixes it by comparing the evaluations with the element matrices. The fix is backported to the vendored copy (`vendor/flock/VENDORED.md`). This lifter's verifiers have compared the evaluations with the tables throughout, and still do: natively (`shifted_element_matrix_evaluations_are_refused`, which also checks that Flock's verifier now refuses them), and on chain, where the single call and the staged verifier both revert with `ElementTable` (`crates/evm/tests/wrap_element.rs`).
 
 ## Not done
 

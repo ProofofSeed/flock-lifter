@@ -100,9 +100,8 @@ fn toy_wrap_accepts_and_refuses() {
     );
 }
 
-/// Flock's circuit verifier takes the element tables' matrix evaluations from the proof and checks
-/// only that they recombine to the lincheck's claim; a wrap's verifier must refuse evaluations
-/// shifted along that one equation.
+/// Element-table matrix evaluations shifted along the lincheck's one recombination equation are
+/// refused by Flock's circuit verifier and, independently, by the claims pass.
 #[test]
 fn shifted_element_matrix_evaluations_are_refused() {
     let per = 1usize << chunk_wrap::row_log(&Program::new(&Toy), 1);
@@ -125,12 +124,17 @@ fn shifted_element_matrix_evaluations_are_refused() {
     evals[0].0 += alpha;
     evals[0].1 += F128::ONE;
     assert!(
-        w.key.key.verify_on(&forged, outer, &mut wrap::outer_transcript(&forged.public)).is_ok(),
-        "Flock's own verifier accepts the shifted evaluations"
+        w.key.key.verify_on(&forged, outer, &mut wrap::outer_transcript(&forged.public)).is_err(),
+        "Flock's own verifier refuses the shifted evaluations"
+    );
+    let table_of = vec![0; w.key.key.shape.registry.num_boolean()];
+    assert!(
+        matches!(root::outer_claims(&w.key, &table_of, &forged, outer), Err(WrapError::Element)),
+        "the claims pass refuses evaluations that are not the tables'"
     );
     assert!(
-        matches!(wrap::verify_wrapped(&program, &parts, &w.key, &forged, outer), Err(WrapError::Element)),
-        "evaluations that are not the tables' are refused"
+        matches!(wrap::verify_wrapped(&program, &parts, &w.key, &forged, outer), Err(WrapError::Outer(_))),
+        "the wrap verifier refuses them"
     );
 }
 

@@ -33,6 +33,7 @@ A copy of the crates of [Flock](https://github.com/succinctlabs/flock) at revisi
 - `flock-core/src/verifier.rs`, `flock-core/src/pcs.rs`: under `mul-count`, the deferred circuit verifier and the merged opening print their multiplications by phase.
 - `flock-prover/src/tower/head_env.rs`: `EnvKey::verify_deferred`, the deferred verification of a proof under an envelope key on a given transcript.
 - `flock-prover/src/tower/head_env.rs`, `flock-prover/src/tower/rowmajor.rs`: `prove_env_on`, `EnvKey::verify_on` and `prove_wrap_on` make and check the outer proof on a caller's transcript, which the caller may extend with the public segment; `RowMajorChild::publish_rows` adds a chunk's published words to the wrap's public segment.
+- `flock-core/src/element_r1cs/union.rs`, `flock-core/src/verifier.rs`: upstream `4a7f470` (2026-11-21), backported: `ElementAssertion::check` compares the element class's reported matrix evaluations with the element matrices, and every non-deferred verifier uses it in place of `check_reported` alone, including `verify_union_circuit{,_ag}_with_outer` above. The proof format and transcript are unchanged.
 
 ## Known upstream failures
 
