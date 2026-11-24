@@ -25,19 +25,6 @@ license = "LGPL-3.0-or-later"
 # Flock at revision b684b12 with the additions listed in vendor/flock/VENDORED.md.
 flock-prover = { path = "vendor/flock/crates/flock-prover" }
 
-# The zkboo crates are yanked from crates.io, so they resolve from the local checkouts.
-[patch.crates-io]
-zkboo              = { path = "../../zkboo/zkboo" }
-zkboo-sha2         = { path = "../../zkboo/zkboo-sha2" }
-zkboo-hmac         = { path = "../../zkboo/zkboo-hmac" }
-zkboo-modular      = { path = "../../zkboo/zkboo-modular" }
-zkboo-ecc          = { path = "../../zkboo/zkboo-ecc" }
-zkboo-circuit-hash = { path = "../../zkboo/zkboo-circuit-hash" }
-zkboo-profiling    = { path = "../../zkboo/zkboo-profiling" }
-zkboo-bip32        = { path = "../../zkboo/zkboo-bip32" }
-zkboo-keccak       = { path = "../../zkboo/zkboo-keccak" }
-zkboo-ripemd160    = { path = "../../zkboo/zkboo-ripemd160" }
-
 [profile.release]
 lto = "thin"
 codegen-units = 1

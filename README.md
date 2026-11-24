@@ -15,11 +15,10 @@ The lift has a fidelity gap: the response block is a compilation of the ZKBoo ve
 No post-quantum claim is made.
 The 219-response lift is classical 128-bit only in the forgery-work-ratio sense, and Flock's grinding under Grover has not been accounted for.
 In the wrapped route, the contract takes the BLAKE3 digest of the public words from calldata without recomputing it; the words themselves are bound by the wrap's Keccak transcript, and that argument has not been reviewed.
-The repository cannot be built by others yet: every crate depends on the ZKBoo crates at 1.3.0, which are unpublished and are patched in from local checkouts.
 
 ## Usage
 
-Requires Rust 1.95.0 (pinned by `rust-toolchain.toml`) and checkouts of the ZKBoo crates at 1.3.0 in a `zkboo` folder two levels above this one (`../../zkboo`), which are patched in at the workspace root because the ZKBoo crates are not published.
+Requires Rust 1.95.0 (pinned by `rust-toolchain.toml`); the ZKBoo crates resolve from crates.io, with `zkboo` at 1.3.1.
 Flock is pinned to a revision of its public repository and builds with `target-cpu=native`, as its kernels expect.
 
 ```sh
