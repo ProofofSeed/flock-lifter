@@ -102,14 +102,14 @@ Removing them from the verifier entirely, through Flock's claim accumulation, wa
 
 |              |                 SP1 lifter (Metal GPU, full path) |                            Flock lifter (CPU) |
 | ------------ | ------------------------------------------------: | --------------------------------------------: |
-| prove        |                                        3,613.03 s |                                       13.40 s |
-| peak RSS     |                                          48.39 GB |                                      74.61 GB |
+| prove        |                                        3,809.72 s |                                       13.40 s |
+| peak RSS     |                                          50.28 GB |                                      74.61 GB |
 | proof        |                     356 B Groth16 + 219 B journal |                                   1,675,231 B |
 | verify       | 280,590 gas on L1 (225,975 pairing + 54,615 gate) |       0.02 s native; 0.89 B gas in 106 L1 txs |
 | weakest link |                     BN254 pairing, about 100 bits | Flock `Fast` profile and ZKBoo, 128 classical |
 
-The Flock column is zkboo 1.3.0 (2026-09-21). The SP1 column is zkboo 1.2.0: the SP1 lifter's full-soundness lift has not been re-timed on 1.3.0.
-Proving is about **270× faster** (about 280× before the matrix proof, on the 2026-09-15 figures), for about half as much memory again (+54%).
+The Flock column is zkboo 1.3.0 (2026-09-21) and has not been re-timed since this lifter moved to zkboo 1.3.1 (2026-11-21). The SP1 column is that lifter's current figure, a quiet run on zkboo 1.3.1 built from the published crates (2026-11-24), so the two columns are not release-matched.
+Release-matched on zkboo 1.3.0, against the SP1 lifter's 3,662.54 s and 50.95 GB of 2026-09-21, proving is about **273× faster** for about half as much memory again (+46%).
 
 ### Where the gap comes from
 
